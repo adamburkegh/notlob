@@ -1,0 +1,53 @@
+#Pricing Discounts
+
+A discount strategy applies a multiplier to a price, yielding a reduced price.
+Strategies are values in [0,1] representing the proportion of the price to retain.
+A value of 1.0 means no discount; 0.0 means free.
+
+The choice of "proportion to retain" rather than "proportion to remove" is
+deliberate — it composes naturally under multiplication. See ##Stacking Discounts.
+
+    from decimal import Decimal
+
+    def apply_discount(strategy: Decimal, price: Decimal) -> Decimal:
+        return price * strategy
+
+~example
+    apply_discount(Decimal('0.8'), Decimal('100')) == Decimal('80')
+
+##Stacking Discounts
+
+When multiple strategies apply, they compose multiplicatively. A 20% discount
+followed by a 10% discount yields 72% of the original price, not 70%.
+
+This is usually the right behaviour for independent promotions — each strategy
+is applied to the already-discounted price, not the original.
+
+~example
+    apply_discount(Decimal('0.8'), apply_discount(Decimal('0.9'), Decimal('100'))) == Decimal('72')
+
+~property
+    @given(
+        s1=st.decimals(min_value=0, max_value=1, allow_nan=False),
+        s2=st.decimals(min_value=0, max_value=1, allow_nan=False),
+        price=st.decimals(min_value=Decimal('0'), allow_nan=False),
+    )
+    def _(s1, s2, price):
+        assert apply_discount(s1, apply_discount(s2, price)) == apply_discount(s1 * s2, price)
+
+---
+
+#Tests
+
+##boundary conditions
+    apply_discount(Decimal('1'), Decimal('100')) == Decimal('100')
+    apply_discount(Decimal('0'), Decimal('100')) == Decimal('0')
+    apply_discount(Decimal('0.5'), Decimal('0')) == Decimal('0')
+
+##composition
+    apply_discount(Decimal('0.8'), apply_discount(Decimal('0.9'), Decimal('100'))) == Decimal('72')
+    apply_discount(Decimal('0.9'), apply_discount(Decimal('0.8'), Decimal('100'))) == Decimal('72')
+
+#References
+    from decimal import Decimal
+    from hypothesis import given, strategies as st

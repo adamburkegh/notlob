@@ -1,0 +1,92 @@
+#Roman Numerals
+
+Roman numerals are a positional notation using seven letters: I(1), V(5), X(10),
+L(50), C(100), D(500), M(1000). Values accumulate additively — VIII is 8 — except
+for six subtractive pairs where a smaller letter precedes a larger: IV(4), IX(9),
+XL(40), XC(90), CD(400), CM(900).
+
+The subtractive pairs are not a general rule but a fixed enumeration. IIX is not 8.
+This makes the representation unambiguous: every integer in [1, 3999] has exactly
+one valid Roman form.
+
+    NUMERALS = [
+        (1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'),
+        (100, 'C'),  (90,  'XC'), (50,  'L'), (40,  'XL'),
+        (10,  'X'),  (9,   'IX'), (5,   'V'), (4,   'IV'),
+        (1,   'I'),
+    ]
+
+    def to_roman(n: int) -> str:
+        result = ''
+        for value, numeral in NUMERALS:
+            while n >= value:
+                result += numeral
+                n -= value
+        return result
+
+~example
+    to_roman(4)    == 'IV'
+    to_roman(9)    == 'IX'
+    to_roman(2024) == 'MMXXIV'
+
+##Decoding
+
+Decoding is the inverse of encoding. The subtractive pairs are handled by
+checking for two-character tokens before single characters — the same
+enumeration, consulted in reverse.
+
+    def from_roman(s: str) -> int:
+        lookup = {numeral: value for value, numeral in NUMERALS}
+        result, i = 0, 0
+        while i < len(s):
+            if i + 1 < len(s) and s[i:i+2] in lookup:
+                result += lookup[s[i:i+2]]
+                i += 2
+            else:
+                result += lookup[s[i]]
+                i += 1
+        return result
+
+~example
+    from_roman('IV')     == 4
+    from_roman('MMXXIV') == 2024
+
+##Round-Trip
+
+Encoding and decoding are mutual inverses over the valid range. This is the
+primary correctness property of the pair: no information is lost, no value
+is mangled.
+
+~property
+    @given(n=st.integers(min_value=1, max_value=3999))
+    def _(n):
+        assert from_roman(to_roman(n)) == n
+
+---
+
+#Tests
+
+##encoding
+    to_roman(1)    == 'I'
+    to_roman(4)    == 'IV'
+    to_roman(9)    == 'IX'
+    to_roman(14)   == 'XIV'
+    to_roman(40)   == 'XL'
+    to_roman(90)   == 'XC'
+    to_roman(400)  == 'CD'
+    to_roman(900)  == 'CM'
+    to_roman(1994) == 'MCMXCIV'
+    to_roman(3999) == 'MMMCMXCIX'
+
+##decoding
+    from_roman('I')       == 1
+    from_roman('IV')      == 4
+    from_roman('MCMXCIV') == 1994
+
+##round-trip
+    from_roman(to_roman(1))    == 1
+    from_roman(to_roman(3999)) == 3999
+    from_roman(to_roman(1066)) == 1066
+
+#References
+    from hypothesis import strategies as st

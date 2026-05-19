@@ -1,0 +1,7 @@
+#Pricing
+
+Modules in this package model pricing primitives: how prices are represented,
+how strategies transform them, and how strategies compose.
+
+~binding python
+~property-testing hypothesis

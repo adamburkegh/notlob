@@ -110,6 +110,19 @@ in the essay body.
 on, after the argument has been made. This mirrors academic convention and keeps the
 opening of the file in the prose register.
 
+**`binding.lob` is a reserved structural filename.** Each package directory may contain a
+`binding.lob` that declares the execution substrate and property-testing library for all
+modules in that package. It is the one file whose title names its *parent* address rather
+than its own — `binding.lob` in `pricing/` carries the title `#Pricing`. The filename is a
+tooling convention, not a module address; it is not subject to the title-as-path rule. The
+name is a pun: it binds the package in the bibliographic sense and declares the technical
+binding in the execution sense. `binding.lob` sigils:
+
+```
+~binding python          ← execution substrate
+~property-testing hypothesis   ← property testing library
+```
+
 ---
 
 ## Sample `.lob` File
@@ -199,3 +212,13 @@ Not a production language. Not a compiler. Not making grand claims. The name is 
 palindrome and the project is not finished. It is an experiment in whether the document
 structure is the right place to put the theory that Naur says lives in programmers' heads
 and Fox says should be transmissible.
+
+---
+## Project Structure
+
+`origin.md` is a long conversation giving background on the project, which is summarised here and in README.
+
+Follow Python and Haskell conventions otherwise. As this is a radical experiment, keep other technologies boring as a rule.
+
+
+
