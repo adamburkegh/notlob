@@ -9,6 +9,7 @@ Usage::
 
     from notlob.bindings.python import kit
     enrich(graph, module, kit.extract_symbols)
+    source = kit.assemble(module)
 """
 
 from __future__ import annotations
@@ -16,9 +17,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
+from ..model import Module
+
 
 #: Callable that maps a list of indented code lines to defined names.
 Extractor = Callable[[Sequence[str]], list[str]]
+
+#: Callable that assembles a Module into one executable string.
+Assembler = Callable[[Module], str]
 
 
 @dataclass
@@ -26,8 +32,9 @@ class BindingKit:
     """A composed set of language-specific tooling callables.
 
     extract_symbols  Stage-2 name extraction: code lines → names.
+    assemble         Code assembly: Module → executable string.
 
-    Future fields will add: assemble (tangling), run_examples,
-    run_properties.
+    Future fields will add: run_examples, run_properties.
     """
     extract_symbols: Extractor
+    assemble: Assembler
