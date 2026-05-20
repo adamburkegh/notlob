@@ -1,13 +1,13 @@
 #Roman Numerals
 
-Roman numerals are a positional notation using seven letters: I(1), V(5), X(10),
-L(50), C(100), D(500), M(1000). Values accumulate additively — VIII is 8 — except
-for six subtractive pairs where a smaller letter precedes a larger: IV(4), IX(9),
-XL(40), XC(90), CD(400), CM(900).
+Roman numerals are a positional notation using seven letters: I(1), V(5),
+X(10), L(50), C(100), D(500), M(1000). Values accumulate additively —
+VIII is 8 — except for six subtractive pairs where a smaller letter
+precedes a larger: IV(4), IX(9), XL(40), XC(90), CD(400), CM(900).
 
-The subtractive pairs are not a general rule but a fixed enumeration. IIX is not 8.
-This makes the representation unambiguous: every integer in [1, 3999] has exactly
-one valid Roman form.
+The subtractive pairs are not a general rule but a fixed enumeration.
+IIX is not 8. This makes the representation unambiguous: every integer
+in [1, 3999] has exactly one valid Roman form.
 
     NUMERALS = [
         (1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'),
@@ -31,8 +31,8 @@ one valid Roman form.
 
 ##Decoding
 
-Decoding is the inverse of encoding. The subtractive pairs are handled by
-checking for two-character tokens before single characters — the same
+Decoding is the inverse of encoding. The subtractive pairs are handled
+by checking for two-character tokens before single characters — the same
 enumeration, consulted in reverse.
 
     def from_roman(s: str) -> int:
@@ -53,9 +53,9 @@ enumeration, consulted in reverse.
 
 ##Round-Trip
 
-Encoding and decoding are mutual inverses over the valid range. This is the
-primary correctness property of the pair: no information is lost, no value
-is mangled.
+Encoding and decoding are mutual inverses over the valid range. This is
+the primary correctness property of the pair: no information is lost, no
+value is mangled.
 
 ~property
     @given(n=st.integers(min_value=1, max_value=3999))

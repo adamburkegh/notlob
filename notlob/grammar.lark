@@ -1,0 +1,60 @@
+// notlob.lark
+// Grammar for .lob literate source files.
+//
+// Terminals are line-level tokens produced by the Notlob lexer;
+// each token represents exactly one source line.
+// The lexer classifies lines before parsing, so the grammar
+// contains no regex — only structural rules.
+
+start: module
+
+module: MOD_HEAD body post_text?
+
+// ── Essay body ──────────────────────────────────────────────
+
+body: body_item*
+
+body_item: subheading
+         | code_block
+         | claim
+         | prose_block
+         | BLANK
+
+// Subheadings are flat within a module (no ## nesting).
+subheading: SUBHEAD _sub_item*
+_sub_item: code_block | claim | prose_block | BLANK
+
+// Indented block: begins with an indented line; may contain
+// further indented or blank lines.  A non-indented token
+// (PROSE, SIGIL, SUBHEAD, …) terminates the block.
+code_block: INDENT _block_line*
+
+// A claim sigil followed by its indented body.
+claim: SIGIL _block_line+
+
+prose_block: PROSE+
+
+_block_line: INDENT | BLANK
+
+// ── Post-text ───────────────────────────────────────────────
+
+post_text: SEPARATOR (BLANK | post_section)*
+
+post_section: tests_section
+            | binding_section
+            | references_section
+            | appendix_section
+
+tests_section:      TESTS_HEAD      (BLANK | test_item)*
+test_item:          test_group | INDENT
+test_group:         SUBHEAD (INDENT | BLANK)*
+
+binding_section:    BINDING_HEAD    (INDENT | BLANK)*
+references_section: REFERENCES_HEAD (INDENT | BLANK)*
+appendix_section:   APPENDIX_HEAD   body_item*
+
+// ── Terminal declarations ───────────────────────────────────
+// Tokens are produced by the Notlob line lexer, not by Lark.
+
+%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK PROSE
+%declare SEPARATOR TESTS_HEAD BINDING_HEAD REFERENCES_HEAD APPENDIX_HEAD

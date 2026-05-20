@@ -3,5 +3,9 @@
 Modules in this package implement the Roman numeral codec: encoding integers
 as Roman strings and decoding them back.
 
-~binding python
-~property-testing hypothesis
+---
+
+#Binding
+    ~language python
+    ~property-testing hypothesis
+    ~testing pytest
