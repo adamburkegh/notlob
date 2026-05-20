@@ -124,9 +124,49 @@ argument depends on, after the argument has been made. Code blocks in the
 essay body do not contain imports; `#References` is the authoritative
 import list.
 
-**Cross-references are machine-checked.** A reference to another doc-node
-in prose (e.g. `See ##Stacking Discounts`) is validated by the tooling
-against the doc-node graph. The exact syntax is not yet specified.
+**Node addresses and labels are distinct.** Every named node in the
+name-graph has two representations:
+
+- *Address* — the globally unique machine identifier, derived
+  deterministically from the node's position in the package hierarchy.
+  A module address is its path: `pricing/discounts`. A subheading
+  address appends a fragment: `pricing/discounts#Stacking Discounts`.
+  Addresses are not written by authors; they are computed by tooling.
+
+- *Label* — the human-readable name as written in the source file:
+  `Stacking Discounts`. Labels are locally unique within their parent
+  node. The address is derived from the label plus context.
+
+The two are mechanically related: `address = parent_address + "#" +
+label`. This mirrors the URI fragment convention and is isomorphic to
+an RDF URI, enabling a mechanical export to RDF/Turtle as a build
+artifact (planned, not yet implemented).
+
+**Cross-references use heading sigil syntax and are scope-resolved.**
+A reference in prose reuses the heading sigils but in reference
+position:
+
+- `##Name` refers to a subheading node — resolved against the current
+  module's subheadings. Mirrors the `##` definition syntax.
+- `#Name` refers to any other named node — resolved in order:
+  1. A symbol defined in the current module (function, class,
+     constant extracted from code blocks).
+  2. A subheading of the current module (fallback for bare `#`).
+  3. An imported module declared in the current `#References`
+     section.
+
+`#` is the universal dereference operator for the name-graph.
+NodeKind distinguishes what kind of thing was found; the reference
+syntax does not need to encode it. This means `#NUMERALS` in prose
+is a live cross-reference to the constant definition, with the same
+hyperlink semantics as a subheading or module reference. All named
+things are first-class in prose.
+
+This means `#References` does double duty: it is a bibliography
+(acknowledging what the argument depends on) and a scope declaration
+(bringing module labels into reference resolution context). An
+unresolved reference is an error; the name-graph is closed-world.
+Cross-references are machine-validated against the name-graph.
 
 **`binding.lob` is a reserved structural filename.** Each package
 directory must contain a `binding.lob` that declares the execution
@@ -229,7 +269,7 @@ not 70%.
 
 ## Tooling Architecture
 
-The literate layer (parser, doc-node graph, claim runner, diagnostics) is
+The literate layer (parser, name-graph, claim runner, diagnostics) is
 independent of the execution substrate. Code blocks are currently Python
 for ecosystem access (Hypothesis for property testing, Pandas for data
 experiments). The plan is to support Haskell blocks when the type safety
@@ -241,6 +281,68 @@ post-text sections all become first-class AST nodes. The grammar file is
 the canonical syntax specification; the parser produces a Lark `Tree`
 serialisable to JSON for use by tooling and LLM context. Parse tree
 access will also be exposed via MCP.
+
+**Name-graph:** The central data structure of the tooling layer. Every
+named thing in a `.lob` file or package is a node; relationships between
+them are edges. The name-graph is built in stages:
+
+- *Stage 1 — structural names.* Module addresses and subheading nodes,
+  derived from the `.lob` parser alone. No language binding required.
+  Sufficient for cross-reference validation, doc-node navigation, and
+  LLM context. This layer is binding-agnostic and always available.
+
+- *Stage 2 — defined symbols.* Code-level names (functions, classes,
+  top-level assignments) extracted by a language-specific analyser over
+  code block content. For Python, `ast.parse` suffices. Each symbol is
+  located under its containing structural node. This layer is where the
+  binding earns its keep.
+
+- *Stage 3 — reference edges.* Uses as well as definitions: which claims
+  reference which symbols, which prose cross-references which nodes. The
+  graph becomes a navigable map of the argument.
+
+- *Stage 4 — cross-file.* Module addresses resolved across a package,
+  with `binding.lob` providing the package root. The name-graph spans
+  the full package.
+
+The seam between stage 1 and stage 2 is the binding boundary. The
+structural layer is the common vocabulary across all languages; the
+symbolic layer is language-specific richness.
+
+**Binding kit architecture:** A binding is not a single function; it is a
+kit of cooperating tools that share a language substrate. The binding
+layer is organised language-first:
+
+```
+notlob/bindings/
+    __init__.py          ← BindingKit dataclass + Extractor type alias
+    python/
+        __init__.py      ← assembles the Python kit; exposes `kit`
+        symbols.py       ← extract_symbols for stage-2 name-graph
+        hypothesis.py    ← ~property-testing (future)
+        pytest.py        ← ~testing runner (future)
+    haskell/             ← future
+        __init__.py
+        symbols.py
+```
+
+`BindingKit` is a dataclass that composes callables — one per tooling
+concern — so the name-graph and claim runner can ask for exactly the
+capability they need without coupling to a particular language:
+
+```python
+@dataclass
+class BindingKit:
+    extract_symbols: Extractor
+    # future fields: assemble, run_examples, run_properties, ...
+```
+
+The declarations in a `#Binding` section (`~language python`,
+`~property-testing hypothesis`, `~testing pytest`) map to submodule
+choices within the language package. The language is the primary axis;
+the tool components are secondary. A package that declares
+`~language python` gets `bindings.python.symbols` for the name-graph
+and will eventually get `bindings.python.pytest` for its test runner.
 
 **Claim runner:**
 - `~example` claims run as doctests
