@@ -2,8 +2,10 @@
 
 Entry points
 ------------
-notlob run <file>    Run all claims in a .lob file (examples, properties,
-                     tests) and report results.  Exit 1 if any fail.
+notlob run <file>    Assemble and execute a .lob file.  No claim
+                     checking; this runs the program.
+notlob test <file>   Run all claims (examples, properties, #Tests)
+                     and report results.  Exit 1 if any fail.
 lob <file>           Thin alias: equivalent to ``notlob run <file>``.
 """
 
@@ -21,6 +23,7 @@ from notlob.bindings.python.runner import (
     run_properties,
     run_tests,
 )
+from notlob.bindings.python.assemble import assemble
 from notlob.model import BindingSection
 
 
@@ -78,6 +81,24 @@ def _print_result(r: ClaimResult) -> None:
 # ── Commands ──────────────────────────────────────────────────
 
 def cmd_run(path: Path) -> int:
+    """Assemble and execute *path*; return an exit code."""
+    try:
+        module = from_tree(parse_file(path))
+    except Exception as exc:
+        print(f"ERROR  <parse>  {exc}", file=sys.stderr)
+        return 1
+
+    ns: dict = {}
+    try:
+        exec(assemble(module), ns)
+    except Exception as exc:
+        print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+def cmd_test(path: Path) -> int:
     """Run all claims in *path* and return an exit code."""
     try:
         module = from_tree(parse_file(path))
@@ -98,11 +119,10 @@ def cmd_run(path: Path) -> int:
 
     n_fail = sum(1 for r in results if r.status != Status.PASS)
     n_pass = len(results) - n_fail
-    label = "failed" if n_fail else "passed"
     if n_fail:
-        print(f"\n{n_pass} passed, {n_fail} {label}")
+        print(f"\n{n_pass} passed, {n_fail} failed")
     else:
-        print(f"\n{n_pass} {label}")
+        print(f"\n{n_pass} passed")
 
     return 1 if n_fail else 0
 
@@ -118,14 +138,22 @@ def main() -> None:
 
     run_p = sub.add_parser(
         "run",
-        help="run all claims in a .lob file",
+        help="assemble and execute a .lob file",
     )
     run_p.add_argument("file", help="path to .lob file")
+
+    test_p = sub.add_parser(
+        "test",
+        help="run all claims in a .lob file",
+    )
+    test_p.add_argument("file", help="path to .lob file")
 
     args = parser.parse_args()
 
     if args.command == "run":
         sys.exit(cmd_run(Path(args.file)))
+    elif args.command == "test":
+        sys.exit(cmd_test(Path(args.file)))
     else:
         parser.print_help()
         sys.exit(1)
