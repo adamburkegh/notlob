@@ -7,6 +7,10 @@ dependencies = ["lark>=1.2"]
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6"]
 
+[project.scripts]
+notlob = "notlob.cli:main"
+lob    = "notlob.cli:lob_main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["notlob*"]
