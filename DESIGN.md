@@ -115,6 +115,32 @@ the Python/Hypothesis binding, this is a `@given`-decorated function
 body. The literate processor does not invent a property mini-language;
 the binding owns the syntax entirely.
 
+**`~property` naming.** A `~property` claim may optionally carry a name
+(`~property commutativity`), which creates a named node in the name-graph
+at the level of its containing doc-node. Named properties are like named
+theorems in a formal paper — some properties are significant enough to
+deserve a name that can be cross-referenced in prose (`#commutativity`);
+others are anonymous lemmas, identified only by their position in the
+argument.
+
+The `_` convention for the function name inside a named property is a
+deliberate signal: the meaningful name is on the sigil line, not in the
+code. Authors may use any function name — the name-graph address comes
+from the sigil parameter, not the function — but `_` communicates that
+this is an anonymous witness whose identity is its location in the
+argument.
+
+Functions defined inside a named `~property` (other than `_`) become
+`NodeKind.SYMBOL` nodes in the name-graph under the property node:
+
+```
+roman/numerals#Round-Trip#commutativity        ← property node
+roman/numerals#Round-Trip#commutativity#prop   ← named function within
+```
+
+Unnamed `~property` claims have no property node in the name-graph; the
+runner addresses them by ordinal within their containing doc-node.
+
 **Test names are navigational.** In a large test appendix, `##` heading
 groups provide navigation. Unnamed tests are anonymous witnesses —
 epistemically humble, just facts.
@@ -291,11 +317,14 @@ them are edges. The name-graph is built in stages:
   Sufficient for cross-reference validation, doc-node navigation, and
   LLM context. This layer is binding-agnostic and always available.
 
-- *Stage 2 — defined symbols.* Code-level names (functions, classes,
-  top-level assignments) extracted by a language-specific analyser over
-  code block content. For Python, `ast.parse` suffices. Each symbol is
-  located under its containing structural node. This layer is where the
-  binding earns its keep.
+- *Stage 2 — defined symbols.* Code-level names extracted from code
+  blocks and named `~property` claims by a language-specific analyser.
+  Code block names (functions, classes, top-level assignments) become
+  `NodeKind.SYMBOL` nodes under their containing structural node. Named
+  `~property` claims become `NodeKind.PROPERTY` nodes, with any named
+  functions defined within them as `NodeKind.SYMBOL` children. The `_`
+  convention marks anonymous witness functions and they are not
+  extracted. This layer is where the binding earns its keep.
 
 - *Stage 3 — reference edges.* Uses as well as definitions: which claims
   reference which symbols, which prose cross-references which nodes. The
@@ -345,9 +374,13 @@ the tool components are secondary. A package that declares
 and will eventually get `bindings.python.pytest` for its test runner.
 
 **Claim runner:**
-- `~example` claims run as doctests
+- `~example` claims run as inline assertions in the assembled namespace
 - `~property` claims are executed using the declared property-testing
-  library
+  library. The binding assembles the module into a namespace, then
+  exec's each `~property` block into a *fresh copy* of that namespace
+  (isolating the ephemeral witness function from the module's permanent
+  state). The binding then calls the decorated function; the
+  property-testing library (e.g. Hypothesis) drives the execution.
 - `~proof` claims are reserved for future formal verification integration
 
 **Diagnostics:** Failures report by doc-node address, not line number. A

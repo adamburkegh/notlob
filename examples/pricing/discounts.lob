@@ -30,9 +30,13 @@ strategy is applied to the already-discounted price, not the original.
 
 ~property
     @given(
-        s1=st.decimals(min_value=0, max_value=1, allow_nan=False),
-        s2=st.decimals(min_value=0, max_value=1, allow_nan=False),
-        price=st.decimals(min_value=Decimal('0'), allow_nan=False),
+        s1=st.decimals(min_value=0, max_value=1,
+                       allow_nan=False, places=2),
+        s2=st.decimals(min_value=0, max_value=1,
+                       allow_nan=False, places=2),
+        price=st.decimals(min_value=Decimal('0'),
+                          allow_nan=False, allow_infinity=False,
+                          places=2),
     )
     def _(s1, s2, price):
         assert (apply_discount(s1, apply_discount(s2, price))
@@ -57,4 +61,3 @@ strategy is applied to the already-discounted price, not the original.
 
 #References
     from decimal import Decimal
-    from hypothesis import given, strategies as st

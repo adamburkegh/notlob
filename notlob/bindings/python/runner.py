@@ -15,12 +15,32 @@ claim address counts ~example blocks within their containing node:
 from __future__ import annotations
 
 import ast
+import textwrap
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
+import hypothesis
+import hypothesis.strategies as _st
+
+# Names injected into every ~property claim namespace.
+# Authors who declare ~property-testing hypothesis do not need to
+# import these; the binding provides them.
+_HYPOTHESIS_NS: dict = {
+    "given":       hypothesis.given,
+    "settings":    hypothesis.settings,
+    "assume":      hypothesis.assume,
+    "note":        hypothesis.note,
+    "target":      hypothesis.target,
+    "HealthCheck": hypothesis.HealthCheck,
+    "Phase":       hypothesis.Phase,
+    "Verbosity":   hypothesis.Verbosity,
+    "st":          _st,
+    "strategies":  _st,
+}
+
 from notlob.graph import (
-    claim_address, module_address, subheading_address,
+    claim_address, module_address, property_address, subheading_address,
 )
 from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
 from notlob.bindings.python.assemble import assemble
@@ -138,6 +158,44 @@ def run_tests(module: Module) -> list[ClaimResult]:
     return results
 
 
+def run_properties(module: Module) -> list[ClaimResult]:
+    """Run all ~property claims in a module and return results.
+
+    Each claim block is exec'd into a fresh copy of the assembled
+    module namespace, isolating the ephemeral witness function from
+    the module's permanent state.  The property-testing library
+    (Hypothesis) drives execution when the decorated function is called.
+
+    Named properties (`~property name`) use the sigil name as address.
+    Unnamed properties use an ordinal: <containing>#property#n.
+
+    Assembly errors produce a single ERROR result as with run_examples.
+    """
+    ns: dict = {}
+    mod_addr = module_address(module.title)
+
+    try:
+        exec(assemble(module), ns)
+    except Exception as exc:
+        return [ClaimResult(
+            address=mod_addr,
+            line="<assembly>",
+            status=Status.ERROR,
+            error=exc,
+        )]
+
+    results: list[ClaimResult] = []
+
+    _run_props_in(module.body, mod_addr, ns, results)
+
+    for item in module.body:
+        if isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            _run_props_in(item.body, sub_addr, ns, results)
+
+    return results
+
+
 # ── Internals ─────────────────────────────────────────────────
 
 def _run_section(
@@ -207,6 +265,83 @@ def _is_complete(text: str) -> bool:
         return True
     except SyntaxError as exc:
         return "was never closed" not in (exc.msg or "")
+
+
+def _run_props_in(
+    body:           list,
+    containing_addr: str,
+    module_ns:      dict,
+    results:        list[ClaimResult],
+) -> None:
+    """Evaluate ~property claims found directly in body."""
+    prop_n = 0
+    for item in body:
+        if not (isinstance(item, Claim)
+                and item.sigil.startswith("~property")):
+            continue
+        prop_n += 1
+
+        parts = item.sigil.split(None, 1)
+        if len(parts) > 1:
+            addr = property_address(containing_addr, parts[1].strip())
+        else:
+            addr = claim_address(containing_addr, "property", prop_n)
+
+        claim_ns = dict(module_ns)
+        claim_ns.update(_HYPOTHESIS_NS)
+        try:
+            exec(textwrap.dedent("\n".join(item.lines)), claim_ns)
+        except Exception as exc:
+            results.append(ClaimResult(
+                address=addr,
+                line="<property-exec>",
+                status=Status.ERROR,
+                error=exc,
+            ))
+            continue
+
+        callable_ = _find_property_callable(claim_ns, module_ns)
+        if callable_ is None:
+            results.append(ClaimResult(
+                address=addr,
+                line=item.sigil,
+                status=Status.ERROR,
+                error=ValueError("no callable found in ~property block"),
+            ))
+            continue
+
+        try:
+            callable_()
+            results.append(ClaimResult(
+                address=addr, line=item.sigil, status=Status.PASS,
+            ))
+        except Exception as exc:
+            results.append(ClaimResult(
+                address=addr, line=item.sigil,
+                status=Status.FAIL, error=exc,
+            ))
+
+
+def _find_property_callable(
+    claim_ns:  dict,
+    module_ns: dict,
+) -> Any:
+    """Return the property callable from claim_ns, or None.
+
+    Prefers '_' (the anonymous-witness convention); otherwise returns
+    the first new callable not present in module_ns or _HYPOTHESIS_NS
+    (the binding-injected names are excluded from consideration).
+    """
+    baseline = set(module_ns) | set(_HYPOTHESIS_NS)
+    new = {
+        k: v for k, v in claim_ns.items()
+        if k not in baseline
+        and callable(v)
+        and not k.startswith('__')
+    }
+    if not new:
+        return None
+    return new.get('_') or next(iter(new.values()))
 
 
 def _extract_sides(

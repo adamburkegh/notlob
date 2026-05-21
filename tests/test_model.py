@@ -240,7 +240,7 @@ class TestExampleFiles:
         assert len(refs) == 1
         combined = "\n".join(refs[0].lines)
         assert "Decimal" in combined
-        assert "hypothesis" in combined
+        # hypothesis is provided by the binding; not needed in #References
 
     def test_binding_lob_binding_section(self):
         m = from_tree(

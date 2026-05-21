@@ -9,7 +9,7 @@ from .graph import (
     build, enrich,
     NameGraph, Node, NodeKind, Edge, EdgeKind,
     module_address, subheading_address, symbol_address,
-    claim_address,
+    property_address, claim_address,
 )
 
 __all__ = [
@@ -21,5 +21,5 @@ __all__ = [
     "build", "enrich",
     "NameGraph", "Node", "NodeKind", "Edge", "EdgeKind",
     "module_address", "subheading_address", "symbol_address",
-    "claim_address",
+    "property_address", "claim_address",
 ]

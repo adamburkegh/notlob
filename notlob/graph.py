@@ -55,7 +55,7 @@ from enum import Enum, auto
 from typing import Iterator
 
 from .bindings import Extractor
-from .model import CodeBlock, Module, Subheading
+from .model import Claim, CodeBlock, Module, Subheading
 
 
 # ── Address computation ──────────────────────────────────────
@@ -91,6 +91,15 @@ def symbol_address(module_addr: str, name: str) -> str:
     return f"{module_addr}#{name}"
 
 
+def property_address(containing_addr: str, name: str) -> str:
+    """Derive a named property address from its container and name.
+
+    ("roman/numerals#Round-Trip", "commutativity")
+        -> "roman/numerals#Round-Trip#commutativity"
+    """
+    return f"{containing_addr}#{name}"
+
+
 def claim_address(containing_addr: str, kind: str, n: int) -> str:
     """Derive a claim address from its container, kind, and ordinal.
 
@@ -111,6 +120,7 @@ class NodeKind(Enum):
     MODULE     = auto()
     SUBHEADING = auto()
     SYMBOL     = auto()    # stage 2: code-level defined name
+    PROPERTY   = auto()    # stage 2: named ~property claim
 
 
 @dataclass(frozen=True)
@@ -318,6 +328,8 @@ def enrich(
     for item in module.body:
         if isinstance(item, CodeBlock):
             _add_symbols(graph, item, mod_addr, mod_addr, extractor)
+        elif isinstance(item, Claim):
+            _add_named_property(graph, item, mod_addr, extractor)
         elif isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
             for sub_item in item.body:
@@ -326,6 +338,10 @@ def enrich(
                         graph, sub_item,
                         mod_addr, sub_addr,
                         extractor,
+                    )
+                elif isinstance(sub_item, Claim):
+                    _add_named_property(
+                        graph, sub_item, sub_addr, extractor,
                     )
 
 
@@ -346,5 +362,49 @@ def _add_symbols(
         graph.add_edge(Edge(
             source=containing_addr,
             target=addr,
+            kind=EdgeKind.DEFINES,
+        ))
+
+
+def _add_named_property(
+    graph:           NameGraph,
+    claim:           Claim,
+    containing_addr: str,
+    extractor:       Extractor,
+) -> None:
+    """Register a named ~property claim and its non-_ symbols.
+
+    Unnamed ~property claims (no sigil parameter) are silently ignored
+    here; the runner addresses them by ordinal at execution time.
+    """
+    parts = claim.sigil.split(None, 1)
+    if len(parts) < 2:
+        return  # unnamed — no property node
+
+    name = parts[1].strip()
+    prop_addr = property_address(containing_addr, name)
+    graph.add_node(Node(
+        address=prop_addr,
+        label=name,
+        kind=NodeKind.PROPERTY,
+    ))
+    graph.add_edge(Edge(
+        source=containing_addr,
+        target=prop_addr,
+        kind=EdgeKind.DEFINES,
+    ))
+
+    for sym_name in extractor(claim.lines):
+        if sym_name == '_':
+            continue   # anonymous witness — not extracted
+        sym_addr = f"{prop_addr}#{sym_name}"
+        graph.add_node(Node(
+            address=sym_addr,
+            label=sym_name,
+            kind=NodeKind.SYMBOL,
+        ))
+        graph.add_edge(Edge(
+            source=prop_addr,
+            target=sym_addr,
             kind=EdgeKind.DEFINES,
         ))
