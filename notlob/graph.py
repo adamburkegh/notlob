@@ -91,6 +91,20 @@ def symbol_address(module_addr: str, name: str) -> str:
     return f"{module_addr}#{name}"
 
 
+def claim_address(containing_addr: str, kind: str, n: int) -> str:
+    """Derive a claim address from its container, kind, and ordinal.
+
+    Claims are anonymous; the ordinal counts claims of the same kind
+    within the containing node (module or subheading).
+
+    ("roman/numerals#Decoding", "example", 1)
+        -> "roman/numerals#Decoding#example#1"
+    ("roman/numerals", "property", 2)
+        -> "roman/numerals#property#2"
+    """
+    return f"{containing_addr}#{kind}#{n}"
+
+
 # ── Node ─────────────────────────────────────────────────────
 
 class NodeKind(Enum):

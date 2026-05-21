@@ -12,9 +12,13 @@ Usage::
 
 from notlob.bindings import BindingKit
 from notlob.bindings.python.assemble import assemble
+from notlob.bindings.python.runner import ClaimResult, Status, run_examples
 from notlob.bindings.python.symbols import extract_symbols
 
 #: The assembled Python binding kit.
 kit = BindingKit(extract_symbols=extract_symbols, assemble=assemble)
 
-__all__ = ["kit", "extract_symbols", "assemble"]
+__all__ = [
+    "kit", "extract_symbols", "assemble",
+    "run_examples", "ClaimResult", "Status",
+]

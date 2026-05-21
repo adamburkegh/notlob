@@ -29,6 +29,14 @@ in [1, 3999] has exactly one valid Roman form.
     to_roman(9)    == 'IX'
     to_roman(2024) == 'MMXXIV'
 
+The corollary of the subtractive-pairs rule: IIX does not encode 8.
+The correct form is VIII. The following claim is deliberately wrong
+and is expected to fail — it is here to exercise the runner's failure
+path and to make the non-rule concrete.
+
+~example
+    to_roman(8) == 'IIX'
+
 ##Decoding
 
 Decoding is the inverse of encoding. The subtractive pairs are handled
