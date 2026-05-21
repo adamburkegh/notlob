@@ -1,15 +1,25 @@
-"""notlob.bindings.python.runner — ~example claim runner.
+"""notlob.bindings.python.runner — claim runner for the Python binding.
 
-Assembles a module into executable Python, then evaluates each
-~example claim assertion in that namespace.  Results carry the
-claim's address, the source line, and (for failures) the evaluated
-left- and right-hand sides of the comparison.
+Assembles a module into executable Python, then evaluates each claim
+in that namespace.  Results carry the claim's address, the source
+line, and (for failures) the evaluated left- and right-hand sides of
+the comparison.
 
 One ClaimResult is produced per assertion line.  The ordinal in the
 claim address counts ~example blocks within their containing node:
 
     roman/numerals#example#1     ← first ~example in module body
     roman/numerals#Decoding#example#2  ← second ~example in subheading
+
+Binding declarations
+--------------------
+run_properties and run_tests accept an optional ``binding`` dict of
+declarations parsed from binding.lob, e.g.::
+
+    {"property-testing": "hypothesis", "unit-testing": "pytest"}
+
+These drive namespace injection — see _build_property_ns and
+_build_test_ns.
 """
 
 from __future__ import annotations
@@ -23,9 +33,9 @@ from typing import Any
 import hypothesis
 import hypothesis.strategies as _st
 
-# Names injected into every ~property claim namespace.
-# Authors who declare ~property-testing hypothesis do not need to
-# import these; the binding provides them.
+# Names injected into ~property claim namespaces when binding declares
+# ~property-testing hypothesis.  Authors do not import these; the
+# binding provides them.
 _HYPOTHESIS_NS: dict = {
     "given":       hypothesis.given,
     "settings":    hypothesis.settings,
@@ -39,11 +49,50 @@ _HYPOTHESIS_NS: dict = {
     "strategies":  _st,
 }
 
+# Names injected into #Tests assertion namespaces when binding declares
+# ~unit-testing pytest.  Probably anemic; likely to grow as usage
+# patterns emerge.
+try:
+    import pytest as _pytest
+    _PYTEST_NS: dict = {
+        "pytest":  _pytest,
+        "approx":  _pytest.approx,
+        "raises":  _pytest.raises,
+    }
+except ImportError:
+    _PYTEST_NS = {}
+
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
 from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
 from notlob.bindings.python.assemble import assemble
+
+
+def _build_property_ns(binding: dict | None) -> dict:
+    """Return the namespace to inject into ~property claim contexts.
+
+    Driven by the ``property-testing`` key in *binding*.  Currently
+    only ``hypothesis`` is supported.
+    """
+    if binding is None:
+        return {}
+    if binding.get("property-testing") == "hypothesis":
+        return dict(_HYPOTHESIS_NS)
+    return {}
+
+
+def _build_test_ns(binding: dict | None) -> dict:
+    """Return the namespace to inject into #Tests assertion contexts.
+
+    Driven by the ``unit-testing`` key in *binding*.  Currently only
+    ``pytest`` is supported.
+    """
+    if binding is None:
+        return {}
+    if binding.get("unit-testing") == "pytest":
+        return dict(_PYTEST_NS)
+    return {}
 
 
 class Status(Enum):
@@ -103,12 +152,19 @@ def run_examples(module: Module) -> list[ClaimResult]:
     return results
 
 
-def run_tests(module: Module) -> list[ClaimResult]:
+def run_tests(
+    module: Module,
+    binding: dict | None = None,
+) -> list[ClaimResult]:
     """Run all assertions in the #Tests section and return results.
 
     Assertions under a named ## group get an address of the form
     <module>#Tests#<group>.  Bare assertions outside any group use
     <module>#Tests.
+
+    *binding* is a dict of declarations from binding.lob (e.g.
+    ``{"unit-testing": "pytest"}``).  When present, the appropriate
+    helpers are injected into the assertion namespace.
 
     Assembly errors produce a single ERROR result as with run_examples.
     """
@@ -136,6 +192,8 @@ def run_tests(module: Module) -> list[ClaimResult]:
             error=exc,
         )]
 
+    ns.update(_build_test_ns(binding))
+
     results: list[ClaimResult] = []
     tests_addr = f"{mod_addr}#Tests"
     bare: list[str] = []
@@ -158,13 +216,20 @@ def run_tests(module: Module) -> list[ClaimResult]:
     return results
 
 
-def run_properties(module: Module) -> list[ClaimResult]:
+def run_properties(
+    module: Module,
+    binding: dict | None = None,
+) -> list[ClaimResult]:
     """Run all ~property claims in a module and return results.
 
     Each claim block is exec'd into a fresh copy of the assembled
     module namespace, isolating the ephemeral witness function from
     the module's permanent state.  The property-testing library
-    (Hypothesis) drives execution when the decorated function is called.
+    drives execution when the decorated function is called.
+
+    *binding* is a dict of declarations from binding.lob (e.g.
+    ``{"property-testing": "hypothesis"}``).  When present, the
+    appropriate names are injected into each claim namespace.
 
     Named properties (`~property name`) use the sigil name as address.
     Unnamed properties use an ordinal: <containing>#property#n.
@@ -184,14 +249,15 @@ def run_properties(module: Module) -> list[ClaimResult]:
             error=exc,
         )]
 
+    inject_ns = _build_property_ns(binding)
     results: list[ClaimResult] = []
 
-    _run_props_in(module.body, mod_addr, ns, results)
+    _run_props_in(module.body, mod_addr, ns, results, inject_ns)
 
     for item in module.body:
         if isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
-            _run_props_in(item.body, sub_addr, ns, results)
+            _run_props_in(item.body, sub_addr, ns, results, inject_ns)
 
     return results
 
@@ -272,6 +338,7 @@ def _run_props_in(
     containing_addr: str,
     module_ns:      dict,
     results:        list[ClaimResult],
+    inject_ns:      dict,
 ) -> None:
     """Evaluate ~property claims found directly in body."""
     prop_n = 0
@@ -288,7 +355,7 @@ def _run_props_in(
             addr = claim_address(containing_addr, "property", prop_n)
 
         claim_ns = dict(module_ns)
-        claim_ns.update(_HYPOTHESIS_NS)
+        claim_ns.update(inject_ns)
         try:
             exec(textwrap.dedent("\n".join(item.lines)), claim_ns)
         except Exception as exc:
@@ -300,7 +367,7 @@ def _run_props_in(
             ))
             continue
 
-        callable_ = _find_property_callable(claim_ns, module_ns)
+        callable_ = _find_property_callable(claim_ns, module_ns, inject_ns)
         if callable_ is None:
             results.append(ClaimResult(
                 address=addr,
@@ -325,14 +392,15 @@ def _run_props_in(
 def _find_property_callable(
     claim_ns:  dict,
     module_ns: dict,
+    inject_ns: dict,
 ) -> Any:
     """Return the property callable from claim_ns, or None.
 
     Prefers '_' (the anonymous-witness convention); otherwise returns
-    the first new callable not present in module_ns or _HYPOTHESIS_NS
-    (the binding-injected names are excluded from consideration).
+    the first new callable not present in module_ns or inject_ns
+    (binding-injected names are excluded from consideration).
     """
-    baseline = set(module_ns) | set(_HYPOTHESIS_NS)
+    baseline = set(module_ns) | set(inject_ns)
     new = {
         k: v for k, v in claim_ns.items()
         if k not in baseline

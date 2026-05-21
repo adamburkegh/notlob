@@ -76,8 +76,9 @@ Further prose...
 #Binding            ← reserved heading, declares execution substrate
     ~language python
     ~property-testing hypothesis
+    ~unit-testing pytest
 
-#References         ← reserved heading, compiler resolves these
+#References         ← reserved heading, imports for this module only
     from library import Thing
 ```
 
@@ -194,18 +195,27 @@ This means `#References` does double duty: it is a bibliography
 unresolved reference is an error; the name-graph is closed-world.
 Cross-references are machine-validated against the name-graph.
 
-**`binding.lob` is a reserved structural filename.** Each package
-directory must contain a `binding.lob` that declares the execution
-substrate and property-testing library for all modules in that package.
-It is the one file whose title names its *parent* address rather than its
-own — `binding.lob` in `pricing/` carries the title `#Pricing`. The
+**`binding.lob` is a reserved structural filename.** Each project root
+contains a `binding.lob` that declares the execution substrate and
+tooling libraries for all modules in that project. It is the one file
+whose title names its *parent* address rather than its own — `binding.lob`
+at the root of the `roman` project carries the title `#Roman`. The
 filename is a tooling convention, not a module address; it is not subject
 to the title-as-path rule. The name is a pun: it binds the package in the
 bibliographic sense and declares the technical binding in the execution
 sense.
 
+`binding.lob` is **purely declarative**: it contains only a `#Binding`
+section with `~sigil` declarations. It does not contain `#References`
+with shared imports. Shared imports are a module concern — each module
+imports what it uses in its own `#References`. The binding declares which
+libraries are *available* to the project (a dependency declaration); the
+module declares which names are *used* in that module (an import). This
+mirrors the package-vs-import distinction in any language: `pyproject.toml`
+lists dependencies, each `.py` file imports what it needs.
+
 **`#Binding` is inherited from the package.** A module file that lacks a
-`#Binding` section inherits its binding from the package's `binding.lob`.
+`#Binding` section inherits its binding from the project's `binding.lob`.
 A standalone `.lob` file not in a named package may include `#Binding`
 directly in its own post-text. Any file in a directory structure or
 multi-file package without a `binding.lob` is an error.
@@ -285,10 +295,10 @@ not 70%.
 #Binding
     ~language python
     ~property-testing hypothesis
+    ~unit-testing pytest
 
 #References
     from decimal import Decimal
-    from hypothesis import given, strategies as st
 ```
 
 ---
@@ -382,6 +392,25 @@ and will eventually get `bindings.python.pytest` for its test runner.
   state). The binding then calls the decorated function; the
   property-testing library (e.g. Hypothesis) drives the execution.
 - `~proof` claims are reserved for future formal verification integration
+
+**Binding declarations drive namespace injection.** The `~property-testing`
+and `~unit-testing` declarations in `binding.lob` are not just metadata —
+they determine which names are injected into claim execution namespaces:
+
+- `~property-testing hypothesis` → the Python binding injects `given`,
+  `settings`, `assume`, `st`, `HealthCheck`, etc. into every `~property`
+  claim namespace. Authors do not import hypothesis; the binding provides
+  it.
+- `~unit-testing pytest` → the Python binding injects pytest helpers
+  (`pytest.approx`, `pytest.raises`, etc.) into `#Tests` assertion
+  namespaces.
+
+This is a uniform mechanism, not hypothesis-specific magic. The pattern
+is: *declaration in `binding.lob` → injection kit prepared by the
+language binding → names available in the relevant claim context*. A
+Haskell binding would respond to `~property-testing quickcheck` by
+preparing a completely different execution strategy; the `~property` sigil
+is language-agnostic, the binding owns the implementation entirely.
 
 **Diagnostics:** Failures report by doc-node address, not line number. A
 failing claim in `##Stacking Discounts` says so. The node has a prose

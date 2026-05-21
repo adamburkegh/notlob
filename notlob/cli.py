@@ -21,6 +21,43 @@ from notlob.bindings.python.runner import (
     run_properties,
     run_tests,
 )
+from notlob.model import BindingSection
+
+
+# ── Binding resolution ────────────────────────────────────────
+
+def _parse_binding_declarations(lines: list[str]) -> dict[str, str]:
+    """Extract ~sigil declarations from a #Binding section's lines."""
+    result: dict[str, str] = {}
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("~"):
+            parts = stripped[1:].split(None, 1)
+            key = parts[0]
+            value = parts[1].strip() if len(parts) > 1 else ""
+            result[key] = value
+    return result
+
+
+def _find_binding(file_path: Path) -> dict[str, str]:
+    """Walk up from *file_path* to find binding.lob; return its
+    declarations.  Returns an empty dict if none is found.
+    """
+    for parent in file_path.resolve().parents:
+        candidate = parent / "binding.lob"
+        if candidate.exists():
+            try:
+                bmod = from_tree(parse_file(candidate))
+                if bmod.post_text:
+                    for section in bmod.post_text.sections:
+                        if isinstance(section, BindingSection):
+                            return _parse_binding_declarations(
+                                section.lines
+                            )
+            except Exception:
+                pass
+            break   # found binding.lob but couldn't use it — stop
+    return {}
 
 
 # ── Formatting ────────────────────────────────────────────────
@@ -48,10 +85,12 @@ def cmd_run(path: Path) -> int:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
         return 1
 
+    binding = _find_binding(path)
+
     results = (
         run_examples(module)
-        + run_properties(module)
-        + run_tests(module)
+        + run_properties(module, binding=binding)
+        + run_tests(module, binding=binding)
     )
 
     for r in results:

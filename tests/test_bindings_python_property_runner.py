@@ -4,9 +4,10 @@ run_properties() assembles a module, then for each ~property claim
 exec's the block into a fresh namespace and calls the decorated
 function.  Hypothesis drives the execution.
 
-The binding injects hypothesis names (given, st, settings, HealthCheck,
-etc.) into every property claim namespace automatically — no import
-needed in claim bodies or #References.
+Binding declarations drive namespace injection: passing
+_HYPOTHESIS_BINDING causes hypothesis names (given, st, settings,
+HealthCheck, etc.) to be injected automatically — no import needed
+in claim bodies or #References.
 """
 
 from pathlib import Path
@@ -17,9 +18,13 @@ from notlob.bindings.python.runner import ClaimResult, Status, run_properties
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
+# Minimal binding declaration for the Python/Hypothesis binding.
+_HYPOTHESIS_BINDING = {"property-testing": "hypothesis"}
+
 
 def ran(source: str) -> list[ClaimResult]:
-    return run_properties(from_tree(parse(source)))
+    return run_properties(from_tree(parse(source)),
+                          binding=_HYPOTHESIS_BINDING)
 
 
 # ── Empty / no properties ─────────────────────────────────────
@@ -159,7 +164,8 @@ class TestNamespaceIsolation:
 
 class TestExampleFiles:
     def _run(self, path):
-        return run_properties(from_tree(parse_file(path)))
+        return run_properties(from_tree(parse_file(path)),
+                              binding=_HYPOTHESIS_BINDING)
 
     def test_roman_numerals_round_trip(self):
         results = self._run(EXAMPLES / "roman/roman/numerals.lob")
