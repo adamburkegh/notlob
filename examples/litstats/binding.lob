@@ -1,0 +1,11 @@
+#Litstats
+
+Modules in this package compute literary statistics over plaintext
+editions of classic works, using Project Gutenberg sources.
+
+---
+
+#Binding
+    ~language python
+    ~property-testing hypothesis
+    ~unit-testing pytest

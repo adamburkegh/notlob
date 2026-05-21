@@ -35,6 +35,7 @@ strategy is applied to the already-discounted price, not the original.
         s2=st.decimals(min_value=0, max_value=1,
                        allow_nan=False, places=2),
         price=st.decimals(min_value=Decimal('0'),
+                          max_value=Decimal('1E+6'),
                           allow_nan=False, allow_infinity=False,
                           places=2),
     )

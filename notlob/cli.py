@@ -88,7 +88,7 @@ def cmd_run(path: Path) -> int:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
         return 1
 
-    ns: dict = {}
+    ns: dict = {"__file__": str(path.resolve())}
     try:
         exec(assemble(module), ns)
     except Exception as exc:
@@ -109,9 +109,9 @@ def cmd_test(path: Path) -> int:
     binding = _find_binding(path)
 
     results = (
-        run_examples(module)
-        + run_properties(module, binding=binding)
-        + run_tests(module, binding=binding)
+        run_examples(module, file_path=path)
+        + run_properties(module, binding=binding, file_path=path)
+        + run_tests(module, binding=binding, file_path=path)
     )
 
     for r in results:

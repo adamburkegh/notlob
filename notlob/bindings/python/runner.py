@@ -28,6 +28,7 @@ import ast
 import textwrap
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any
 
 import hypothesis
@@ -120,14 +121,23 @@ class ClaimResult:
     error:   Exception | None = None
 
 
-def run_examples(module: Module) -> list[ClaimResult]:
+def run_examples(
+    module: Module,
+    file_path: Path | None = None,
+) -> list[ClaimResult]:
     """Run all ~example claims in a module and return results.
+
+    *file_path*, when provided, is injected as ``__file__`` into the
+    execution namespace so that modules can locate data files relative
+    to themselves.
 
     Assembly errors (syntax errors in code blocks, import failures,
     etc.) produce a single ERROR result with address equal to the
     module address and line '<assembly>'.
     """
-    ns: dict = {}
+    ns: dict = (
+        {"__file__": str(file_path.resolve())} if file_path else {}
+    )
     mod_addr = module_address(module.title)
 
     try:
@@ -155,6 +165,7 @@ def run_examples(module: Module) -> list[ClaimResult]:
 def run_tests(
     module: Module,
     binding: dict | None = None,
+    file_path: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all assertions in the #Tests section and return results.
 
@@ -165,6 +176,9 @@ def run_tests(
     *binding* is a dict of declarations from binding.lob (e.g.
     ``{"unit-testing": "pytest"}``).  When present, the appropriate
     helpers are injected into the assertion namespace.
+
+    *file_path*, when provided, is injected as ``__file__`` into the
+    execution namespace.
 
     Assembly errors produce a single ERROR result as with run_examples.
     """
@@ -179,7 +193,9 @@ def run_tests(
     if tests_section is None:
         return []
 
-    ns: dict = {}
+    ns: dict = (
+        {"__file__": str(file_path.resolve())} if file_path else {}
+    )
     mod_addr = module_address(module.title)
 
     try:
@@ -219,6 +235,7 @@ def run_tests(
 def run_properties(
     module: Module,
     binding: dict | None = None,
+    file_path: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all ~property claims in a module and return results.
 
@@ -231,12 +248,17 @@ def run_properties(
     ``{"property-testing": "hypothesis"}``).  When present, the
     appropriate names are injected into each claim namespace.
 
+    *file_path*, when provided, is injected as ``__file__`` into the
+    execution namespace.
+
     Named properties (`~property name`) use the sigil name as address.
     Unnamed properties use an ordinal: <containing>#property#n.
 
     Assembly errors produce a single ERROR result as with run_examples.
     """
-    ns: dict = {}
+    ns: dict = (
+        {"__file__": str(file_path.resolve())} if file_path else {}
+    )
     mod_addr = module_address(module.title)
 
     try:

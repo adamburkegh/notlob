@@ -8,4 +8,4 @@ how strategies transform them, and how strategies compose.
 #Binding
     ~language python
     ~property-testing hypothesis
-    ~testing pytest
+    ~unit-testing pytest
