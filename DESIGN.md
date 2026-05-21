@@ -58,6 +58,9 @@ Prose establishing the concept...
     def _(x):
         assert condition
 
+~run                ← entry-point claim; executes only on notlob run
+    main()
+
 ##Subsection        ← heading hierarchy creates doc-node graph
 
 Further prose...
@@ -109,6 +112,19 @@ layer with its own syntax.
 specific design decision palpable, not to provide coverage. Coverage is
 the `#Tests` appendix's job. The inline example illuminates; the appendix
 exhausts.
+
+**`~run` is the program entry point.** A `~run` claim marks code that
+executes only when the module is *run* (`notlob run` / `lob`), not when
+it is *tested* (`notlob test`).  It is the notlob equivalent of
+`if __name__ == "__main__"` — but expressed as a claim, keeping the
+entry point visible in the document structure rather than buried in a
+guard.
+
+Side-effecting code (printing, writing files, making requests) belongs
+in a function defined in the essay body; the `~run` claim calls it.
+This keeps the function testable — its behaviour can be verified with
+`~example` or `#Tests` — while confining the side effects to the run
+path.  Multiple `~run` claims in a module execute in document order.
 
 **`~property` syntax is binding-determined.** The body of a `~property`
 block uses the real syntax of the declared property-testing library. For
@@ -385,6 +401,9 @@ and will eventually get `bindings.python.pytest` for its test runner.
 
 **Claim runner:**
 - `~example` claims run as inline assertions in the assembled namespace
+- `~run` claims execute only during `notlob run`; they are ignored by
+  `notlob test`.  All `~run` bodies in a module execute in document
+  order, in the assembled namespace, after the module code has run.
 - `~property` claims are executed using the declared property-testing
   library. The binding assembles the module into a namespace, then
   exec's each `~property` block into a *fresh copy* of that namespace

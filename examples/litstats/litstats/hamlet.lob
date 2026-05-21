@@ -74,22 +74,28 @@ around.
     SPEAKERS.most_common(1)[0][0] == "HAMLET"
     SPEAKERS["HAMLET"] > SPEAKERS["KING"] * 2
 
-Summary output:
+The report function summarises all three measures. It is defined
+here so it can be tested independently; the ~run claim below
+invokes it when the module is lobbed.
 
-    print(f"{'=' * 44}")
-    print(f"  Hamlet — text statistics")
-    print(f"{'=' * 44}")
-    print(f"  Words  : {sum(WORDS.values()):>8,}  total")
-    print(f"           {len(WORDS):>8,}  unique")
-    print()
-    print(f"  Top 10 words:")
-    for _w, _n in WORDS.most_common(10):
-        print(f"    {_w:<16} {_n:>5,}")
-    print()
-    print(f"  Top 10 speakers (turns):")
-    for _s, _n in _TOP:
-        print(f"    {_s:<20} {_n:>4,}")
-    print(f"{'=' * 44}")
+    def report() -> None:
+        print(f"{'=' * 44}")
+        print(f"  Hamlet — text statistics")
+        print(f"{'=' * 44}")
+        print(f"  Words  : {sum(WORDS.values()):>8,}  total")
+        print(f"           {len(WORDS):>8,}  unique")
+        print()
+        print(f"  Top 10 words:")
+        for _w, _n in WORDS.most_common(10):
+            print(f"    {_w:<16} {_n:>5,}")
+        print()
+        print(f"  Top 10 speakers (turns):")
+        for _s, _n in _TOP:
+            print(f"    {_s:<20} {_n:>4,}")
+        print(f"{'=' * 44}")
+
+~run
+    report()
 
 ---
 

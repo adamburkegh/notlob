@@ -15,6 +15,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import textwrap
+
 from notlob import from_tree, parse_file
 from notlob.bindings.python.runner import (
     ClaimResult,
@@ -24,7 +26,7 @@ from notlob.bindings.python.runner import (
     run_tests,
 )
 from notlob.bindings.python.assemble import assemble
-from notlob.model import BindingSection
+from notlob.model import BindingSection, Claim, Subheading
 
 
 # ── Binding resolution ────────────────────────────────────────
@@ -80,6 +82,21 @@ def _print_result(r: ClaimResult) -> None:
 
 # ── Commands ──────────────────────────────────────────────────
 
+def _collect_run_claims(module) -> list[Claim]:
+    """Return all ~run claims from the module body and subheadings,
+    in document order.
+    """
+    claims = []
+    for item in module.body:
+        if isinstance(item, Claim) and item.sigil == "~run":
+            claims.append(item)
+        elif isinstance(item, Subheading):
+            for sub_item in item.body:
+                if isinstance(sub_item, Claim) and sub_item.sigil == "~run":
+                    claims.append(sub_item)
+    return claims
+
+
 def cmd_run(path: Path) -> int:
     """Assemble and execute *path*; return an exit code."""
     try:
@@ -94,6 +111,13 @@ def cmd_run(path: Path) -> int:
     except Exception as exc:
         print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
         return 1
+
+    for claim in _collect_run_claims(module):
+        try:
+            exec(textwrap.dedent("\n".join(claim.lines)), ns)
+        except Exception as exc:
+            print(f"ERROR  <run>  {exc}", file=sys.stderr)
+            return 1
 
     return 0
 
