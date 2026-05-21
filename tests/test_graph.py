@@ -180,7 +180,7 @@ class TestMerge:
 class TestExampleFiles:
     def test_roman_numerals_nodes(self):
         g = build(from_tree(parse_file(
-            EXAMPLES / "roman/numerals.lob"
+            EXAMPLES / "roman/roman/numerals.lob"
         )))
         assert g.node("roman/numerals") is not None
         assert g.node("roman/numerals#Decoding") is not None
@@ -188,7 +188,7 @@ class TestExampleFiles:
 
     def test_roman_numerals_children(self):
         g = build(from_tree(parse_file(
-            EXAMPLES / "roman/numerals.lob"
+            EXAMPLES / "roman/roman/numerals.lob"
         )))
         labels = [n.label for n in g.children("roman/numerals")]
         assert "Decoding" in labels
@@ -196,7 +196,7 @@ class TestExampleFiles:
 
     def test_pricing_discounts(self):
         g = build(from_tree(parse_file(
-            EXAMPLES / "pricing/discounts.lob"
+            EXAMPLES / "retail/pricing/discounts.lob"
         )))
         assert g.node("pricing/discounts") is not None
         assert g.node(
@@ -206,7 +206,7 @@ class TestExampleFiles:
     def test_binding_lob_is_package_node(self):
         # binding.lob title is the package name, not the file name.
         g = build(from_tree(parse_file(
-            EXAMPLES / "pricing/binding.lob"
+            EXAMPLES / "retail/binding.lob"
         )))
         assert g.node("pricing") is not None
         assert g.node("pricing").kind == NodeKind.MODULE

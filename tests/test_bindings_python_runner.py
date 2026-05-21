@@ -215,13 +215,13 @@ class TestExampleFiles:
         return run_examples(from_tree(parse_file(path)))
 
     def test_pricing_discounts_all_pass(self):
-        results = self._run(EXAMPLES / "pricing/discounts.lob")
+        results = self._run(EXAMPLES / "retail/pricing/discounts.lob")
         assert results, "expected at least one ~example claim"
         failures = [r for r in results if r.status != Status.PASS]
         assert failures == [], failures
 
     def test_roman_numerals_all_pass(self):
-        results = self._run(EXAMPLES / "roman/numerals.lob")
+        results = self._run(EXAMPLES / "roman/roman/numerals.lob")
         assert results, "expected at least one ~example claim"
         # roman/numerals#example#2 is a deliberate failure in the file
         failures = [
@@ -234,7 +234,7 @@ class TestExampleFiles:
     def test_roman_deliberate_failure(self):
         # The file contains a known-wrong claim to exercise the
         # runner's failure path.  to_roman(8) is 'VIII', not 'IIX'.
-        results = self._run(EXAMPLES / "roman/numerals.lob")
+        results = self._run(EXAMPLES / "roman/roman/numerals.lob")
         bad = [r for r in results
                if r.address == "roman/numerals#example#2"]
         assert len(bad) == 1

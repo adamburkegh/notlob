@@ -214,7 +214,7 @@ class TestPostText:
 
 class TestExampleFiles:
     def test_roman_numerals_structure(self):
-        m = from_tree(parse_file(EXAMPLES / "roman/numerals.lob"))
+        m = from_tree(parse_file(EXAMPLES / "roman/roman/numerals.lob"))
         assert m.title == "Roman Numerals"
         kinds = {type(i).__name__ for i in m.body}
         assert "CodeBlock" in kinds
@@ -223,7 +223,7 @@ class TestExampleFiles:
         assert "ProseBlock" in kinds
 
     def test_roman_numerals_subheadings(self):
-        m = from_tree(parse_file(EXAMPLES / "roman/numerals.lob"))
+        m = from_tree(parse_file(EXAMPLES / "roman/roman/numerals.lob"))
         subs = [i for i in m.body if isinstance(i, Subheading)]
         titles = [s.title for s in subs]
         assert "Decoding" in titles
@@ -231,7 +231,7 @@ class TestExampleFiles:
 
     def test_pricing_references(self):
         m = from_tree(
-            parse_file(EXAMPLES / "pricing/discounts.lob")
+            parse_file(EXAMPLES / "retail/pricing/discounts.lob")
         )
         refs = [
             s for s in m.post_text.sections
@@ -244,7 +244,7 @@ class TestExampleFiles:
 
     def test_binding_lob_binding_section(self):
         m = from_tree(
-            parse_file(EXAMPLES / "pricing/binding.lob")
+            parse_file(EXAMPLES / "retail/binding.lob")
         )
         bindings = [
             s for s in m.post_text.sections

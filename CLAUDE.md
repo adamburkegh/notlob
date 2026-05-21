@@ -13,18 +13,22 @@ and intellectual background.
 ## Project Structure
 
 ```
-examples/               ← mount root (not a package)
-  pricing/
-    binding.lob         ← #Pricing  (package manifest)
-    discounts.lob       ← #Pricing Discounts
-  roman/
-    binding.lob         ← #Roman  (package manifest)
-    numerals.lob        ← #Roman Numerals
+examples/               ← container for independent example projects
+  roman/                ← project root (self-contained)
+    binding.lob         ← #Roman  (project manifest)
+    roman/              ← roman package
+      numerals.lob      ← #Roman Numerals
+  retail/               ← project root (larger scope)
+    binding.lob         ← #Retail  (project manifest)
+    pricing/            ← pricing package
+      discounts.lob     ← #Pricing Discounts
 ```
 
-`examples/` is a mount point analogous to `src/main/java` — the tooling
-strips it when resolving module addresses. Package addresses are
-determined by directory structure and `.lob` file titles alone.
+Each subdirectory of `examples/` is an independent notlob project (the
+equivalent of a git repository).  Within a project, the project root
+is the mount point: module addresses are resolved relative to it.
+`binding.lob` at the project root signals the project boundary and
+carries language, dependency, and shared-reference declarations.
 
 ---
 

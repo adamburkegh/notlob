@@ -162,13 +162,13 @@ class TestExampleFiles:
         return run_properties(from_tree(parse_file(path)))
 
     def test_roman_numerals_round_trip(self):
-        results = self._run(EXAMPLES / "roman/numerals.lob")
+        results = self._run(EXAMPLES / "roman/roman/numerals.lob")
         assert results, "expected at least one ~property claim"
         failures = [r for r in results if r.status != Status.PASS]
         assert failures == [], [(r.address, r.error) for r in failures]
 
     def test_pricing_discounts_stacking(self):
-        results = self._run(EXAMPLES / "pricing/discounts.lob")
+        results = self._run(EXAMPLES / "retail/pricing/discounts.lob")
         assert results, "expected at least one ~property claim"
         failures = [r for r in results if r.status != Status.PASS]
         assert failures == [], [(r.address, r.error) for r in failures]

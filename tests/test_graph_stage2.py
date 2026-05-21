@@ -174,14 +174,14 @@ class TestExampleFiles:
         return graph
 
     def test_roman_numerals_symbols(self):
-        g = self._enrich(EXAMPLES / "roman/numerals.lob")
+        g = self._enrich(EXAMPLES / "roman/roman/numerals.lob")
         assert g.node("roman/numerals#NUMERALS") is not None
         assert g.node("roman/numerals#to_roman") is not None
         assert g.node("roman/numerals#from_roman") is not None
 
     def test_to_roman_defined_by_module(self):
         # NUMERALS and to_roman are at module body level.
-        g = self._enrich(EXAMPLES / "roman/numerals.lob")
+        g = self._enrich(EXAMPLES / "roman/roman/numerals.lob")
         defined = {
             n.label for n in
             g.children("roman/numerals", EdgeKind.DEFINES)
@@ -191,7 +191,7 @@ class TestExampleFiles:
 
     def test_from_roman_defined_by_subheading(self):
         # from_roman is defined inside ##Decoding.
-        g = self._enrich(EXAMPLES / "roman/numerals.lob")
+        g = self._enrich(EXAMPLES / "roman/roman/numerals.lob")
         defined = {
             n.label for n in
             g.children("roman/numerals#Decoding", EdgeKind.DEFINES)
@@ -199,11 +199,11 @@ class TestExampleFiles:
         assert "from_roman" in defined
 
     def test_pricing_discounts_symbols(self):
-        g = self._enrich(EXAMPLES / "pricing/discounts.lob")
+        g = self._enrich(EXAMPLES / "retail/pricing/discounts.lob")
         assert g.node("pricing/discounts#apply_discount") is not None
 
     def test_resolve_symbol_in_example(self):
-        g = self._enrich(EXAMPLES / "roman/numerals.lob")
+        g = self._enrich(EXAMPLES / "roman/roman/numerals.lob")
         node = g.resolve("to_roman", context="roman/numerals")
         assert node is not None
         assert node.kind == NodeKind.SYMBOL

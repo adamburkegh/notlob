@@ -251,7 +251,7 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 
 class TestExampleFiles:
     def test_roman_numerals(self):
-        tree = parse_file(EXAMPLES / "roman/numerals.lob")
+        tree = parse_file(EXAMPLES / "roman/roman/numerals.lob")
         assert title(tree) == "Roman Numerals"
         items = meaningful(body(tree))
         kinds = {i.data for i in items}
@@ -260,7 +260,7 @@ class TestExampleFiles:
         assert "subheading" in kinds
 
     def test_pricing_discounts(self):
-        tree = parse_file(EXAMPLES / "pricing/discounts.lob")
+        tree = parse_file(EXAMPLES / "retail/pricing/discounts.lob")
         assert title(tree) == "Pricing Discounts"
 
     def test_roman_binding(self):
@@ -270,7 +270,7 @@ class TestExampleFiles:
         assert sections[0].children[0].data == "binding_section"
 
     def test_pricing_binding(self):
-        tree = parse_file(EXAMPLES / "pricing/binding.lob")
+        tree = parse_file(EXAMPLES / "retail/binding.lob")
         assert title(tree) == "Pricing"
         sections = post_sections(tree)
         assert sections[0].children[0].data == "binding_section"

@@ -140,25 +140,25 @@ class TestExampleFiles:
         return run_tests(from_tree(parse_file(path)))
 
     def test_pricing_discounts_all_pass(self):
-        results = self._run(EXAMPLES / "pricing/discounts.lob")
+        results = self._run(EXAMPLES / "retail/pricing/discounts.lob")
         assert results, "expected assertions in #Tests"
         failures = [r for r in results if r.status != Status.PASS]
         assert failures == [], failures
 
     def test_pricing_discounts_group_addresses(self):
-        results = self._run(EXAMPLES / "pricing/discounts.lob")
+        results = self._run(EXAMPLES / "retail/pricing/discounts.lob")
         addrs = {r.address for r in results}
         assert "pricing/discounts#Tests#boundary conditions" in addrs
         assert "pricing/discounts#Tests#composition" in addrs
 
     def test_roman_numerals_all_pass(self):
-        results = self._run(EXAMPLES / "roman/numerals.lob")
+        results = self._run(EXAMPLES / "roman/roman/numerals.lob")
         assert results, "expected assertions in #Tests"
         failures = [r for r in results if r.status != Status.PASS]
         assert failures == [], failures
 
     def test_roman_numerals_group_addresses(self):
-        results = self._run(EXAMPLES / "roman/numerals.lob")
+        results = self._run(EXAMPLES / "roman/roman/numerals.lob")
         addrs = {r.address for r in results}
         assert "roman/numerals#Tests#encoding"   in addrs
         assert "roman/numerals#Tests#decoding"   in addrs
