@@ -22,7 +22,7 @@ from typing import Any
 from notlob.graph import (
     claim_address, module_address, subheading_address,
 )
-from notlob.model import Claim, Module, Subheading
+from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
 from notlob.bindings.python.assemble import assemble
 
 
@@ -79,6 +79,61 @@ def run_examples(module: Module) -> list[ClaimResult]:
         if isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
             _run_section(item.body, sub_addr, ns, results)
+
+    return results
+
+
+def run_tests(module: Module) -> list[ClaimResult]:
+    """Run all assertions in the #Tests section and return results.
+
+    Assertions under a named ## group get an address of the form
+    <module>#Tests#<group>.  Bare assertions outside any group use
+    <module>#Tests.
+
+    Assembly errors produce a single ERROR result as with run_examples.
+    """
+    if module.post_text is None:
+        return []
+
+    tests_section = next(
+        (s for s in module.post_text.sections
+         if isinstance(s, TestsSection)),
+        None,
+    )
+    if tests_section is None:
+        return []
+
+    ns: dict = {}
+    mod_addr = module_address(module.title)
+
+    try:
+        exec(assemble(module), ns)
+    except Exception as exc:
+        return [ClaimResult(
+            address=mod_addr,
+            line="<assembly>",
+            status=Status.ERROR,
+            error=exc,
+        )]
+
+    results: list[ClaimResult] = []
+    tests_addr = f"{mod_addr}#Tests"
+    bare: list[str] = []
+
+    for item in tests_section.items:
+        if isinstance(item, str):
+            bare.append(item)
+        else:
+            if bare:
+                for assertion in _iter_assertions(bare):
+                    results.append(_eval_line(tests_addr, assertion, ns))
+                bare = []
+            group_addr = f"{tests_addr}#{item.title}"
+            for assertion in _iter_assertions(item.lines):
+                results.append(_eval_line(group_addr, assertion, ns))
+
+    for assertion in _iter_assertions(bare):
+        results.append(_eval_line(tests_addr, assertion, ns))
 
     return results
 
