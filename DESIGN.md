@@ -167,6 +167,46 @@ argument depends on, after the argument has been made. Code blocks in the
 essay body do not contain imports; `#References` is the authoritative
 import list.
 
+**Two kinds of `#References` entry.** A `#References` section contains
+two interleaved kinds of line:
+
+- *Lob module references* — lines whose stripped content begins with `#`,
+  e.g. `    #Litstats Corpus`. The label is resolved to a module in the
+  same project by title; the module's names are loaded into the importing
+  module's namespace before assembly.
+- *Language imports* — all other non-blank lines, e.g.
+  `    from pathlib import Path`. These are passed through verbatim to
+  the language runtime.
+
+The `#` prefix is unambiguous in the `.lob` line grammar — no new syntax
+is required; the existing dereference operator doubles as the import
+sigil.
+
+**Lob-to-lob imports must be declared explicitly.** Each module declares
+exactly which other lob modules it depends on. There is no implicit
+package import (as in Java, where all classes in a package are available
+to any other class in that package without declaration). If module A uses
+names from C, A must list `#C` in its own `#References`, even if B
+(which A already imports) also imports C.
+
+This explicitness is intentional. The small friction it creates is a
+design pressure: if two modules are routinely needed together, that is a
+signal they belong in one module. Explicit imports make the dependency
+graph readable directly from source; the `#References` list is a true
+bibliography.
+
+**Python-level imports are transitive across lob boundaries — by binding
+design, not by notlob rule.** When module B declares
+`from decimal import Decimal`, that name is visible to any lob module
+that imports B. This follows from the Python binding's exec-chain
+implementation: dependency namespaces are merged before the importing
+module is executed, so Python names travel with their enclosing namespace.
+It is not a notlob design decision; it is Python behaving Pythonically.
+Other bindings — Haskell, compiled languages — will enforce their own
+module boundaries and will not exhibit this behaviour. The take-away: lob
+module boundaries govern notlob theory (explicit, declared, navigable);
+language-level name visibility is governed by the language binding.
+
 **Node addresses and labels are distinct.** Every named node in the
 name-graph has two representations:
 
