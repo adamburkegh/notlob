@@ -1,7 +1,10 @@
-"""notlob.graph — Name-graph (stages 1 and 2).
+"""notlob.graph — Name-graph (stages 1, 2, and 4).
 
 Stage 1: module and subheading nodes derived from document structure.
 Stage 2: symbol nodes derived from code blocks via a language binding.
+Stage 4: cross-file IMPORTS edges from ``#References`` lob-ref
+         declarations; ``build_package()`` lives in ``notlob.project``
+         because it requires file-system access.
 
 Node addresses
 --------------
@@ -28,10 +31,11 @@ This scheme is isomorphic to URI fragment addressing.
 
 Edge vocabulary
 ---------------
-  Stage 1  contains  — module → subheading (structural containment)
-  Stage 2  defines   — module/subheading → symbol (definition site)
+  Stage 1  CONTAINS — module → subheading  (structural containment)
+  Stage 2  DEFINES  — module/subheading → symbol  (definition site)
+  Stage 4  IMPORTS  — module → module  (declared lob-ref dependency)
 
-Later stages will add: uses, references, exemplifies.
+Later stages will add: USES, REFERENCES, EXEMPLIFIES.
 
 Usage::
 
@@ -144,6 +148,7 @@ class Node:
 class EdgeKind(Enum):
     CONTAINS = auto()   # module → subheading
     DEFINES  = auto()   # module/subheading → symbol  (stage 2)
+    IMPORTS  = auto()   # module → module             (stage 4)
 
 
 @dataclass(frozen=True)
@@ -226,27 +231,42 @@ class NameGraph:
         """Resolve a #label reference to a node.
 
         Implements the three-step resolution order from DESIGN.md:
-          1. Symbol in the current module (stage 2)
-          2. Subheading in the current module
-          3. Module by label (cross-module reference)
+          1. Symbol defined in the current module (stage 2).
+          2. Subheading of the current module (stage 1).
+          3. A module explicitly imported by the current module
+             (requires an IMPORTS edge from *context*; stage 4).
 
-        context is a module address (e.g. "roman/numerals").
-        Without context only step 3 is attempted.
+        *context* is a module address (e.g. ``"roman/numerals"``).
+        When context is given, step 3 is restricted to modules
+        reachable via a declared IMPORTS edge — unimported modules
+        are invisible even if they exist in the same package graph.
 
-        Symbols and subheadings share address space; a collision is
-        an error at add_node time, so step 1 and step 2 reduce to a
-        single lookup distinguished by NodeKind.
+        Without context, only a full MODULE scan is attempted
+        (useful for tooling / package-level lookup; never for
+        validating in-source cross-references).
+
+        Symbols and subheadings share the ``#`` address space; a
+        collision is an error at add_node time, so steps 1 and 2
+        reduce to a single address lookup distinguished by NodeKind.
         """
         if context is not None:
+            # Steps 1 & 2: symbol or subheading in the current module
             addr = f"{context}#{label}"
             node = self._nodes.get(addr)
             if node is not None:
-                # SYMBOL takes priority; SUBHEADING is also valid
                 if node.kind in (NodeKind.SYMBOL, NodeKind.SUBHEADING):
                     return node
-        for node in self._nodes.values():
-            if node.label == label and node.kind == NodeKind.MODULE:
-                return node
+            # Step 3: explicitly imported module (stage 4 IMPORTS edges)
+            for edge in self._out.get(context, []):
+                if edge.kind == EdgeKind.IMPORTS:
+                    target = self._nodes.get(edge.target)
+                    if target and target.label == label:
+                        return target
+        else:
+            # No context: scan all MODULE nodes (tooling use only)
+            for node in self._nodes.values():
+                if node.label == label and node.kind == NodeKind.MODULE:
+                    return node
         return None
 
     def __len__(self) -> int:

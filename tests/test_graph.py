@@ -143,13 +143,36 @@ class TestResolve:
         g = graph_of("#T\n")
         assert g.resolve("Unknown", context="t") is None
 
-    def test_resolve_subheading_miss_falls_back_to_module(self):
-        # If the label doesn't match a subheading in context,
-        # fall back to module lookup.
+    def test_resolve_imported_module_in_context(self):
+        # Step 3: resolve a module that the context module imports.
+        # Requires an explicit IMPORTS edge (stage 4).
         g = graph_of("#My Module\n##Sub\n    code\n")
         g2 = graph_of("#Other\n")
         g.merge(g2)
+        g.add_edge(Edge(
+            source="my/module",
+            target="other",
+            kind=EdgeKind.IMPORTS,
+        ))
         node = g.resolve("Other", context="my/module")
+        assert node is not None
+        assert node.kind == NodeKind.MODULE
+
+    def test_resolve_unimported_module_not_visible_in_context(self):
+        # A module present in the graph but not declared as an import
+        # is invisible to resolve() when a context is given.
+        g = graph_of("#My Module\n")
+        g2 = graph_of("#Other\n")
+        g.merge(g2)
+        # No IMPORTS edge — "Other" should not be found
+        assert g.resolve("Other", context="my/module") is None
+
+    def test_resolve_module_without_context_full_scan(self):
+        # Without context, resolve() scans all MODULE nodes.
+        g = graph_of("#My Module\n")
+        g2 = graph_of("#Other\n")
+        g.merge(g2)
+        node = g.resolve("Other")
         assert node is not None
         assert node.kind == NodeKind.MODULE
 

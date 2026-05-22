@@ -20,8 +20,13 @@ all other non-blank lines are Python imports.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
-from .graph import module_address
+from .graph import (
+    module_address,
+    build, enrich,
+    Edge, EdgeKind, NameGraph,
+)
 from .model import Module, ReferencesSection
 
 
@@ -98,3 +103,75 @@ def module_lob_refs(module: Module) -> list[str]:
         if isinstance(section, ReferencesSection):
             return parse_lob_refs(section.lines)
     return []
+
+
+def build_package(
+    root:      Path,
+    extractor: Callable | None = None,
+) -> NameGraph:
+    """Build a package-level NameGraph (Stage 4).
+
+    Discovers every ``*.lob`` file under *root*, constructs a stage-1
+    graph for each (stage-2 as well when *extractor* is supplied),
+    merges them into a single graph, then adds ``IMPORTS`` edges
+    derived from each module's ``#References`` lob-ref declarations.
+
+    Files that fail to parse are silently skipped — a partial package
+    graph is better than an error that blocks all tooling.
+
+    Duplicate ``IMPORTS`` edges (the same ref declared twice) are
+    suppressed.  An ``IMPORTS`` edge is only added when the referenced
+    module is also present in the graph; dangling references (pointing
+    at a missing file) produce no edge.
+
+    Parameters
+    ----------
+    root:
+        The project root — the directory containing ``binding.lob``.
+    extractor:
+        Optional language-specific symbol extractor (stage-2 enrichment).
+        Pass ``notlob.bindings.python.extract_symbols`` for Python
+        projects.
+
+    Returns
+    -------
+    NameGraph
+        A merged graph containing all discoverable nodes and all
+        declared ``IMPORTS`` edges.
+    """
+    # Local import avoids a top-level circular dependency through
+    # __init__.py; parser and model are stable leaf modules.
+    from .parser import parse_file
+    from .model import from_tree
+
+    graph:   NameGraph          = NameGraph()
+    modules: list[Module]       = []
+
+    for path in sorted(root.glob("**/*.lob")):
+        try:
+            module = from_tree(parse_file(path))
+        except Exception:
+            continue
+        mod_graph = build(module)
+        if extractor is not None:
+            enrich(mod_graph, module, extractor)
+        graph.merge(mod_graph)
+        modules.append(module)
+
+    # Second pass: add IMPORTS edges once all modules are in the graph.
+    seen: set[tuple[str, str]] = set()
+    for module in modules:
+        importer = module_address(module.title)
+        for dep_addr in module_lob_refs(module):
+            key = (importer, dep_addr)
+            if key in seen:
+                continue
+            if graph.node(dep_addr) is not None:
+                graph.add_edge(Edge(
+                    source=importer,
+                    target=dep_addr,
+                    kind=EdgeKind.IMPORTS,
+                ))
+                seen.add(key)
+
+    return graph

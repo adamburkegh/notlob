@@ -11,6 +11,7 @@ from .graph import (
     module_address, subheading_address, symbol_address,
     property_address, claim_address,
 )
+from .project import build_package
 
 __all__ = [
     "parse", "parse_file", "to_dict", "to_json",
@@ -18,7 +19,7 @@ __all__ = [
     "Module", "Subheading", "CodeBlock", "Claim", "ProseBlock",
     "PostText", "TestsSection", "TestGroup",
     "BindingSection", "ReferencesSection", "AppendixSection",
-    "build", "enrich",
+    "build", "enrich", "build_package",
     "NameGraph", "Node", "NodeKind", "Edge", "EdgeKind",
     "module_address", "subheading_address", "symbol_address",
     "property_address", "claim_address",
