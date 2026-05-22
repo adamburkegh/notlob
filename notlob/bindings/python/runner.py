@@ -31,24 +31,9 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
-import hypothesis
-import hypothesis.strategies as _st
-
-# Names injected into ~property claim namespaces when binding declares
-# ~property-testing hypothesis.  Authors do not import these; the
-# binding provides them.
-_HYPOTHESIS_NS: dict = {
-    "given":       hypothesis.given,
-    "settings":    hypothesis.settings,
-    "assume":      hypothesis.assume,
-    "note":        hypothesis.note,
-    "target":      hypothesis.target,
-    "HealthCheck": hypothesis.HealthCheck,
-    "Phase":       hypothesis.Phase,
-    "Verbosity":   hypothesis.Verbosity,
-    "st":          _st,
-    "strategies":  _st,
-}
+# _HYPOTHESIS_NS is built lazily on first use; see _build_property_ns.
+# Keeping the import out of module scope means projects that do not
+# declare ~property-testing hypothesis need not have hypothesis installed.
 
 # Names injected into #Tests assertion namespaces when binding declares
 # ~unit-testing pytest.  Probably anemic; likely to grow as usage
@@ -75,11 +60,31 @@ def _build_property_ns(binding: dict | None) -> dict:
 
     Driven by the ``property-testing`` key in *binding*.  Currently
     only ``hypothesis`` is supported.
+
+    hypothesis is imported lazily here so that projects which do not
+    declare ``~property-testing hypothesis`` need not have hypothesis
+    installed.
     """
     if binding is None:
         return {}
     if binding.get("property-testing") == "hypothesis":
-        return dict(_HYPOTHESIS_NS)
+        try:
+            import hypothesis as _hyp
+            import hypothesis.strategies as _st
+        except ImportError:
+            return {}
+        return {
+            "given":       _hyp.given,
+            "settings":    _hyp.settings,
+            "assume":      _hyp.assume,
+            "note":        _hyp.note,
+            "target":      _hyp.target,
+            "HealthCheck": _hyp.HealthCheck,
+            "Phase":       _hyp.Phase,
+            "Verbosity":   _hyp.Verbosity,
+            "st":          _st,
+            "strategies":  _st,
+        }
     return {}
 
 
