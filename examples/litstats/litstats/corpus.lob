@@ -1,0 +1,96 @@
+#Litstats Corpus
+
+Shared utilities for computing statistics over Project Gutenberg
+plaintext editions.  Each edition follows a common format: a prose
+file with a preamble and postscript bounded by sentinel lines.  The
+functions here are independent of any particular text; they apply
+uniformly to any Gutenberg play or novel.
+
+A second text — Titus Andronicus, say, or The Great Gatsby — would
+be a module of the same shape as ##Litstats Hamlet, importing this
+one for the analysis machinery.
+
+##Loading
+
+A Gutenberg file is bounded by sentinel lines of the form
+`*** START OF THE PROJECT GUTENBERG EBOOK ...` and
+`*** END OF THE PROJECT GUTENBERG EBOOK ...`.  Slicing between
+them strips the legal preamble and postscript, leaving the plain
+text of the work.
+
+    def load_play(path: Path) -> str:
+        """Strip Gutenberg header and footer; return play text."""
+        raw   = path.read_text(encoding="utf-8")
+        start = raw.index("*** START OF THE PROJECT GUTENBERG")
+        end   = raw.index("*** END OF THE PROJECT GUTENBERG")
+        return raw[raw.index("\n", start) + 1 : end]
+
+##Word Frequencies
+
+Stripping punctuation and lowercasing gives a flat word list; a
+Counter over that list is the frequency distribution.
+
+    def word_frequencies(text: str) -> Counter:
+        words = re.findall(r"[a-z]+", text.lower())
+        return Counter(words)
+
+~example
+    word_frequencies("") == Counter()
+    word_frequencies("the the cat") == Counter({"the": 2, "cat": 1})
+    word_frequencies("THE CAT") == Counter({"the": 1, "cat": 1})
+
+The total word count equals the number of words found by the same
+regex.  This holds for any input — it is a property of the function
+itself, not a fact about any particular text.
+
+~property
+    @given(text=st.text(max_size=200))
+    def _(text):
+        freqs = word_frequencies(text)
+        assert sum(freqs.values()) == len(
+            re.findall(r"[a-z]+", text.lower())
+        )
+
+##Speaking Parts
+
+In a Gutenberg play, each speech is introduced by the speaker's name
+in ALL CAPS followed by a period on its own line.  Counting these
+labels gives turn counts by character.  Counting turns rather than
+lines avoids inflating characters who speak in long monologues.
+
+    def parse_speakers(text: str) -> Counter:
+        turns: Counter = Counter()
+        for line in text.splitlines():
+            m = re.match(r'^([A-Z][A-Z ]+)\.$', line.strip())
+            if m:
+                turns[m.group(1)] += 1
+        return turns
+
+~example
+    parse_speakers("") == Counter()
+    parse_speakers("HAMLET.\nTo be or not to be.") == Counter({"HAMLET": 1})
+    (parse_speakers("HAMLET.\nHORATIO.\n")
+     == Counter({"HAMLET": 1, "HORATIO": 1}))
+
+---
+
+#Tests
+
+##word frequencies
+    word_frequencies("hello world") == Counter({"hello": 1, "world": 1})
+    word_frequencies("THE THE") == Counter({"the": 2})
+    word_frequencies("123 !!! ...") == Counter()
+    sum(word_frequencies("one two three").values()) == 3
+
+##speaking parts
+    (parse_speakers("HAMLET.\nTo be or not to be.")
+     == Counter({"HAMLET": 1}))
+    (parse_speakers("KING CLAUDIUS.\nHAMLET.\n")
+     == Counter({"KING CLAUDIUS": 1, "HAMLET": 1}))
+    parse_speakers("hamlet.\n") == Counter()
+    parse_speakers("Not a speaker line") == Counter()
+
+#References
+    from pathlib import Path
+    from collections import Counter
+    import re
