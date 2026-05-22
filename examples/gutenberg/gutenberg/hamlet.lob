@@ -1,8 +1,8 @@
-#Litstats Hamlet
+#Gutenberg Hamlet
 
 Word and speaker statistics for Shakespeare's Hamlet, drawn from the
 Project Gutenberg plaintext edition (EBook #1524).  The analysis
-machinery lives in #Litstats Corpus; this module applies it to
+machinery lives in #Gutenberg Corpus; this module applies it to
 Hamlet and reports the results.
 
     _DATA  = Path(__file__).parent.parent / "data"
@@ -79,5 +79,5 @@ it when the module is executed.
     SPEAKERS.most_common(1)[0][0] == "HAMLET"
 
 #References
-    #Litstats Corpus
+    #Gutenberg Corpus
     from pathlib import Path

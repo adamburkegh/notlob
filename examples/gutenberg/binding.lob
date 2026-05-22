@@ -1,4 +1,4 @@
-#Litstats
+#Gutenberg
 
 Modules in this package compute literary statistics over plaintext
 editions of classic works, using Project Gutenberg sources.

@@ -1,4 +1,4 @@
-"""Tests for Phase 5 CLI changes: cache wiring and -m flag."""
+"""Tests for cross-file CLI behaviour: ModuleCache wiring and -m flag."""
 
 import sys
 from pathlib import Path

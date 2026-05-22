@@ -1,4 +1,4 @@
-#Litstats Corpus
+#Gutenberg Corpus
 
 Shared utilities for computing statistics over Project Gutenberg
 plaintext editions.  Each edition follows a common format: a prose
@@ -7,7 +7,7 @@ functions here are independent of any particular text; they apply
 uniformly to any Gutenberg play or novel.
 
 A second text — Titus Andronicus, say, or The Great Gatsby — would
-be a module of the same shape as ##Litstats Hamlet, importing this
+be a module of the same shape as ##Gutenberg Hamlet, importing this
 one for the analysis machinery.
 
 ##Loading

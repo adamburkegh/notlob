@@ -227,53 +227,53 @@ class TestBuildPackage:
         assert g.resolve("Target", context="importer") is None
 
 
-# ── Integration: litstats example ────────────────────────────
+# ── Integration: gutenberg example ───────────────────────────
 
-class TestLitstatsIntegration:
-    ROOT = EXAMPLES / "litstats"
+class TestGutenbergIntegration:
+    ROOT = EXAMPLES / "gutenberg"
 
     @pytest.fixture
     def pkg(self):
         return build_package(self.ROOT)
 
     def test_corpus_module_present(self, pkg):
-        assert pkg.node("litstats/corpus") is not None
+        assert pkg.node("gutenberg/corpus") is not None
 
     def test_hamlet_module_present(self, pkg):
-        assert pkg.node("litstats/hamlet") is not None
+        assert pkg.node("gutenberg/hamlet") is not None
 
     def test_hamlet_imports_corpus(self, pkg):
         imported = [
-            n for n in pkg.children("litstats/hamlet", EdgeKind.IMPORTS)
+            n for n in pkg.children("gutenberg/hamlet", EdgeKind.IMPORTS)
         ]
-        assert any(n.address == "litstats/corpus" for n in imported)
+        assert any(n.address == "gutenberg/corpus" for n in imported)
 
     def test_corpus_imports_nothing(self, pkg):
         # corpus.lob has only Python imports, no lob-ref imports
-        imported = list(pkg.children("litstats/corpus", EdgeKind.IMPORTS))
+        imported = list(pkg.children("gutenberg/corpus", EdgeKind.IMPORTS))
         assert imported == []
 
     def test_resolve_corpus_from_hamlet_context(self, pkg):
-        node = pkg.resolve("Litstats Corpus", context="litstats/hamlet")
+        node = pkg.resolve("Gutenberg Corpus", context="gutenberg/hamlet")
         assert node is not None
         assert node.kind == NodeKind.MODULE
 
     def test_corpus_not_visible_without_import(self, pkg):
         # binding.lob doesn't import corpus — should not resolve
-        binding_addr = "litstats"   # #Litstats → litstats
-        node = pkg.resolve("Litstats Corpus", context=binding_addr)
+        binding_addr = "gutenberg"   # #Gutenberg → gutenberg
+        node = pkg.resolve("Gutenberg Corpus", context=binding_addr)
         assert node is None
 
     def test_with_symbols(self, pkg_with_symbols):
         # corpus functions appear as symbols
         assert pkg_with_symbols.node(
-            "litstats/corpus#load_play"
+            "gutenberg/corpus#load_play"
         ) is not None
         assert pkg_with_symbols.node(
-            "litstats/corpus#word_frequencies"
+            "gutenberg/corpus#word_frequencies"
         ) is not None
         assert pkg_with_symbols.node(
-            "litstats/corpus#parse_speakers"
+            "gutenberg/corpus#parse_speakers"
         ) is not None
 
     @pytest.fixture

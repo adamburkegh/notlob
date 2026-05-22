@@ -173,15 +173,15 @@ class TestFindBinding:
         target.touch()
         assert _find_binding(target) == {}
 
-    def test_real_litstats_binding(self):
-        # Integration: the actual litstats binding.lob resolves correctly
-        litstats_module = (
+    def test_real_gutenberg_binding(self):
+        # Integration: the actual gutenberg binding.lob resolves correctly
+        hamlet = (
             Path(__file__).parent.parent
-            / "examples" / "litstats" / "litstats" / "hamlet.lob"
+            / "examples" / "gutenberg" / "gutenberg" / "hamlet.lob"
         )
-        if not litstats_module.exists():
-            pytest.skip("litstats example not present")
-        result = _find_binding(litstats_module)
+        if not hamlet.exists():
+            pytest.skip("gutenberg example not present")
+        result = _find_binding(hamlet)
         assert result.get("language") == "python"
         assert result.get("property-testing") == "hypothesis"
         assert result.get("unit-testing") == "pytest"
