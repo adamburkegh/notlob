@@ -165,6 +165,49 @@ class TestMultilineBlocks:
         assert "x = 1\n\ndef f(): pass" in result
 
 
+# ── Lob references in #References ────────────────────────────
+
+class TestLobRefsFiltered:
+    def test_lob_ref_not_in_assembled_output(self):
+        src = (
+            "#T\n"
+            "    x = 1\n"
+            "---\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+        )
+        result = assembled(src)
+        assert "#Roman Numerals" not in result
+        assert "roman" not in result
+
+    def test_lob_ref_with_python_import(self):
+        src = (
+            "#T\n"
+            "    x = 1\n"
+            "---\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+            "    from decimal import Decimal\n"
+        )
+        result = assembled(src)
+        assert "from decimal import Decimal" in result
+        assert "#Roman Numerals" not in result
+
+    def test_only_lob_refs_no_references_chunk(self):
+        # When #References contains only lob refs, no references chunk
+        # should appear (assemble filters them all out).
+        src = (
+            "#T\n"
+            "    x = 1\n"
+            "---\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+        )
+        result = assembled(src)
+        # The result is only the module code block
+        assert result.strip().endswith("x = 1")
+
+
 # ── Integration ───────────────────────────────────────────────
 
 class TestIntegration:
