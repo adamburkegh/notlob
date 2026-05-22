@@ -10,6 +10,7 @@ Usage::
     from notlob.bindings.python import kit
     enrich(graph, module, kit.extract_symbols)
     source = kit.assemble(module)
+    results = kit.run_examples(module, file_path=path)
 """
 
 from __future__ import annotations
@@ -33,8 +34,16 @@ class BindingKit:
 
     extract_symbols  Stage-2 name extraction: code lines → names.
     assemble         Code assembly: Module → executable string.
+    run_examples     (module, *, file_path=None) -> list[ClaimResult]
+    run_properties   (module, *, binding=None, file_path=None) -> list[ClaimResult]
+    run_tests        (module, *, binding=None, file_path=None) -> list[ClaimResult]
 
-    Future fields will add: run_examples, run_properties.
+    The runner fields return list[ClaimResult] (notlob.bindings.python.runner).
+    They are typed as Callable[..., list] here to avoid a cross-layer
+    import; the concrete element type is documented above.
     """
     extract_symbols: Extractor
-    assemble: Assembler
+    assemble:        Assembler
+    run_examples:    Callable[..., list]
+    run_properties:  Callable[..., list]
+    run_tests:       Callable[..., list]

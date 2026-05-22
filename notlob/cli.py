@@ -18,14 +18,8 @@ from pathlib import Path
 import textwrap
 
 from notlob import from_tree, parse_file
-from notlob.bindings.python.runner import (
-    ClaimResult,
-    Status,
-    run_examples,
-    run_properties,
-    run_tests,
-)
-from notlob.bindings.python.assemble import assemble
+from notlob.bindings.python import kit
+from notlob.bindings.python.runner import ClaimResult, Status
 from notlob.model import BindingSection, Claim, Subheading
 
 
@@ -107,7 +101,7 @@ def cmd_run(path: Path) -> int:
 
     ns: dict = {"__file__": str(path.resolve())}
     try:
-        exec(assemble(module), ns)
+        exec(kit.assemble(module), ns)
     except Exception as exc:
         print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
         return 1
@@ -133,9 +127,9 @@ def cmd_test(path: Path) -> int:
     binding = _find_binding(path)
 
     results = (
-        run_examples(module, file_path=path)
-        + run_properties(module, binding=binding, file_path=path)
-        + run_tests(module, binding=binding, file_path=path)
+        kit.run_examples(module, file_path=path)
+        + kit.run_properties(module, binding=binding, file_path=path)
+        + kit.run_tests(module, binding=binding, file_path=path)
     )
 
     for r in results:
