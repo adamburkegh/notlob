@@ -1,10 +1,12 @@
-"""notlob.graph — Name-graph (stages 1, 2, and 4).
+"""notlob.graph — Name-graph: structure, symbols, and cross-references.
 
-Stage 1: module and subheading nodes derived from document structure.
-Stage 2: symbol nodes derived from code blocks via a language binding.
-Stage 4: cross-file IMPORTS edges from ``#References`` lob-ref
-         declarations; ``build_package()`` lives in ``notlob.project``
-         because it requires file-system access.
+Structure:        module and subheading nodes from document structure.
+Symbols:          symbol nodes from code blocks via a language binding.
+Cross-references: REFERENCES edges from prose ``#Label`` mentions
+                  (not yet implemented).
+Package graph:    IMPORTS edges from ``#References`` lob-ref declarations;
+                  ``build_package()`` lives in ``notlob.project`` because
+                  it requires file-system access.
 
 Node addresses
 --------------
@@ -31,11 +33,10 @@ This scheme is isomorphic to URI fragment addressing.
 
 Edge vocabulary
 ---------------
-  Stage 1  CONTAINS — module → subheading  (structural containment)
-  Stage 2  DEFINES  — module/subheading → symbol  (definition site)
-  Stage 4  IMPORTS  — module → module  (declared lob-ref dependency)
-
-Later stages will add: USES, REFERENCES, EXEMPLIFIES.
+  CONTAINS   — module → subheading          (structure)
+  DEFINES    — module/subheading → symbol   (symbols)
+  REFERENCES — node → node                  (cross-references; planned)
+  IMPORTS    — module → module              (package graph)
 
 Usage::
 
@@ -123,8 +124,8 @@ def claim_address(containing_addr: str, kind: str, n: int) -> str:
 class NodeKind(Enum):
     MODULE     = auto()
     SUBHEADING = auto()
-    SYMBOL     = auto()    # stage 2: code-level defined name
-    PROPERTY   = auto()    # stage 2: named ~property claim
+    SYMBOL     = auto()    # symbols: code-level defined name
+    PROPERTY   = auto()    # symbols: named ~property claim
 
 
 @dataclass(frozen=True)
@@ -147,8 +148,8 @@ class Node:
 
 class EdgeKind(Enum):
     CONTAINS = auto()   # module → subheading
-    DEFINES  = auto()   # module/subheading → symbol  (stage 2)
-    IMPORTS  = auto()   # module → module             (stage 4)
+    DEFINES  = auto()   # module/subheading → symbol
+    IMPORTS  = auto()   # module → module
 
 
 @dataclass(frozen=True)
@@ -231,10 +232,10 @@ class NameGraph:
         """Resolve a #label reference to a node.
 
         Implements the three-step resolution order from DESIGN.md:
-          1. Symbol defined in the current module (stage 2).
-          2. Subheading of the current module (stage 1).
+          1. Symbol defined in the current module.
+          2. Subheading of the current module.
           3. A module explicitly imported by the current module
-             (requires an IMPORTS edge from *context*; stage 4).
+             (requires an IMPORTS edge from *context*).
 
         *context* is a module address (e.g. ``"roman/numerals"``).
         When context is given, step 3 is restricted to modules
@@ -256,7 +257,7 @@ class NameGraph:
             if node is not None:
                 if node.kind in (NodeKind.SYMBOL, NodeKind.SUBHEADING):
                     return node
-            # Step 3: explicitly imported module (stage 4 IMPORTS edges)
+            # Step 3: explicitly imported module (IMPORTS edges)
             for edge in self._out.get(context, []):
                 if edge.kind == EdgeKind.IMPORTS:
                     target = self._nodes.get(edge.target)
@@ -279,13 +280,13 @@ class NameGraph:
         )
 
 
-# ── Stage-1 builder ──────────────────────────────────────────
+# ── Structure ────────────────────────────────────────────────
 
 def build(module: Module) -> NameGraph:
-    """Build a stage-1 NameGraph from a Module.
+    """Build a structural NameGraph from a Module.
 
     Creates a node for the module and one for each subheading,
-    with contains edges from the module to its subheadings.
+    with CONTAINS edges from the module to its subheadings.
     """
     graph = NameGraph()
     addr  = module_address(module.title)
@@ -321,14 +322,14 @@ def _add_subheading(
     ))
 
 
-# ── Stage-2 enrichment ───────────────────────────────────────
+# ── Symbol enrichment ────────────────────────────────────────
 
 def enrich(
     graph:     NameGraph,
     module:    Module,
     extractor: Extractor,
 ) -> None:
-    """Enrich a stage-1 graph with symbol nodes (stage 2).
+    """Enrich a structural graph with symbol nodes.
 
     Walks the module body and extracts symbols from each code block
     using the provided language-specific extractor.  Symbols defined

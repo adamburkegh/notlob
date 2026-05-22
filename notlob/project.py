@@ -109,12 +109,13 @@ def build_package(
     root:      Path,
     extractor: Callable | None = None,
 ) -> NameGraph:
-    """Build a package-level NameGraph (Stage 4).
+    """Build a package-level NameGraph.
 
-    Discovers every ``*.lob`` file under *root*, constructs a stage-1
-    graph for each (stage-2 as well when *extractor* is supplied),
-    merges them into a single graph, then adds ``IMPORTS`` edges
-    derived from each module's ``#References`` lob-ref declarations.
+    Discovers every ``*.lob`` file under *root*, constructs a
+    structural graph for each (with symbol enrichment when *extractor*
+    is supplied), merges them into a single graph, then adds ``IMPORTS``
+    edges derived from each module's ``#References`` lob-ref
+    declarations.
 
     Files that fail to parse are silently skipped — a partial package
     graph is better than an error that blocks all tooling.
@@ -129,7 +130,7 @@ def build_package(
     root:
         The project root — the directory containing ``binding.lob``.
     extractor:
-        Optional language-specific symbol extractor (stage-2 enrichment).
+        Optional language-specific symbol extractor for symbol enrichment.
         Pass ``notlob.bindings.python.extract_symbols`` for Python
         projects.
 

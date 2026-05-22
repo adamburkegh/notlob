@@ -32,7 +32,7 @@ Assembler = Callable[[Module], str]
 class BindingKit:
     """A composed set of language-specific tooling callables.
 
-    extract_symbols  Stage-2 name extraction: code lines → names.
+    extract_symbols  Symbol extraction: code lines → names.
     assemble         Code assembly: Module → executable string.
     run_examples     (module, *, file_path=None) -> list[ClaimResult]
     run_properties   (module, *, binding=None, file_path=None) -> list[ClaimResult]

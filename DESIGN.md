@@ -376,33 +376,36 @@ access will also be exposed via MCP.
 
 **Name-graph:** The central data structure of the tooling layer. Every
 named thing in a `.lob` file or package is a node; relationships between
-them are edges. The name-graph is built in stages:
+them are edges. The name-graph accumulates in layers, each adding richer
+information:
 
-- *Stage 1 — structural names.* Module addresses and subheading nodes,
-  derived from the `.lob` parser alone. No language binding required.
-  Sufficient for cross-reference validation, doc-node navigation, and
-  LLM context. This layer is binding-agnostic and always available.
+- *Structure.* Module addresses and subheading nodes, derived from the
+  `.lob` parser alone. No language binding required. Sufficient for
+  cross-reference validation, doc-node navigation, and LLM context.
+  This layer is binding-agnostic and always available.
 
-- *Stage 2 — defined symbols.* Code-level names extracted from code
-  blocks and named `~property` claims by a language-specific analyser.
-  Code block names (functions, classes, top-level assignments) become
-  `NodeKind.SYMBOL` nodes under their containing structural node. Named
-  `~property` claims become `NodeKind.PROPERTY` nodes, with any named
-  functions defined within them as `NodeKind.SYMBOL` children. The `_`
-  convention marks anonymous witness functions and they are not
-  extracted. This layer is where the binding earns its keep.
+- *Symbols.* Code-level names extracted from code blocks and named
+  `~property` claims by a language-specific analyser. Code block names
+  (functions, classes, top-level assignments) become `NodeKind.SYMBOL`
+  nodes under their containing structural node. Named `~property` claims
+  become `NodeKind.PROPERTY` nodes, with any named functions defined
+  within them as `NodeKind.SYMBOL` children. The `_` convention marks
+  anonymous witness functions and they are not extracted. This layer is
+  where the binding earns its keep.
 
-- *Stage 3 — reference edges.* Uses as well as definitions: which claims
-  reference which symbols, which prose cross-references which nodes. The
-  graph becomes a navigable map of the argument.
+- *Cross-references.* Uses as well as definitions: which claims
+  reference which symbols, which prose `#Label` mentions cross-reference
+  which nodes. The graph becomes a navigable, validated map of the
+  argument. Unresolved references are errors.
 
-- *Stage 4 — cross-file.* Module addresses resolved across a package,
-  with `binding.lob` providing the package root. The name-graph spans
-  the full package.
+- *Package graph.* Module addresses resolved across a package, with
+  `binding.lob` providing the project root. IMPORTS edges connect
+  modules via their declared `#References`; the name-graph spans the
+  full package.
 
-The seam between stage 1 and stage 2 is the binding boundary. The
-structural layer is the common vocabulary across all languages; the
-symbolic layer is language-specific richness.
+The seam between the structural and symbolic layers is the binding
+boundary. The structural layer is the common vocabulary across all
+languages; the symbolic layer is language-specific richness.
 
 **Binding kit architecture:** A binding is not a single function; it is a
 kit of cooperating tools that share a language substrate. The binding
@@ -413,7 +416,7 @@ notlob/bindings/
     __init__.py          ← BindingKit dataclass + Extractor type alias
     python/
         __init__.py      ← assembles the Python kit; exposes `kit`
-        symbols.py       ← extract_symbols for stage-2 name-graph
+        symbols.py       ← extract_symbols: code lines → defined names
         hypothesis.py    ← ~property-testing (future)
         pytest.py        ← ~testing runner (future)
     haskell/             ← future

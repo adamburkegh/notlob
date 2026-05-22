@@ -1,4 +1,4 @@
-"""Tests for stage-2 name-graph enrichment of ~property claims.
+"""Tests for symbol enrichment of ~property claims in the name-graph.
 
 Named ~property claims create NodeKind.PROPERTY nodes in the graph.
 Functions defined inside (other than _) are NodeKind.SYMBOL children.

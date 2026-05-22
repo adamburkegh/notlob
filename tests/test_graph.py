@@ -1,4 +1,4 @@
-"""Tests for the stage-1 name-graph.
+"""Tests for the structural name-graph.
 
 Covers address computation, node and edge construction, graph
 queries, merge, and integration against the example files.
@@ -145,7 +145,7 @@ class TestResolve:
 
     def test_resolve_imported_module_in_context(self):
         # Step 3: resolve a module that the context module imports.
-        # Requires an explicit IMPORTS edge (stage 4).
+        # Requires an explicit IMPORTS edge (package graph layer).
         g = graph_of("#My Module\n##Sub\n    code\n")
         g2 = graph_of("#Other\n")
         g.merge(g2)
