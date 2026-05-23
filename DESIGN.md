@@ -507,6 +507,8 @@ import a named `.lob` package defining a standard toolset —
 `import notlob/bindings/python-hypothesis` — making the binding itself a
 literate document inspectable in the same format.
 
+**Treesitter base.** The Treesitter toolkit makes a lot of programmer language helper artifacts easy (syntax highlighting etc), so is a future replacement target for lark.
+
 ---
 
 ## What This Is Not
