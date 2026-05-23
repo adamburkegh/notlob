@@ -18,13 +18,14 @@ before any claim execution.
 
 from __future__ import annotations
 
+import json
 import sys
 import textwrap
 from pathlib import Path
 
 from notlob import (
     build, enrich, from_tree, parse_file, validate_refs,
-    Edge, EdgeKind,
+    Edge, EdgeKind, NodeKind,
 )
 from notlob.bindings.python import extract_symbols, kit
 from notlob.bindings.python.loader import ModuleCache
@@ -33,6 +34,7 @@ from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (
     address_from_path,
+    build_package,
     find_project_root, module_lob_refs, resolve_module_path,
 )
 
@@ -243,3 +245,112 @@ def cmd_test(path: Path) -> int:
         print(f"\n{n_pass} passed")
 
     return 1 if n_fail else 0
+
+
+# ── Graph export ──────────────────────────────────────────────
+
+def cmd_graph(path: Path) -> int:
+    """Print the package name-graph as JSON to stdout.
+
+    When *path* is inside a notlob project (a ``binding.lob`` is
+    found), the full package graph is built and exported.  For a
+    standalone file the single-module graph is used instead.
+    """
+    root = find_project_root(path)
+    if root is not None:
+        graph = build_package(root, extract_symbols)
+    else:
+        try:
+            module = from_tree(parse_file(path))
+        except Exception as exc:
+            print(f"ERROR  <parse>  {exc}", file=sys.stderr)
+            return 1
+        graph = build(module)
+        enrich(graph, module, extract_symbols)
+
+    print(graph.to_json())
+    return 0
+
+
+# ── Query helpers ─────────────────────────────────────────────
+
+def _node_dict(node) -> dict:
+    return {
+        "address": node.address,
+        "label":   node.label,
+        "kind":    node.kind.name,
+    }
+
+
+def _require_graph(hint: Path | None = None):
+    """Build the package graph, or return None with an error printed."""
+    root = find_project_root(hint or Path.cwd())
+    if root is None:
+        print(
+            "ERROR  <project>  no binding.lob found — "
+            "run from inside a notlob project",
+            file=sys.stderr,
+        )
+        return None
+    return build_package(root, extract_symbols)
+
+
+# ── Query commands ────────────────────────────────────────────
+
+def cmd_query_children(address: str, kind_str: str = "CONTAINS") -> int:
+    """Print direct children of *address* as a JSON array."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    kind    = EdgeKind[kind_str]
+    results = list(graph.children(address, kind))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+def cmd_query_resolve(label: str, context: str | None = None) -> int:
+    """Resolve *label* (with optional *context* module address).
+
+    Exits 0 and prints the node JSON when the reference resolves;
+    exits 1 and prints ``null`` when it does not.
+    """
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    node = graph.resolve(label, context)
+    print(json.dumps(_node_dict(node) if node else None, indent=2))
+    return 0 if node else 1
+
+
+def cmd_query_search(
+    pattern: str,
+    kind_str: str | None = None,
+) -> int:
+    """Print nodes whose label matches *pattern* (fnmatch-style)."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    kind    = NodeKind[kind_str] if kind_str else None
+    results = list(graph.search(pattern, kind))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+def cmd_query_imports(address: str) -> int:
+    """Print modules imported by *address* as a JSON array."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    results = list(graph.children(address, EdgeKind.IMPORTS))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+def cmd_query_imported_by(address: str) -> int:
+    """Print modules that import *address* as a JSON array."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    results = list(graph.parents(address, EdgeKind.IMPORTS))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0

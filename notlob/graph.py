@@ -55,6 +55,8 @@ Usage::
 
 from __future__ import annotations
 
+import fnmatch
+import json
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Iterator
@@ -272,6 +274,81 @@ class NameGraph:
                 if node.label == label and node.kind == NodeKind.MODULE:
                     return node
         return None
+
+    def search(
+        self,
+        pattern: str,
+        kind: NodeKind | None = None,
+    ) -> Iterator[Node]:
+        """Yield nodes whose label matches *pattern* (fnmatch-style).
+
+        ``*discount*`` matches any label containing "discount".
+        ``apply_*`` matches any label starting with "apply_".
+        Matching is case-sensitive.  Pass *kind* to restrict results.
+        """
+        for node in self._nodes.values():
+            if kind is not None and node.kind != kind:
+                continue
+            if fnmatch.fnmatch(node.label, pattern):
+                yield node
+
+    def parents(
+        self,
+        address: str,
+        kind: EdgeKind = EdgeKind.IMPORTS,
+    ) -> Iterator[Node]:
+        """Yield nodes that have an edge of *kind* pointing to *address*.
+
+        The complement of :meth:`children`: where ``children`` follows
+        edges forward, ``parents`` follows them in reverse.  Primarily
+        useful for ``IMPORTS`` edges — finding every module that imports
+        a given module.
+        """
+        for edge in self._edges:
+            if edge.kind == kind and edge.target == address:
+                source = self._nodes.get(edge.source)
+                if source:
+                    yield source
+
+    # ── Serialisation ─────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """Serialise the graph to a plain dict.
+
+        The returned structure conforms to the JSON Schema at
+        ``notlob/schema/name_graph.json``::
+
+            {
+                "nodes": [{"address": ..., "label": ..., "kind": ...}, ...],
+                "edges": [{"source": ..., "target": ..., "kind": ...}, ...]
+            }
+        """
+        return {
+            "nodes": [
+                {
+                    "address": node.address,
+                    "label":   node.label,
+                    "kind":    node.kind.name,
+                }
+                for node in self._nodes.values()
+            ],
+            "edges": [
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "kind":   edge.kind.name,
+                }
+                for edge in self._edges
+            ],
+        }
+
+    def to_json(self, indent: int = 2) -> str:
+        """Serialise the graph to a JSON string.
+
+        *indent* controls pretty-printing; pass ``None`` for compact
+        single-line output.
+        """
+        return json.dumps(self.to_dict(), indent=indent)
 
     def __len__(self) -> int:
         return len(self._nodes)

@@ -17,7 +17,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from notlob.commands import cmd_run, cmd_test
+from notlob.commands import (
+    cmd_graph, cmd_run, cmd_test,
+    cmd_query_children, cmd_query_resolve, cmd_query_search,
+    cmd_query_imports, cmd_query_imported_by,
+)
 from notlob.project import find_project_root, resolve_module_path
 
 
@@ -74,12 +78,70 @@ def main() -> None:
     test_p = sub.add_parser("test", help="run all claims in a .lob file")
     _add_file_arg(test_p)
 
+    graph_p = sub.add_parser(
+        "graph", help="export the package name-graph as JSON"
+    )
+    _add_file_arg(graph_p)
+
+    query_p = sub.add_parser(
+        "query", help="query the package name-graph"
+    )
+    qsub = query_p.add_subparsers(dest="query_op", metavar="operation")
+
+    qc = qsub.add_parser("children", help="list direct children of a node")
+    qc.add_argument("address")
+    qc.add_argument(
+        "--kind", default="CONTAINS",
+        choices=["CONTAINS", "DEFINES", "IMPORTS"],
+        help="edge kind to follow (default: CONTAINS)",
+    )
+
+    qr = qsub.add_parser("resolve", help="resolve a #label reference")
+    qr.add_argument("label")
+    qr.add_argument(
+        "--context", metavar="ADDRESS",
+        help="module address for resolution context",
+    )
+
+    qs = qsub.add_parser("search", help="search nodes by label pattern")
+    qs.add_argument("pattern", help="fnmatch-style pattern, e.g. '*discount*'")
+    qs.add_argument(
+        "--kind", default=None,
+        choices=["MODULE", "SUBHEADING", "SYMBOL", "PROPERTY"],
+        help="restrict to a node kind",
+    )
+
+    qi = qsub.add_parser("imports", help="list modules imported by an address")
+    qi.add_argument("address")
+
+    qib = qsub.add_parser(
+        "imported-by", help="list modules that import an address"
+    )
+    qib.add_argument("address")
+
     args = parser.parse_args()
 
     if args.command == "run":
         sys.exit(cmd_run(_resolve_path(args.file, args.module_mode)))
     elif args.command == "test":
         sys.exit(cmd_test(_resolve_path(args.file, args.module_mode)))
+    elif args.command == "graph":
+        sys.exit(cmd_graph(_resolve_path(args.file, args.module_mode)))
+    elif args.command == "query":
+        op = getattr(args, "query_op", None)
+        if op == "children":
+            sys.exit(cmd_query_children(args.address, args.kind))
+        elif op == "resolve":
+            sys.exit(cmd_query_resolve(args.label, args.context))
+        elif op == "search":
+            sys.exit(cmd_query_search(args.pattern, args.kind))
+        elif op == "imports":
+            sys.exit(cmd_query_imports(args.address))
+        elif op == "imported-by":
+            sys.exit(cmd_query_imported_by(args.address))
+        else:
+            query_p.print_help()
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
