@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from notlob.cli import _find_binding, _parse_binding_declarations
+from notlob.commands import _find_binding, _parse_binding_declarations
 
 
 # ── _parse_binding_declarations ───────────────────────────────

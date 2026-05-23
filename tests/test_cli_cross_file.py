@@ -1,13 +1,14 @@
 """Tests for cross-file CLI behaviour: ModuleCache wiring, -m flag,
-and prose cross-reference validation."""
+prose cross-reference validation, and module address validation."""
 
 import sys
 from pathlib import Path
 
 import pytest
 
-from notlob.cli import cmd_run, cmd_test, _resolve_path
-from notlob.project import find_project_root
+from notlob.cli import _resolve_path
+from notlob.commands import cmd_run, cmd_test
+from notlob.project import address_from_path, find_project_root
 
 
 # ── Shared fixtures ───────────────────────────────────────────
@@ -233,3 +234,103 @@ class TestCmdTestRefValidation:
         out = capsys.readouterr().out
         assert "PASS" not in out
         assert "FAIL" not in out
+
+
+# ── address_from_path ─────────────────────────────────────────
+
+class TestAddressFromPath:
+    def test_simple_file(self, tmp_path):
+        p = tmp_path / "numerals.lob"
+        assert address_from_path(p, tmp_path) == "numerals"
+
+    def test_nested_file(self, tmp_path):
+        p = tmp_path / "roman" / "numerals.lob"
+        assert address_from_path(p, tmp_path) == "roman/numerals"
+
+    def test_deep_nesting(self, tmp_path):
+        p = tmp_path / "a" / "b" / "c.lob"
+        assert address_from_path(p, tmp_path) == "a/b/c"
+
+    def test_forward_slashes_on_all_platforms(self, tmp_path):
+        # Addresses always use forward slashes regardless of OS.
+        p = tmp_path / "pricing" / "discounts.lob"
+        result = address_from_path(p, tmp_path)
+        assert "\\" not in result
+        assert result == "pricing/discounts"
+
+
+# ── Module address validation in cmd_test and cmd_run ─────────
+
+class TestAddressValidation:
+    def test_matching_title_passes(self, tmp_path):
+        root = _project(tmp_path)
+        target = _write(root, "roman/numerals.lob", (
+            "#Roman Numerals\n"
+            "~example\n"
+            "    1 == 1\n"
+        ))
+        assert cmd_test(target) == 0
+
+    def test_mismatched_title_fails_test(self, tmp_path):
+        root = _project(tmp_path)
+        # File is at gutenberg/titus.lob but title gives titus/andronicus
+        target = _write(root, "gutenberg/titus.lob", (
+            "#Titus Andronicus\n"
+            "~example\n"
+            "    1 == 1\n"
+        ))
+        assert cmd_test(target) == 1
+
+    def test_mismatched_title_fails_run(self, tmp_path):
+        root = _project(tmp_path)
+        target = _write(root, "gutenberg/titus.lob", (
+            "#Titus Andronicus\n"
+        ))
+        assert cmd_run(target) == 1
+
+    def test_mismatch_prints_address_error(self, tmp_path, capsys):
+        root = _project(tmp_path)
+        target = _write(root, "gutenberg/titus.lob", (
+            "#Titus Andronicus\n"
+        ))
+        cmd_test(target)
+        err = capsys.readouterr().err
+        assert "address mismatch" in err
+        assert "titus/andronicus" in err
+        assert "gutenberg/titus" in err
+
+    def test_mismatch_skips_claims(self, tmp_path, capsys):
+        root = _project(tmp_path)
+        target = _write(root, "wrong/path.lob", (
+            "#Right Title\n"
+            "~example\n"
+            "    1 == 1\n"
+        ))
+        cmd_test(target)
+        out = capsys.readouterr().out
+        assert "PASS" not in out
+
+    def test_standalone_file_no_address_check(self, tmp_path):
+        # A .lob file outside any project is exempt — no root to
+        # validate against.
+        target = _write(tmp_path, "any/path.lob", (
+            "#Whatever Title\n"
+            "~example\n"
+            "    1 == 1\n"
+        ))
+        assert cmd_test(target) == 0
+
+    def test_address_and_ref_errors_both_reported(self, tmp_path, capsys):
+        # Both errors are document-level and independent; both should
+        # appear in a single pass rather than stopping after the first.
+        root = _project(tmp_path)
+        target = _write(root, "gutenberg/titus.lob", (
+            "#Titus Andronicus\n"
+            "Titus cares not for your #Rules!\n"
+        ))
+        rc = cmd_test(target)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "address mismatch" in err
+        assert "unresolved reference" in err
+        assert "#Rules" in err

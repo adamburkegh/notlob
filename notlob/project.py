@@ -59,6 +59,22 @@ def resolve_module_path(address: str, root: Path) -> Path:
     return root / Path(address).with_suffix(".lob")
 
 
+def address_from_path(path: Path, root: Path) -> str:
+    """Compute the expected module address from a ``.lob`` file path.
+
+    This is the inverse of :func:`resolve_module_path`: given a file
+    path under a project root, return the module address that the
+    module's title *should* produce via
+    :func:`notlob.graph.module_address`.
+
+    ``root/gutenberg/titus.lob`` → ``"gutenberg/titus"``
+
+    A module whose title-derived address does not match this value is
+    misnamed: it cannot be reliably referenced from other modules.
+    """
+    return path.relative_to(root).with_suffix("").as_posix()
+
+
 def parse_lob_refs(lines: list[str]) -> list[str]:
     """Return module addresses declared in a ``#References`` line list.
 
