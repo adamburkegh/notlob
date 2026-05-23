@@ -1,15 +1,18 @@
 """Tests for NameGraph serialisation and new query methods.
 
 Covers to_dict(), to_json(), search(), and parents().
+Schema conformance is validated using jsonschema against
+notlob/schema/name_graph.json.
 """
 
 import json
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 from notlob import (
-    parse, from_tree, build, enrich,
+    parse, parse_file, from_tree, build, enrich,
     Edge, EdgeKind, NodeKind,
 )
 from notlob.bindings.python import extract_symbols
@@ -213,6 +216,80 @@ class TestParents:
         result = list(g.parents("t#Section", EdgeKind.CONTAINS))
         assert len(result) == 1
         assert result[0].address == "t"
+
+
+# ── Schema conformance ───────────────────────────────────────
+
+_SCHEMA = json.loads(SCHEMA.read_text(encoding="utf-8"))
+
+
+def _all_kinds_graph():
+    """A graph that exercises all node and edge kinds."""
+    src_a = "#Module A\n##Section\n    def f(): pass\n"
+    mod_a = from_tree(parse(src_a))
+    g     = build(mod_a)
+    enrich(g, mod_a, extract_symbols)
+    mod_b = from_tree(parse("#Module B\n"))
+    g.merge(build(mod_b))
+    g.add_edge(Edge(source="module/a", target="module/b",
+                    kind=EdgeKind.IMPORTS))
+    return g
+
+
+class TestSchemaConformance:
+    """Every to_dict() call must produce output that validates against
+    the published JSON Schema.  If to_dict() ever emits an unexpected
+    field or wrong type, jsonschema.validate() will raise here.
+    """
+
+    @pytest.mark.parametrize("label,source", [
+        ("empty module",    "#T\n"),
+        ("subheading",      "#T\n##Section\n    code\n"),
+        ("symbols",         "#T\n    def f(): pass\n    X = 1\n"),
+        ("named property",  "#T\n~property p\n    def _(x): pass\n"),
+        ("all node kinds",
+         "#T\n##Sub\n    def f(): pass\n~property p\n    def _(x): pass\n"),
+    ])
+    def test_conforms(self, label, source):
+        g = _graph(source)
+        jsonschema.validate(g.to_dict(), _SCHEMA)   # raises on failure
+
+    def test_conforms_with_imports_edge(self):
+        jsonschema.validate(_all_kinds_graph().to_dict(), _SCHEMA)
+
+    def test_conforms_roman_example(self):
+        mod = from_tree(parse_file(
+            EXAMPLES / "roman/roman/numerals.lob"
+        ))
+        g = build(mod)
+        enrich(g, mod, extract_symbols)
+        jsonschema.validate(g.to_dict(), _SCHEMA)
+
+    def test_additionalproperties_rejected(self):
+        """Verify the schema actually enforces additionalProperties: false."""
+        bad = {
+            "nodes": [{"address": "t", "label": "T",
+                        "kind": "MODULE", "extra": "oops"}],
+            "edges": [],
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(bad, _SCHEMA)
+
+    def test_unknown_kind_rejected(self):
+        bad = {
+            "nodes": [{"address": "t", "label": "T", "kind": "UNKNOWN"}],
+            "edges": [],
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(bad, _SCHEMA)
+
+    def test_missing_required_field_rejected(self):
+        bad = {
+            "nodes": [{"address": "t", "label": "T"}],  # kind missing
+            "edges": [],
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(bad, _SCHEMA)
 
 
 # ── Integration ───────────────────────────────────────────────
