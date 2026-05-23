@@ -1,4 +1,5 @@
-"""Tests for cross-file CLI behaviour: ModuleCache wiring and -m flag."""
+"""Tests for cross-file CLI behaviour: ModuleCache wiring, -m flag,
+and prose cross-reference validation."""
 
 import sys
 from pathlib import Path
@@ -162,3 +163,73 @@ class TestResolvePath:
         monkeypatch.chdir(sub)
         result = _resolve_path("roman/numerals", module_mode=True)
         assert result == tmp_path / "roman" / "numerals.lob"
+
+
+# ── Prose reference validation in cmd_test ───────────────────
+
+class TestCmdTestRefValidation:
+    def test_broken_ref_returns_exit_1(self, tmp_path):
+        target = _write(tmp_path, "broken.lob", (
+            "#Broken\n"
+            "See #Missing here.\n"
+        ))
+        assert cmd_test(target) == 1
+
+    def test_broken_ref_prints_to_stderr(self, tmp_path, capsys):
+        target = _write(tmp_path, "broken.lob", (
+            "#Broken\n"
+            "See #Missing here.\n"
+        ))
+        cmd_test(target)
+        err = capsys.readouterr().err
+        assert "unresolved reference" in err
+        assert "#Missing" in err
+
+    def test_valid_subheading_ref_does_not_fail(self, tmp_path):
+        target = _write(tmp_path, "good.lob", (
+            "#Good\n"
+            "##Section\n"
+            "    code = 1\n"
+            "See #Section above.\n"
+            "~example\n"
+            "    code == 1\n"
+        ))
+        assert cmd_test(target) == 0
+
+    def test_ref_to_imported_module_does_not_fail(self, tmp_path):
+        root = _project(tmp_path)
+        _write(root, "lib.lob", "#Lib\n    x = 1\n")
+        target = _write(root, "main.lob", (
+            "#Main\n"
+            "See #Lib for the library.\n"
+            "~example\n"
+            "    x == 1\n"
+            "---\n"
+            "#References\n"
+            "    #Lib\n"
+        ))
+        assert cmd_test(target) == 0
+
+    def test_ref_to_unimported_module_fails(self, tmp_path):
+        root = _project(tmp_path)
+        _write(root, "lib.lob", "#Lib\n    x = 1\n")
+        target = _write(root, "main.lob", (
+            "#Main\n"
+            "See #Lib for the library.\n"
+        ))
+        # No #References declaration — Lib is not imported
+        assert cmd_test(target) == 1
+
+    def test_broken_ref_skips_claims(self, tmp_path, capsys):
+        # Claims are not run when refs are broken: the output
+        # should contain no PASS/FAIL lines.
+        target = _write(tmp_path, "broken.lob", (
+            "#Broken\n"
+            "See #Missing here.\n"
+            "~example\n"
+            "    1 == 1\n"
+        ))
+        cmd_test(target)
+        out = capsys.readouterr().out
+        assert "PASS" not in out
+        assert "FAIL" not in out

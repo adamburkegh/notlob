@@ -17,10 +17,14 @@ from pathlib import Path
 
 import textwrap
 
-from notlob import from_tree, parse_file
-from notlob.bindings.python import kit
+from notlob import (
+    build, enrich, from_tree, parse_file, validate_refs,
+    Edge, EdgeKind,
+)
+from notlob.bindings.python import extract_symbols, kit
 from notlob.bindings.python.loader import ModuleCache
 from notlob.bindings.python.runner import ClaimResult, Status
+from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (
     find_project_root, module_lob_refs, resolve_module_path,
@@ -73,6 +77,41 @@ def _print_result(r: ClaimResult) -> None:
             print(f"         error: {r.error}")
     elif r.status == Status.ERROR and r.error is not None:
         print(f"         error: {r.error}")
+
+
+# ── Reference validation ──────────────────────────────────────
+
+def _build_ref_graph(module, root):
+    """Build a NameGraph sufficient for validate_refs.
+
+    Builds the structural graph for *module*, enriches it with
+    symbols, then merges in a MODULE node for each directly imported
+    module and adds the corresponding IMPORTS edge.  Only direct
+    imports are added; transitive imports are not needed because
+    validate_refs only resolves one hop via step 3.
+
+    Import errors (missing files) are silently skipped — they will
+    surface as claim execution errors later.
+    """
+    graph    = build(module)
+    enrich(graph, module, extract_symbols)
+    mod_addr = module_address(module.title)
+
+    if root is not None:
+        for dep_addr in module_lob_refs(module):
+            try:
+                dep_path = resolve_module_path(dep_addr, root)
+                dep_mod  = from_tree(parse_file(dep_path))
+                graph.merge(build(dep_mod))
+                graph.add_edge(Edge(
+                    source=mod_addr,
+                    target=dep_addr,
+                    kind=EdgeKind.IMPORTS,
+                ))
+            except Exception:
+                pass  # missing dep — caught later as a claim error
+
+    return graph
 
 
 # ── Commands ──────────────────────────────────────────────────
@@ -134,6 +173,17 @@ def cmd_test(path: Path) -> int:
     binding = _find_binding(path)
     root    = find_project_root(path)
     cache   = ModuleCache(root) if root else None
+
+    ref_errs = validate_refs(_build_ref_graph(module, root), module)
+    if ref_errs:
+        for err in ref_errs:
+            print(f"ERROR  <refs>  {err}", file=sys.stderr)
+        print(
+            f"\n{len(ref_errs)} unresolved reference"
+            f"{'s' if len(ref_errs) != 1 else ''}",
+            file=sys.stderr,
+        )
+        return 1
 
     results = (
         kit.run_examples(module, file_path=path, cache=cache)

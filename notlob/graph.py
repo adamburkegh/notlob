@@ -60,7 +60,10 @@ from enum import Enum, auto
 from typing import Iterator
 
 from .bindings import Extractor
-from .model import Claim, CodeBlock, Module, Subheading
+from .model import (
+    AppendixSection, Claim, CodeBlock, Module,
+    ProseBlock, Ref, Subheading,
+)
 
 
 # ── Address computation ──────────────────────────────────────
@@ -429,3 +432,81 @@ def _add_named_property(
             target=sym_addr,
             kind=EdgeKind.DEFINES,
         ))
+
+
+# ── Cross-reference validation ────────────────────────────────
+
+@dataclass(frozen=True)
+class RefError:
+    """An unresolved inline cross-reference in prose.
+
+    *location* is the address of the containing node (module or
+    subheading).  *ref* is the ``Ref`` that could not be resolved.
+    """
+    location: str
+    ref:      Ref
+
+    def __str__(self) -> str:
+        sigil = "##" if self.ref.sub else "#"
+        return (
+            f"{self.location}: "
+            f"unresolved reference {sigil}{self.ref.label}"
+        )
+
+
+def validate_refs(
+    graph:  NameGraph,
+    module: Module,
+) -> list[RefError]:
+    """Return a list of unresolved prose cross-references in *module*.
+
+    Walks every :class:`~notlob.model.ProseBlock` in the module body
+    (including those inside subheadings and appendix sections) and
+    calls :meth:`NameGraph.resolve` on each :class:`~notlob.model.Ref`.
+
+    ``#Label`` references are validated via the full three-step
+    resolution order.  ``##Label`` references are validated against
+    subheadings of the current module only.
+
+    An unresolved reference is a first-class error; the returned list
+    is empty when all references resolve.
+    """
+    mod_addr = module_address(module.title)
+    errors   = list(_ref_errors(graph, module.body, mod_addr, mod_addr))
+    if module.post_text:
+        for sec in module.post_text.sections:
+            if isinstance(sec, AppendixSection):
+                errors.extend(
+                    _ref_errors(graph, sec.body, mod_addr, mod_addr)
+                )
+    return errors
+
+
+def _ref_errors(
+    graph:    NameGraph,
+    body:     list,
+    mod_addr: str,
+    loc_addr: str,
+) -> Iterator[RefError]:
+    """Yield RefErrors for each unresolved Ref in *body*."""
+    for item in body:
+        if isinstance(item, ProseBlock):
+            for span in item.spans:
+                if isinstance(span, Ref) and not _resolves(
+                    graph, span, mod_addr
+                ):
+                    yield RefError(location=loc_addr, ref=span)
+        elif isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            yield from _ref_errors(
+                graph, item.body, mod_addr, sub_addr
+            )
+
+
+def _resolves(graph: NameGraph, ref: Ref, mod_addr: str) -> bool:
+    """Return True if *ref* resolves against *graph* in *mod_addr*."""
+    if ref.sub:
+        # ##Label: only a subheading of the current module
+        node = graph.node(f"{mod_addr}#{ref.label}")
+        return node is not None and node.kind == NodeKind.SUBHEADING
+    return graph.resolve(ref.label, context=mod_addr) is not None

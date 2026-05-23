@@ -7,8 +7,9 @@ from .model import (
     BindingSection, ReferencesSection, AppendixSection,
 )
 from .graph import (
-    build, enrich,
+    build, enrich, validate_refs,
     NameGraph, Node, NodeKind, Edge, EdgeKind,
+    RefError,
     module_address, subheading_address, symbol_address,
     property_address, claim_address,
 )
@@ -21,8 +22,9 @@ __all__ = [
     "Module", "Subheading", "CodeBlock", "Claim", "ProseBlock",
     "PostText", "TestsSection", "TestGroup",
     "BindingSection", "ReferencesSection", "AppendixSection",
-    "build", "enrich", "build_package",
+    "build", "enrich", "validate_refs", "build_package",
     "NameGraph", "Node", "NodeKind", "Edge", "EdgeKind",
+    "RefError",
     "module_address", "subheading_address", "symbol_address",
     "property_address", "claim_address",
 ]
