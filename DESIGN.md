@@ -44,44 +44,45 @@ A `.lob` file has two sections divided by `---`: the essay body and the
 post-text.
 
 ```
-#Module Name        ← document title and module address
+#Module Name
 
 Prose establishing the concept...
 
-    code block      ← indented; execution substrate (Python or Haskell)
+    code block
 
-~example            ← concrete executable claim
+~example
     expression == value
 
-~property           ← abstract claim, verified by property testing
+~property
     @given(...)
     def _(x):
         assert condition
 
-~run                ← entry-point claim; executes only on notlob run
+~run
     main()
 
-##Subsection        ← heading hierarchy creates doc-node graph
+##Subsection
 
 Further prose...
 
----                 ← semantic boundary: post-text begins here
+---
 
-#Tests              ← reserved heading, compiler runs these
-
-    expression == value
-    expression == value
-
-##boundary conditions   ← grouping headings within tests
+#Tests
 
     expression == value
+    expression == value
 
-#Binding            ← reserved heading, declares execution substrate
+##boundary conditions
+
+    expression == value
+
+#Binding
     ~language python
     ~property-testing hypothesis
     ~unit-testing pytest
 
-#References         ← reserved heading, imports for this module only
+#References
+    #Imported Module
     from library import Thing
 ```
 
@@ -173,7 +174,7 @@ import list.
 two interleaved kinds of line:
 
 - *Lob module references* — lines whose stripped content begins with `#`,
-  e.g. `    #Litstats Corpus`. The label is resolved to a module in the
+  e.g. `    #Gutenberg Corpus`. The label is resolved to a module in the
   same project by title; the module's names are loaded into the importing
   module's namespace before assembly.
 - *Language imports* — all other non-blank lines, e.g.
@@ -356,6 +357,7 @@ not 70%.
     ~unit-testing pytest
 
 #References
+    #Pricing Base
     from decimal import Decimal
 ```
 
