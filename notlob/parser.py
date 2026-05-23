@@ -34,9 +34,20 @@ _RESERVED_HEADS: dict[str, str] = {
     "#References": "REFERENCES_HEAD",
 }
 
+# Matches ##Label or #Label in prose: capital letter start, optional
+# Title Case continuation (space + capital letter + word chars).
+# Lookbehind prevents matching # inside URLs or identifiers.
+_REF_PAT = re.compile(
+    r'(?<![/\w])(##?[A-Z][A-Za-z0-9_]*(?:[ ][A-Z][A-Za-z0-9_]*)*)'
+)
 
-def _classify(line: str) -> Token:
-    """Classify one source line (with trailing newline) as a Token."""
+
+def _classify(line: str) -> Token | None:
+    """Classify one source line as a single Token, or None for prose.
+
+    Returns None when the line is unindented prose; the caller is
+    responsible for sub-tokenising it into PROSE_TEXT and REF tokens.
+    """
     stripped = line.rstrip("\n")
 
     if stripped == "---":
@@ -55,7 +66,18 @@ def _classify(line: str) -> Token:
         return Token("BLANK", stripped)
     if stripped != stripped.lstrip():   # line has leading whitespace
         return Token("INDENT", stripped)
-    return Token("PROSE", stripped)
+    return None                         # prose — sub-tokenise below
+
+
+def _tokenize_prose(line: str):
+    """Yield PROSE_TEXT and REF tokens from one prose line."""
+    for part in _REF_PAT.split(line):
+        if not part:
+            continue
+        if _REF_PAT.fullmatch(part):
+            yield Token("REF", part)
+        else:
+            yield Token("PROSE_TEXT", part)
 
 
 class _LobLexer(Lexer):
@@ -67,7 +89,11 @@ class _LobLexer(Lexer):
     def lex(self, data: str):
         for line in data.splitlines(keepends=True):
             if line:
-                yield _classify(line)
+                tok = _classify(line)
+                if tok is None:
+                    yield from _tokenize_prose(line.rstrip("\n"))
+                else:
+                    yield tok
 
     def make_lexer_state(self, text):
         return LexerState(text)

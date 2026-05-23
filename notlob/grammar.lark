@@ -32,7 +32,7 @@ code_block: INDENT _block_line*
 // A claim sigil followed by its indented body.
 claim: SIGIL _block_line+
 
-prose_block: PROSE+
+prose_block: (PROSE_TEXT | REF)+
 
 _block_line: INDENT | BLANK
 
@@ -56,5 +56,5 @@ appendix_section:   APPENDIX_HEAD   body_item*
 // ── Terminal declarations ───────────────────────────────────
 // Tokens are produced by the Notlob line lexer, not by Lark.
 
-%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK PROSE
+%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK PROSE_TEXT REF
 %declare SEPARATOR TESTS_HEAD BINDING_HEAD REFERENCES_HEAD APPENDIX_HEAD

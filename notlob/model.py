@@ -2,7 +2,8 @@
 
 Translates a Lark parse Tree into typed Python dataclasses.  The model
 is a lossless structural representation: blank lines within blocks are
-preserved as empty strings in line lists.
+preserved as empty strings in line lists, and inline cross-references
+in prose are first-class ``Ref`` objects rather than embedded strings.
 
 Usage::
 
@@ -24,12 +25,39 @@ from typing import Union
 from lark import Token, Tree
 
 
+# ── Inline cross-references ──────────────────────────────────
+
+@dataclass(frozen=True)
+class Ref:
+    """An inline cross-reference in prose: ``#Label`` or ``##Label``.
+
+    ``#Label``  — resolved as symbol, subheading, or imported module
+                  (the full three-step order from DESIGN.md).
+    ``##Label`` — resolved as subheading of the current module only.
+
+    *label* is the referenced name without sigil characters.
+    *sub*   is True when the source wrote ``##``, False for ``#``.
+    """
+    label: str
+    sub:   bool = False
+
+
+#: A single span within a :class:`ProseBlock`: either plain text or a
+#: cross-reference.
+Span = Union[str, Ref]
+
+
 # ── Body item types ──────────────────────────────────────────
 
 @dataclass
 class ProseBlock:
-    """One or more consecutive unindented prose lines."""
-    lines: list[str]
+    """Prose content: a flat sequence of text fragments and cross-references.
+
+    Each :class:`Ref` in *spans* is a ``#Label`` or ``##Label``
+    cross-reference as written in source.  Plain strings are the
+    surrounding text, preserving original whitespace.
+    """
+    spans: list[Span]
 
 
 @dataclass
@@ -192,7 +220,15 @@ def _claim(node: Tree) -> Claim:
 
 
 def _prose_block(node: Tree) -> ProseBlock:
-    return ProseBlock(lines=[str(c) for c in node.children])
+    spans: list[Span] = []
+    for tok in node.children:
+        if tok.type == "REF":
+            raw = str(tok)                  # "##Stacking Discounts" or "#Foo"
+            sub = raw.startswith("##")
+            spans.append(Ref(label=raw.lstrip("#").strip(), sub=sub))
+        else:                               # PROSE_TEXT
+            spans.append(str(tok))
+    return ProseBlock(spans=spans)
 
 
 def _post_text(node: Tree) -> PostText:

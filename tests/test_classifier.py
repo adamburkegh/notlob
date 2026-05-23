@@ -71,9 +71,9 @@ def test_sigil_property():
 
 
 def test_sigil_requires_lowercase():
-    # Capital letter after ~ is not a sigil — falls through to PROSE
-    tok = _classify("~Example\n")
-    assert tok.type == "PROSE"
+    # Capital letter after ~ is not a sigil — falls through to prose
+    # (_classify returns None; the caller sub-tokenises as PROSE_TEXT/REF)
+    assert _classify("~Example\n") is None
 
 
 # ── Body lines ───────────────────────────────────────────────
@@ -96,12 +96,11 @@ def test_indent_leading_tab():
 
 
 def test_prose_unindented():
-    tok = _classify("A discount strategy applies a multiplier.\n")
-    assert tok.type == "PROSE"
+    # Prose lines return None; the caller yields PROSE_TEXT / REF tokens.
+    assert _classify("A discount strategy applies a multiplier.\n") is None
 
 
 def test_prose_not_confused_with_indent():
     # Regression: stripped vs line.lstrip() bug caused all prose to
     # be misclassified as INDENT due to the trailing newline difference.
-    tok = _classify("Plain prose with no leading whitespace.\n")
-    assert tok.type == "PROSE"
+    assert _classify("Plain prose with no leading whitespace.\n") is None
