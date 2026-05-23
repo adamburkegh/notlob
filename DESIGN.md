@@ -94,7 +94,9 @@ the document title and the module address. It translates deterministically
 to `pricing/discount/strategies/` — lowercase, spaces to slashes. The
 author maintains the title; the tooling derives the path. The `.`
 namespace separator is a machine convention that should not leak into the
-human-facing layer.
+human-facing layer. The tooling enforces consistency: `notlob test`
+reports an address mismatch as a build error if a module's title-derived
+address does not match its file path, before running any claims.
 
 **`---` as post-text boundary.** Everything after `---` is post-text. The
 compiler treats `#Tests`, `#Binding`, and `#References` as reserved
@@ -393,10 +395,14 @@ information:
   anonymous witness functions and they are not extracted. This layer is
   where the binding earns its keep.
 
-- *Cross-references.* Uses as well as definitions: which claims
-  reference which symbols, which prose `#Label` mentions cross-reference
-  which nodes. The graph becomes a navigable, validated map of the
-  argument. Unresolved references are errors.
+- *Cross-references.* Prose `#Label` and `##Label` mentions are
+  first-class `Ref` objects extracted by the lexer. The tooling validates
+  them against the name-graph using a three-step resolution order: symbol
+  or subheading in the current module, then module reached via a declared
+  `IMPORTS` edge. Unresolved references are build errors, reported
+  alongside address mismatches before any claim runs. Planned extension:
+  `REFERENCES` edges recording each resolved mention, enabling navigation
+  and cross-reference coverage analysis.
 
 - *Package graph.* Module addresses resolved across a package, with
   `binding.lob` providing the project root. IMPORTS edges connect

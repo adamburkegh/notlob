@@ -1,4 +1,4 @@
-"""Tests for notlob.cli binding resolution.
+"""Tests for notlob.commands binding resolution.
 
 Covers two private helpers:
 
