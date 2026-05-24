@@ -249,12 +249,14 @@ def cmd_test(path: Path) -> int:
 
 # ── Graph export ──────────────────────────────────────────────
 
-def cmd_graph(path: Path) -> int:
+def cmd_graph(path: Path, include_content: bool = False) -> int:
     """Print the package name-graph as JSON to stdout.
 
     When *path* is inside a notlob project (a ``binding.lob`` is
     found), the full package graph is built and exported.  For a
     standalone file the single-module graph is used instead.
+
+    Pass *include_content=True* to attach prose/code to every node.
     """
     root = find_project_root(path)
     if root is not None:
@@ -268,18 +270,21 @@ def cmd_graph(path: Path) -> int:
         graph = build(module)
         enrich(graph, module, extract_symbols)
 
-    print(graph.to_json())
+    print(graph.to_json(include_content=include_content))
     return 0
 
 
 # ── Query helpers ─────────────────────────────────────────────
 
-def _node_dict(node) -> dict:
-    return {
+def _node_dict(node, include_content: bool = False) -> dict:
+    d: dict = {
         "address": node.address,
         "label":   node.label,
         "kind":    node.kind.name,
     }
+    if include_content and node.content is not None:
+        d["content"] = node.content
+    return d
 
 
 def _require_graph(hint: Path | None = None):
@@ -354,3 +359,21 @@ def cmd_query_imported_by(address: str) -> int:
     results = list(graph.parents(address, EdgeKind.IMPORTS))
     print(json.dumps([_node_dict(n) for n in results], indent=2))
     return 0
+
+
+def cmd_query_content(address: str) -> int:
+    """Print the node at *address* with its source content as JSON.
+
+    Returns exit code 0 when the address resolves, 1 (with ``null``)
+    when it does not.  This is the primary F3-style lookup: given a
+    known address, retrieve its prose and/or code.
+    """
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    node = graph.node(address)
+    print(json.dumps(
+        _node_dict(node, include_content=True) if node else None,
+        indent=2,
+    ))
+    return 0 if node else 1

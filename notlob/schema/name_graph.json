@@ -37,6 +37,25 @@
           "description": "What type of named thing this node represents.",
           "type": "string",
           "enum": ["MODULE", "SUBHEADING", "SYMBOL", "PROPERTY"]
+        },
+        "content": {
+          "description": "Source payload; present only when include_content=True.",
+          "$ref": "#/definitions/Content"
+        }
+      }
+    },
+    "Content": {
+      "description": "Source content attached to a node.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prose": {
+          "description": "Plain text of prose blocks (refs re-serialised with sigil).",
+          "type": "string"
+        },
+        "code": {
+          "description": "Dedented source code for the node.",
+          "type": "string"
         }
       }
     },

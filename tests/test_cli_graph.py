@@ -7,8 +7,8 @@ import pytest
 
 from notlob.commands import (
     cmd_graph,
-    cmd_query_children, cmd_query_resolve, cmd_query_search,
-    cmd_query_imports, cmd_query_imported_by,
+    cmd_query_children, cmd_query_content, cmd_query_resolve,
+    cmd_query_search, cmd_query_imports, cmd_query_imported_by,
 )
 
 
@@ -216,3 +216,90 @@ class TestCmdQueryImports:
         cmd_query_imports("standalone")
         data = json.loads(capsys.readouterr().out)
         assert data == []
+
+
+# ── cmd_graph --content ───────────────────────────────────────
+
+class TestCmdGraphContent:
+    def test_content_absent_by_default(self, tmp_path, capsys):
+        target = _write(tmp_path, "t.lob",
+                        "#T\n    def f(): pass\n")
+        cmd_graph(target)
+        data = json.loads(capsys.readouterr().out)
+        for node in data["nodes"]:
+            assert "content" not in node
+
+    def test_content_present_with_flag(self, tmp_path, capsys):
+        target = _write(tmp_path, "t.lob",
+                        "#T\n    def f(): pass\n")
+        cmd_graph(target, include_content=True)
+        data = json.loads(capsys.readouterr().out)
+        syms = [n for n in data["nodes"] if n["kind"] == "SYMBOL"]
+        assert all("content" in s for s in syms)
+
+    def test_symbol_code_in_content(self, tmp_path, capsys):
+        target = _write(tmp_path, "t.lob",
+                        "#T\n    def to_roman(n): return str(n)\n")
+        cmd_graph(target, include_content=True)
+        data = json.loads(capsys.readouterr().out)
+        sym = next(n for n in data["nodes"] if n["kind"] == "SYMBOL")
+        assert "def to_roman" in sym["content"]["code"]
+
+
+# ── cmd_query_content ────────────────────────────────────────
+
+class TestCmdQueryContent:
+    def test_returns_node_with_content(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        root = _project(tmp_path)
+        _write(root, "t.lob", "#T\n    def f(): pass\n")
+        monkeypatch.chdir(root)
+        rc = cmd_query_content("t#f")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert data["address"] == "t#f"
+        assert data["kind"] == "SYMBOL"
+        assert "content" in data
+        assert "def f" in data["content"]["code"]
+
+    def test_module_content_returned(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        root = _project(tmp_path)
+        _write(root, "lib.lob",
+               "#Lib\nThis module provides helpers.\n")
+        monkeypatch.chdir(root)
+        rc = cmd_query_content("lib")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert data["kind"] == "MODULE"
+        assert "helpers" in data["content"]["prose"]
+
+    def test_subheading_content_returned(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        root = _project(tmp_path)
+        _write(root, "t.lob",
+               "#T\n##Decoding\nConverts input.\n    def f(): pass\n")
+        monkeypatch.chdir(root)
+        cmd_query_content("t#Decoding")
+        data = json.loads(capsys.readouterr().out)
+        assert data["kind"] == "SUBHEADING"
+        assert "Converts" in data["content"]["prose"]
+        assert "def f" in data["content"]["code"]
+
+    def test_unknown_address_returns_null_and_exit_1(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        root = _project(tmp_path)
+        _write(root, "t.lob", "#T\n")
+        monkeypatch.chdir(root)
+        rc = cmd_query_content("t#nonexistent")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 1
+        assert data is None
+
+    def test_no_project_returns_1(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert cmd_query_content("any/address") == 1

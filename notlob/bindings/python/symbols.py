@@ -23,41 +23,52 @@ import ast
 import textwrap
 from typing import Sequence
 
+from notlob.bindings import SymbolInfo
 
-def extract_symbols(lines: Sequence[str]) -> list[str]:
-    """Return the top-level names defined in a Python code block.
+
+def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
+    """Return the top-level symbols defined in a Python code block.
+
+    Each :class:`~notlob.bindings.SymbolInfo` carries the symbol name
+    and its dedented source text (the exact lines for that definition).
 
     lines  The lines of an INDENT block as stored in CodeBlock.lines,
            including leading whitespace and any embedded blank lines.
 
-    >>> extract_symbols(["    def f(): pass"])
+    >>> [s.name for s in extract_symbols(["    def f(): pass"])]
     ['f']
-    >>> extract_symbols(["    NUMERALS = [1, 2, 3]"])
+    >>> [s.name for s in extract_symbols(["    NUMERALS = [1, 2, 3]"])]
     ['NUMERALS']
-    >>> extract_symbols(["    class C: pass", "    def g(): pass"])
+    >>> [s.name for s in extract_symbols(["    class C: pass", "    def g(): pass"])]
     ['C', 'g']
     >>> extract_symbols(["    x = ("])   # syntax error fragment
     []
     """
-    source = textwrap.dedent("\n".join(lines))
+    source       = textwrap.dedent("\n".join(lines))
+    source_lines = source.splitlines()
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return []
 
-    names: list[str] = []
+    result: list[SymbolInfo] = []
     for node in tree.body:
-        if isinstance(
-            node, (ast.FunctionDef, ast.AsyncFunctionDef)
-        ):
-            names.append(node.name)
+        node_src = "\n".join(
+            source_lines[node.lineno - 1 : node.end_lineno]
+        )
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            result.append(SymbolInfo(name=node.name, source=node_src))
         elif isinstance(node, ast.ClassDef):
-            names.append(node.name)
+            result.append(SymbolInfo(name=node.name, source=node_src))
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    names.append(target.id)
+                    result.append(
+                        SymbolInfo(name=target.id, source=node_src)
+                    )
         elif isinstance(node, ast.AnnAssign):
             if isinstance(node.target, ast.Name):
-                names.append(node.target.id)
-    return names
+                result.append(
+                    SymbolInfo(name=node.target.id, source=node_src)
+                )
+    return result

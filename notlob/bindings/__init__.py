@@ -15,14 +15,26 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
 from ..model import Module
 
 
-#: Callable that maps a list of indented code lines to defined names.
-Extractor = Callable[[Sequence[str]], list[str]]
+@dataclass
+class SymbolInfo:
+    """A symbol extracted from a code block.
+
+    name    The top-level defined name (function, class, variable).
+    source  The dedented source text for that definition, or None
+            when the extractor cannot supply a precise slice.
+    """
+    name:   str
+    source: str | None = None
+
+
+#: Callable that maps indented code lines to SymbolInfo objects.
+Extractor = Callable[[Sequence[str]], list[SymbolInfo]]
 
 #: Callable that assembles a Module into one executable string.
 Assembler = Callable[[Module], str]

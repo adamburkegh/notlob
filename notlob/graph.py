@@ -57,7 +57,8 @@ from __future__ import annotations
 
 import fnmatch
 import json
-from dataclasses import dataclass
+import textwrap
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Iterator
 
@@ -140,10 +141,18 @@ class Node:
     address  globally unique machine identifier (tooling-derived)
     label    human-readable name as written in source
     kind     what type of named thing this node represents
+    content  optional source payload; populated by enrich() when
+             present.  Keys: ``prose`` (str) and/or ``code`` (str).
+             Excluded from equality and hash so two nodes with the
+             same address/label/kind are considered identical
+             regardless of whether content has been attached.
     """
     address: str
     label:   str
     kind:    NodeKind
+    content: dict | None = field(
+        default=None, hash=False, compare=False,
+    )
 
     def __repr__(self) -> str:
         return f"<{self.kind.name} {self.address!r}>"
@@ -312,7 +321,7 @@ class NameGraph:
 
     # ── Serialisation ─────────────────────────────────────────
 
-    def to_dict(self) -> dict:
+    def to_dict(self, include_content: bool = False) -> dict:
         """Serialise the graph to a plain dict.
 
         The returned structure conforms to the JSON Schema at
@@ -322,16 +331,24 @@ class NameGraph:
                 "nodes": [{"address": ..., "label": ..., "kind": ...}, ...],
                 "edges": [{"source": ..., "target": ..., "kind": ...}, ...]
             }
+
+        Pass *include_content=True* to attach each node's ``content``
+        dict when present.  The lean default omits content entirely,
+        keeping the output suitable for structural queries and large
+        packages.
         """
+        nodes = []
+        for node in self._nodes.values():
+            d: dict = {
+                "address": node.address,
+                "label":   node.label,
+                "kind":    node.kind.name,
+            }
+            if include_content and node.content is not None:
+                d["content"] = node.content
+            nodes.append(d)
         return {
-            "nodes": [
-                {
-                    "address": node.address,
-                    "label":   node.label,
-                    "kind":    node.kind.name,
-                }
-                for node in self._nodes.values()
-            ],
+            "nodes": nodes,
             "edges": [
                 {
                     "source": edge.source,
@@ -342,13 +359,21 @@ class NameGraph:
             ],
         }
 
-    def to_json(self, indent: int = 2) -> str:
+    def to_json(
+        self,
+        indent: int = 2,
+        include_content: bool = False,
+    ) -> str:
         """Serialise the graph to a JSON string.
 
         *indent* controls pretty-printing; pass ``None`` for compact
-        single-line output.
+        single-line output.  *include_content* is forwarded to
+        :meth:`to_dict`.
         """
-        return json.dumps(self.to_dict(), indent=indent)
+        return json.dumps(
+            self.to_dict(include_content=include_content),
+            indent=indent,
+        )
 
     def __len__(self) -> int:
         return len(self._nodes)
@@ -360,6 +385,52 @@ class NameGraph:
         )
 
 
+# ── Content helpers ──────────────────────────────────────────
+
+def _prose_text(body: list) -> str | None:
+    """Concatenate ProseBlock text from direct *body* items.
+
+    Inline refs are re-serialised with their sigil (``#Label``).
+    Subheadings in *body* are ignored — they carry their own content.
+    """
+    parts: list[str] = []
+    for item in body:
+        if isinstance(item, ProseBlock):
+            for span in item.spans:
+                if isinstance(span, str):
+                    parts.append(span)
+                else:
+                    parts.append(
+                        ("##" if span.sub else "#") + span.label
+                    )
+    text = "".join(parts).strip()
+    return text or None
+
+
+def _code_text(body: list) -> str | None:
+    """Concatenate dedented CodeBlock text from direct *body* items.
+
+    Multiple blocks are joined with a blank line between them.
+    Subheadings in *body* are ignored — they carry their own content.
+    """
+    blocks = [
+        textwrap.dedent("\n".join(item.lines))
+        for item in body
+        if isinstance(item, CodeBlock)
+    ]
+    return "\n\n".join(blocks) if blocks else None
+
+
+def _node_content(prose: str | None, code: str | None) -> dict | None:
+    """Build a content dict from *prose* and *code*, or return None."""
+    d: dict[str, str] = {}
+    if prose:
+        d["prose"] = prose
+    if code:
+        d["code"] = code
+    return d or None
+
+
 # ── Structure ────────────────────────────────────────────────
 
 def build(module: Module) -> NameGraph:
@@ -367,6 +438,7 @@ def build(module: Module) -> NameGraph:
 
     Creates a node for the module and one for each subheading,
     with CONTAINS edges from the module to its subheadings.
+    Content (prose and module-level code) is attached to each node.
     """
     graph = NameGraph()
     addr  = module_address(module.title)
@@ -375,6 +447,10 @@ def build(module: Module) -> NameGraph:
         address=addr,
         label=module.title,
         kind=NodeKind.MODULE,
+        content=_node_content(
+            _prose_text(module.body),
+            _code_text(module.body),
+        ),
     ))
 
     for item in module.body:
@@ -394,6 +470,10 @@ def _add_subheading(
         address=sub_addr,
         label=sub.title,
         kind=NodeKind.SUBHEADING,
+        content=_node_content(
+            _prose_text(sub.body),
+            _code_text(sub.body),
+        ),
     ))
     graph.add_edge(Edge(
         source=module_addr,
@@ -453,12 +533,13 @@ def _add_symbols(
     containing_addr: str,
     extractor:      Extractor,
 ) -> None:
-    for name in extractor(block.lines):
-        addr = symbol_address(mod_addr, name)
+    for info in extractor(block.lines):
+        addr = symbol_address(mod_addr, info.name)
         graph.add_node(Node(
             address=addr,
-            label=name,
+            label=info.name,
             kind=NodeKind.SYMBOL,
+            content=_node_content(None, info.source),
         ))
         graph.add_edge(Edge(
             source=containing_addr,
@@ -484,10 +565,12 @@ def _add_named_property(
 
     name = parts[1].strip()
     prop_addr = property_address(containing_addr, name)
+    claim_src = textwrap.dedent("\n".join(claim.lines))
     graph.add_node(Node(
         address=prop_addr,
         label=name,
         kind=NodeKind.PROPERTY,
+        content=_node_content(None, claim_src or None),
     ))
     graph.add_edge(Edge(
         source=containing_addr,
@@ -495,14 +578,15 @@ def _add_named_property(
         kind=EdgeKind.DEFINES,
     ))
 
-    for sym_name in extractor(claim.lines):
-        if sym_name == '_':
+    for info in extractor(claim.lines):
+        if info.name == '_':
             continue   # anonymous witness — not extracted
-        sym_addr = f"{prop_addr}#{sym_name}"
+        sym_addr = f"{prop_addr}#{info.name}"
         graph.add_node(Node(
             address=sym_addr,
-            label=sym_name,
+            label=info.name,
             kind=NodeKind.SYMBOL,
+            content=_node_content(None, info.source),
         ))
         graph.add_edge(Edge(
             source=prop_addr,

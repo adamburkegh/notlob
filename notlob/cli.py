@@ -19,8 +19,8 @@ from pathlib import Path
 
 from notlob.commands import (
     cmd_graph, cmd_run, cmd_test,
-    cmd_query_children, cmd_query_resolve, cmd_query_search,
-    cmd_query_imports, cmd_query_imported_by,
+    cmd_query_children, cmd_query_content, cmd_query_resolve,
+    cmd_query_search, cmd_query_imports, cmd_query_imported_by,
 )
 from notlob.project import find_project_root, resolve_module_path
 
@@ -82,6 +82,10 @@ def main() -> None:
         "graph", help="export the package name-graph as JSON"
     )
     _add_file_arg(graph_p)
+    graph_p.add_argument(
+        "--content", action="store_true", default=False,
+        help="include source content (prose/code) on every node",
+    )
 
     query_p = sub.add_parser(
         "query", help="query the package name-graph"
@@ -119,6 +123,14 @@ def main() -> None:
     )
     qib.add_argument("address")
 
+    qcont = qsub.add_parser(
+        "content", help="show source content at an address"
+    )
+    qcont.add_argument(
+        "address",
+        help="node address, e.g. roman/numerals#to_roman",
+    )
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -126,7 +138,10 @@ def main() -> None:
     elif args.command == "test":
         sys.exit(cmd_test(_resolve_path(args.file, args.module_mode)))
     elif args.command == "graph":
-        sys.exit(cmd_graph(_resolve_path(args.file, args.module_mode)))
+        sys.exit(cmd_graph(
+            _resolve_path(args.file, args.module_mode),
+            include_content=args.content,
+        ))
     elif args.command == "query":
         op = getattr(args, "query_op", None)
         if op == "children":
@@ -139,6 +154,8 @@ def main() -> None:
             sys.exit(cmd_query_imports(args.address))
         elif op == "imported-by":
             sys.exit(cmd_query_imported_by(args.address))
+        elif op == "content":
+            sys.exit(cmd_query_content(args.address))
         else:
             query_p.print_help()
             sys.exit(1)

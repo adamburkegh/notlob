@@ -32,6 +32,134 @@ SCHEMA   = (
 )
 
 
+# ── content ───────────────────────────────────────────────────
+
+class TestContent:
+    """Node.content is populated at build/enrich time and emitted
+    in to_dict() only when include_content=True."""
+
+    def test_content_absent_by_default(self):
+        d = _graph("#T\n    def f(): pass\n").to_dict()
+        for node in d["nodes"]:
+            assert "content" not in node
+
+    def test_content_present_when_requested(self):
+        d = _graph("#T\n    def f(): pass\n").to_dict(
+            include_content=True
+        )
+        assert any("content" in n for n in d["nodes"])
+
+    def test_module_prose_captured(self):
+        g = _graph("#T\nSome introductory text.\n")
+        d = g.to_dict(include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        assert "content" in mod
+        assert "introductory" in mod["content"]["prose"]
+
+    def test_subheading_prose_captured(self):
+        g = _graph("#T\n##Section\nSection prose here.\n    code\n")
+        d = g.to_dict(include_content=True)
+        sub = next(
+            n for n in d["nodes"] if n["kind"] == "SUBHEADING"
+        )
+        assert "Section prose" in sub["content"]["prose"]
+
+    def test_subheading_code_captured(self):
+        g = _graph("#T\n##Section\n    def decode(): pass\n")
+        d = g.to_dict(include_content=True)
+        sub = next(
+            n for n in d["nodes"] if n["kind"] == "SUBHEADING"
+        )
+        assert "def decode" in sub["content"]["code"]
+
+    def test_symbol_code_captured(self):
+        g = _graph("#T\n    def to_roman(n): return str(n)\n")
+        d = g.to_dict(include_content=True)
+        sym = next(n for n in d["nodes"] if n["kind"] == "SYMBOL")
+        assert "def to_roman" in sym["content"]["code"]
+
+    def test_symbol_source_is_per_definition(self):
+        # Two functions in the same block get separate source slices.
+        src = "#T\n    def f(): pass\n    def g(): pass\n"
+        g = _graph(src)
+        d = g.to_dict(include_content=True)
+        syms = {
+            n["label"]: n
+            for n in d["nodes"] if n["kind"] == "SYMBOL"
+        }
+        assert "def f" in syms["f"]["content"]["code"]
+        assert "def g" not in syms["f"]["content"]["code"]
+        assert "def g" in syms["g"]["content"]["code"]
+        assert "def f" not in syms["g"]["content"]["code"]
+
+    def test_module_no_prose_no_prose_key(self):
+        # A module with only code has no "prose" key in content.
+        g = _graph("#T\n    def f(): pass\n")
+        d = g.to_dict(include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        assert "prose" not in mod.get("content", {})
+
+    def test_node_with_no_content_omitted(self):
+        # A module heading with only subheadings and no own prose/code
+        # should have content omitted entirely.
+        g = _graph("#T\n##Only Section\n    code\n")
+        d = g.to_dict(include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        assert "content" not in mod
+
+    def test_inline_ref_in_prose_preserved(self):
+        # Refs are re-serialised as "#Label" in the prose string.
+        src = (
+            "#Module A\n"
+            "See #Roman Numerals for details.\n"
+            "---\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+        )
+        mod_a = from_tree(parse(src))
+        mod_b = from_tree(parse("#Roman Numerals\n"))
+        g = build(mod_a)
+        enrich(g, mod_a, extract_symbols)
+        g.merge(build(mod_b))
+        g.add_edge(Edge(
+            source="module/a", target="roman/numerals",
+            kind=EdgeKind.IMPORTS,
+        ))
+        d = g.to_dict(include_content=True)
+        mod = next(
+            n for n in d["nodes"] if n["address"] == "module/a"
+        )
+        assert "#Roman Numerals" in mod["content"]["prose"]
+
+    def test_property_code_captured(self):
+        src = "#T\n~property commutativity\n    def _(x): pass\n"
+        g = _graph(src)
+        d = g.to_dict(include_content=True)
+        prop = next(
+            n for n in d["nodes"] if n["kind"] == "PROPERTY"
+        )
+        assert "def _" in prop["content"]["code"]
+
+    def test_to_json_include_content(self):
+        raw = _graph("#T\n    def f(): pass\n").to_json(
+            include_content=True
+        )
+        data = json.loads(raw)
+        syms = [n for n in data["nodes"] if n["kind"] == "SYMBOL"]
+        assert all("content" in s for s in syms)
+
+    def test_schema_validates_with_content(self):
+        g = _graph(
+            "#T\n##S\nProse.\n    def f(): pass\n"
+            "~property p\n    def _(x): pass\n"
+        )
+        jsonschema.validate(g.to_dict(include_content=True), _SCHEMA)
+
+    def test_schema_validates_without_content(self):
+        g = _graph("#T\n##S\n    def f(): pass\n")
+        jsonschema.validate(g.to_dict(), _SCHEMA)
+
+
 # ── to_dict ───────────────────────────────────────────────────
 
 class TestToDict:
