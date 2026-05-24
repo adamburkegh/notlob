@@ -61,8 +61,13 @@ _REF_PAT = re.compile(
 def _classify(line: str) -> Token | None:
     """Classify one source line as a single Token, or None for prose.
 
+    Every check here is a plain string operation — no regex.  The only
+    regex in this module is _REF_PAT, which handles the sub-token
+    structure *within* prose lines.
+
     Returns None when the line is unindented prose; the caller is
-    responsible for sub-tokenising it into PROSE_TEXT and REF tokens.
+    responsible for sub-tokenising it into PROSE_TEXT, REF, and
+    PROSE_NL tokens.
     """
     stripped = line.rstrip("\n")
 
@@ -70,17 +75,17 @@ def _classify(line: str) -> Token | None:
         return Token("SEPARATOR", stripped)
     if stripped in _RESERVED_HEADS:
         return Token(_RESERVED_HEADS[stripped], stripped)
-    if re.match(r"#Appendix:", stripped):
+    if stripped.startswith("#Appendix:"):
         return Token("APPENDIX_HEAD", stripped)
     if stripped.startswith("##"):
         return Token("SUBHEAD", stripped[2:].strip())
-    if re.match(r"#[^#]", stripped):
+    if stripped.startswith("#"):        # MOD_HEAD (## already handled above)
         return Token("MOD_HEAD", stripped[1:].strip())
-    if re.match(r"~[a-z]", stripped):
+    if stripped.startswith("~") and stripped[1:2].islower():
         return Token("SIGIL", stripped)
     if stripped == "":
         return Token("BLANK", stripped)
-    if stripped != stripped.lstrip():   # line has leading whitespace
+    if stripped[:1] in (" ", "\t"):     # line has leading whitespace
         return Token("INDENT", stripped)
     return None                         # prose — sub-tokenise below
 
