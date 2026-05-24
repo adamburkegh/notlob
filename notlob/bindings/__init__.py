@@ -5,6 +5,9 @@ name-graph and claim runner.  Language is the primary axis; tool
 components (property testing, test runner) are submodules within each
 language package.
 
+``ClaimResult`` and ``Status`` live here — not inside any language
+binding — so that all runners share a common result type.
+
 Usage::
 
     from notlob.bindings.python import kit
@@ -16,10 +19,45 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Sequence
+from enum import Enum, auto
+from typing import Any, Callable, Sequence
 
 from ..model import Module
 
+
+# ── Claim result types ────────────────────────────────────────
+#
+# Shared by all language runners so that commands.py can handle
+# results uniformly regardless of which binding produced them.
+
+class Status(Enum):
+    PASS  = auto()
+    FAIL  = auto()
+    ERROR = auto()
+    SKIP  = auto()   # claim type not supported by this binding
+
+
+@dataclass(frozen=True)
+class ClaimResult:
+    """The outcome of evaluating one assertion line.
+
+    address  Claim address: containing_addr#example#n
+    line     The source assertion text (without leading 'assert ')
+    status   PASS, FAIL, ERROR, or SKIP
+    left     Evaluated left-hand side  (FAIL only; None otherwise)
+    right    Evaluated right-hand side (FAIL only; None otherwise)
+    error    Exception raised or message (ERROR/FAIL only; None
+             otherwise)
+    """
+    address: str
+    line:    str
+    status:  Status
+    left:    Any              = None
+    right:   Any              = None
+    error:   Exception | None = None
+
+
+# ── Symbol info ───────────────────────────────────────────────
 
 @dataclass
 class SymbolInfo:
@@ -40,6 +78,8 @@ Extractor = Callable[[Sequence[str]], list[SymbolInfo]]
 Assembler = Callable[[Module], str]
 
 
+# ── Binding kit ───────────────────────────────────────────────
+
 @dataclass
 class BindingKit:
     """A composed set of language-specific tooling callables.
@@ -50,9 +90,8 @@ class BindingKit:
     run_properties   (module, *, binding=None, file_path=None) -> list[ClaimResult]
     run_tests        (module, *, binding=None, file_path=None) -> list[ClaimResult]
 
-    The runner fields return list[ClaimResult] (notlob.bindings.python.runner).
-    They are typed as Callable[..., list] here to avoid a cross-layer
-    import; the concrete element type is documented above.
+    Runner callables are typed as Callable[..., list] to avoid a
+    circular import; the element type is always ClaimResult.
     """
     extract_symbols: Extractor
     assemble:        Assembler

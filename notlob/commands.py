@@ -27,9 +27,9 @@ from notlob import (
     build, enrich, from_tree, parse_file, validate_refs,
     Edge, EdgeKind, NodeKind,
 )
+from notlob.bindings import ClaimResult, Status
 from notlob.bindings.python import extract_symbols, kit
 from notlob.bindings.python.loader import ModuleCache
-from notlob.bindings.python.runner import ClaimResult, Status
 from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (

@@ -26,8 +26,6 @@ from __future__ import annotations
 
 import ast
 import textwrap
-from dataclasses import dataclass
-from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +46,7 @@ try:
 except ImportError:
     _PYTEST_NS = {}
 
+from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
@@ -100,31 +99,6 @@ def _build_test_ns(binding: dict | None) -> dict:
     if binding.get("unit-testing") == "pytest":
         return dict(_PYTEST_NS)
     return {}
-
-
-class Status(Enum):
-    PASS  = auto()
-    FAIL  = auto()
-    ERROR = auto()
-
-
-@dataclass(frozen=True)
-class ClaimResult:
-    """The outcome of evaluating one assertion line.
-
-    address  Claim address: containing_addr#example#n
-    line     The source assertion text (without leading 'assert ')
-    status   PASS, FAIL, or ERROR
-    left     Evaluated left-hand side  (FAIL only; None otherwise)
-    right    Evaluated right-hand side (FAIL only; None otherwise)
-    error    Exception raised          (ERROR only; None otherwise)
-    """
-    address: str
-    line:    str
-    status:  Status
-    left:    Any           = None
-    right:   Any           = None
-    error:   Exception | None = None
 
 
 def run_examples(
