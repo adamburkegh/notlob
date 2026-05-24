@@ -220,14 +220,19 @@ def _claim(node: Tree) -> Claim:
 
 
 def _prose_block(node: Tree) -> ProseBlock:
+    # node.children are prose_line Trees; flatten their tokens into
+    # a single span list, discarding the PROSE_NL line sentinels.
     spans: list[Span] = []
-    for tok in node.children:
-        if tok.type == "REF":
-            raw = str(tok)                  # "##Stacking Discounts" or "#Foo"
-            sub = raw.startswith("##")
-            spans.append(Ref(label=raw.lstrip("#").strip(), sub=sub))
-        else:                               # PROSE_TEXT
-            spans.append(str(tok))
+    for line_node in node.children:         # each child: prose_line
+        for tok in line_node.children:
+            if tok.type == "PROSE_NL":
+                continue                    # discard end-of-line sentinel
+            if tok.type == "REF":
+                raw = str(tok)              # "##Stacking Discounts" or "#Foo"
+                sub = raw.startswith("##")
+                spans.append(Ref(label=raw.lstrip("#").strip(), sub=sub))
+            else:                           # PROSE_TEXT
+                spans.append(str(tok))
     return ProseBlock(spans=spans)
 
 

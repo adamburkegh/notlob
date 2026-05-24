@@ -1,9 +1,25 @@
 """notlob.parser - Parse .lob source files into a Lark Tree.
 
-Two-phase approach:
-  1. The line lexer classifies each source line into a typed Token.
-     This is deterministic — one line, one token, no ambiguity.
-  2. Lark parses the token stream against grammar.lark.
+Two-phase approach
+------------------
+1. The line lexer (``_LobLexer``) classifies each source line into one
+   or more typed tokens.  Structural lines produce a single token each
+   (MOD_HEAD, SUBHEAD, SIGIL, INDENT, BLANK, SEPARATOR, or a post-text
+   head token).  Prose lines are sub-tokenised into PROSE_TEXT, REF,
+   and PROSE_NL tokens by ``_tokenize_prose``.
+
+2. Lark parses the flat token stream against ``grammar.lark`` using an
+   LALR parser.  Because classification happens in phase 1, the grammar
+   is entirely structural — no regex, no lexer ambiguity.
+
+Line-start invariant
+--------------------
+``#`` and ``##`` at column zero are always structural tokens (MOD_HEAD,
+SUBHEAD, or a reserved post-text head like TESTS_HEAD).  ``_classify``
+checks for these before falling through to prose.  Consequently, inline
+refs (``#Label``, ``##Label``) only ever appear mid-line, as PROSE_TEXT
+and REF tokens produced by ``_tokenize_prose``.  The grammar relies on
+this invariant to avoid any heading / reference ambiguity.
 
 Usage::
 
@@ -70,7 +86,13 @@ def _classify(line: str) -> Token | None:
 
 
 def _tokenize_prose(line: str):
-    """Yield PROSE_TEXT and REF tokens from one prose line."""
+    """Yield PROSE_TEXT, REF, and PROSE_NL tokens from one prose line.
+
+    Splits the line on the REF pattern.  Each match becomes a REF
+    token; surrounding text becomes PROSE_TEXT.  A PROSE_NL sentinel
+    is emitted last, marking the end of the line for the grammar's
+    ``prose_line`` rule.
+    """
     for part in _REF_PAT.split(line):
         if not part:
             continue
@@ -78,6 +100,7 @@ def _tokenize_prose(line: str):
             yield Token("REF", part)
         else:
             yield Token("PROSE_TEXT", part)
+    yield Token("PROSE_NL", "")
 
 
 class _LobLexer(Lexer):
