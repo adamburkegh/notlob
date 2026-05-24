@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from notlob.commands import (
-    cmd_graph, cmd_run, cmd_test,
+    cmd_graph, cmd_run, cmd_test, cmd_weave,
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
 )
@@ -78,6 +78,18 @@ def main() -> None:
     test_p = sub.add_parser("test", help="run all claims in a .lob file")
     _add_file_arg(test_p)
 
+    weave_p = sub.add_parser(
+        "weave", help="render a .lob file as Markdown"
+    )
+    _add_file_arg(weave_p)
+    weave_p.add_argument(
+        "--language", default=None, metavar="LANG",
+        help=(
+            "fenced-code language tag (default: from binding.lob "
+            "or 'python')"
+        ),
+    )
+
     graph_p = sub.add_parser(
         "graph", help="export the package name-graph as JSON"
     )
@@ -133,7 +145,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "run":
+    if args.command == "weave":
+        sys.exit(cmd_weave(
+            _resolve_path(args.file, args.module_mode),
+            language=args.language,
+        ))
+    elif args.command == "run":
         sys.exit(cmd_run(_resolve_path(args.file, args.module_mode)))
     elif args.command == "test":
         sys.exit(cmd_test(_resolve_path(args.file, args.module_mode)))

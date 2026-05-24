@@ -58,7 +58,9 @@ class TestProseBlock:
     def test_consecutive_lines_one_block(self):
         m = model("#T\nLine one.\nLine two.\n")
         assert len(m.body) == 1
-        assert m.body[0].spans == ["Line one.", "Line two."]
+        # Line boundary is preserved as a "\n" span so that renderers
+        # (weave, LLM context) produce accurate source text.
+        assert m.body[0].spans == ["Line one.", "\n", "Line two."]
 
     def test_blank_separates_paragraphs(self):
         m = model("#T\nFirst.\n\nSecond.\n")

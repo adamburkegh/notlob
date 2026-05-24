@@ -361,6 +361,27 @@ def cmd_query_imported_by(address: str) -> int:
     return 0
 
 
+def cmd_weave(path: Path, language: str | None = None) -> int:
+    """Render *path* as Markdown and write to stdout.
+
+    The language tag for fenced code blocks is resolved in order:
+    1. The *language* argument if supplied (from ``--language`` flag).
+    2. The ``~language`` declaration in the nearest ``binding.lob``.
+    3. The default ``"python"``.
+    """
+    from notlob.weave import weave_markdown   # lazy — avoids circular dep
+    try:
+        module = from_tree(parse_file(path))
+    except Exception as exc:
+        print(f"ERROR  <parse>  {exc}", file=sys.stderr)
+        return 1
+    if language is None:
+        binding  = _find_binding(path)
+        language = binding.get("language", "python")
+    print(weave_markdown(module, language), end="")
+    return 0
+
+
 def cmd_query_content(address: str) -> int:
     """Print the node at *address* with its source content as JSON.
 
