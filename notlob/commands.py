@@ -28,7 +28,7 @@ from notlob import (
     Edge, EdgeKind, NodeKind,
 )
 from notlob.bindings import ClaimResult, Status
-from notlob.bindings.python import extract_symbols, kit
+from notlob.bindings.python import extract_symbols as _py_extract, kit as _py_kit
 from notlob.bindings.python.loader import ModuleCache
 from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
@@ -37,6 +37,24 @@ from notlob.project import (
     build_package,
     find_project_root, module_lob_refs, resolve_module_path,
 )
+
+
+# ── Language dispatch ─────────────────────────────────────────
+
+def _get_binding_kit(language: str | None):
+    """Return ``(kit, extract_symbols)`` for the given language name.
+
+    Defaults to the Python kit for ``None`` or unrecognised languages.
+    Adding a new language binding requires only a new branch here.
+    """
+    if language == "haskell":
+        from notlob.bindings.haskell import (   # lazy: avoids import if unused
+            kit as _hs_kit,
+            extract_symbols as _hs_extract,
+        )
+        return _hs_kit, _hs_extract
+    # default — python
+    return _py_kit, _py_extract
 
 
 # ── Binding resolution ────────────────────────────────────────
@@ -113,7 +131,7 @@ def _print_result(r: ClaimResult) -> None:
 
 # ── Reference-graph builder ───────────────────────────────────
 
-def _build_ref_graph(module, root):
+def _build_ref_graph(module, root, extract_symbols):
     """Build a NameGraph sufficient for validate_refs.
 
     Builds the structural graph for *module*, enriches it with
@@ -121,6 +139,10 @@ def _build_ref_graph(module, root):
     module and adds the corresponding IMPORTS edge.  Only direct
     imports are added; transitive imports are not needed because
     validate_refs only resolves one hop via step 3.
+
+    *extract_symbols* is the language-specific extractor from the
+    binding kit; it is passed explicitly so the ref graph uses the
+    same language as the active kit.
 
     Import errors (missing files) are silently skipped — they will
     surface as claim execution errors later.
@@ -164,6 +186,31 @@ def _collect_run_claims(module) -> list[Claim]:
     return claims
 
 
+def _cmd_run_haskell(module, path: Path) -> int:
+    """Assemble a Haskell module and run it with runghc.
+
+    The assembled source must define ``main :: IO ()``.  If no ``main``
+    is present GHC will report a link error, which surfaces here as a
+    non-zero exit code with the compiler message on stderr.
+    """
+    from notlob.bindings.haskell.assemble import assemble
+    from notlob.bindings.haskell.runner import _make_runghc_cmd, _run_harness
+
+    source = assemble(module)
+    if not source:
+        print("ERROR  <assembly>  module contains no code", file=sys.stderr)
+        return 1
+
+    stdout, stderr, rc = _run_harness(source)
+    if stdout:
+        print(stdout, end="")
+    if rc != 0:
+        if stderr:
+            print(stderr, end="", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_run(path: Path) -> int:
     """Assemble and execute *path*; return an exit code."""
     try:
@@ -172,6 +219,12 @@ def cmd_run(path: Path) -> int:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
         return 1
 
+    binding  = _find_binding(path)
+    language = binding.get("language")
+
+    if language == "haskell":
+        return _cmd_run_haskell(module, path)
+
     root = find_project_root(path)
 
     addr_err = _check_address(module, path, root)
@@ -179,13 +232,14 @@ def cmd_run(path: Path) -> int:
         print(f"ERROR  <address>  {addr_err}", file=sys.stderr)
         return 1
 
+    py_kit = _py_kit
     cache = ModuleCache(root) if root else None
     ns: dict = {"__file__": str(path.resolve())}
     try:
         if cache is not None:
             for dep_addr in module_lob_refs(module):
                 ns.update(cache.load(dep_addr))
-        exec(kit.assemble(module), ns)
+        exec(py_kit.assemble(module), ns)
     except Exception as exc:
         print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
         return 1
@@ -208,9 +262,11 @@ def cmd_test(path: Path) -> int:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
         return 1
 
-    binding = _find_binding(path)
-    root    = find_project_root(path)
-    cache   = ModuleCache(root) if root else None
+    binding  = _find_binding(path)
+    root     = find_project_root(path)
+    language = binding.get("language")
+    kit, extract_symbols = _get_binding_kit(language)
+    cache    = ModuleCache(root) if (root and language != "haskell") else None
 
     doc_errors: list[str] = []
 
@@ -218,7 +274,9 @@ def cmd_test(path: Path) -> int:
     if addr_err:
         doc_errors.append(f"ERROR  <address>  {addr_err}")
 
-    for ref_err in validate_refs(_build_ref_graph(module, root), module):
+    for ref_err in validate_refs(
+        _build_ref_graph(module, root, extract_symbols), module
+    ):
         doc_errors.append(f"ERROR  <refs>  {ref_err}")
 
     if doc_errors:
@@ -234,11 +292,13 @@ def cmd_test(path: Path) -> int:
                         cache=cache)
     )
 
+    # SKIPs don't count toward the pass/fail tally
+    non_skip = [r for r in results if r.status != Status.SKIP]
     for r in results:
         _print_result(r)
 
-    n_fail = sum(1 for r in results if r.status != Status.PASS)
-    n_pass = len(results) - n_fail
+    n_fail = sum(1 for r in non_skip if r.status != Status.PASS)
+    n_pass = len(non_skip) - n_fail
     if n_fail:
         print(f"\n{n_pass} passed, {n_fail} failed")
     else:
@@ -256,9 +316,16 @@ def cmd_graph(path: Path, include_content: bool = False) -> int:
     found), the full package graph is built and exported.  For a
     standalone file the single-module graph is used instead.
 
+    The language binding (from the project's ``binding.lob``) controls
+    which symbol extractor is used.
+
     Pass *include_content=True* to attach prose/code to every node.
     """
     root = find_project_root(path)
+    binding = _find_binding(path) if root else {}
+    language = binding.get("language")
+    _, extract_symbols = _get_binding_kit(language)
+
     if root is not None:
         graph = build_package(root, extract_symbols)
     else:
@@ -297,6 +364,8 @@ def _require_graph(hint: Path | None = None):
             file=sys.stderr,
         )
         return None
+    binding = _find_binding(root / "binding.lob")
+    _, extract_symbols = _get_binding_kit(binding.get("language"))
     return build_package(root, extract_symbols)
 
 

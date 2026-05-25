@@ -1,0 +1,9 @@
+#Roman
+
+A notlob project demonstrating the Haskell binding.
+
+---
+
+#Binding
+    ~language haskell
+    ~property-testing quickcheck

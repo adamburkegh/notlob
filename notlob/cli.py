@@ -35,7 +35,7 @@ def _resolve_path(file_or_addr: str, module_mode: bool) -> Path:
     Exits with a helpful message if the project root cannot be found.
     """
     if not module_mode:
-        return Path(file_or_addr)
+        return Path(file_or_addr).resolve()
     root = find_project_root(Path.cwd())
     if root is None:
         print(

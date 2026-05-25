@@ -1,0 +1,24 @@
+#Roman Numerals App
+
+Print the Roman numeral representation of the integers 1 through 20.
+This module is the executable entry point for the Roman project.
+
+    numerals :: [(Int, String)]
+    numerals =
+        [ (1000, "M"), (900, "CM"), (500, "D"), (400, "CD")
+        , (100,  "C"), (90,  "XC"), (50,  "L"), (40,  "XL")
+        , (10,   "X"), (9,   "IX"), (5,   "V"), (4,   "IV")
+        , (1,    "I")
+        ]
+
+    toRoman :: Int -> String
+    toRoman 0 = ""
+    toRoman n = snd h ++ toRoman (n - fst h)
+      where h = head $ filter ((<=n) . fst) numerals
+
+    main :: IO ()
+    main = mapM_ (putStrLn . toRoman) [1..20]
+
+~example
+    toRoman 1    == "I"
+    toRoman 2024 == "MMXXIV"
