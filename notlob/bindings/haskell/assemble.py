@@ -147,6 +147,36 @@ def _assemble_body(
     return import_lines, code_chunks
 
 
+# ── Multi-module merge ────────────────────────────────────────
+
+def _merge_modules(
+    modules: list[Module],
+) -> tuple[list[str], list[str]]:
+    """Merge import lines and code chunks from an ordered list of modules.
+
+    Import lines are deduplicated: if the same ``import`` statement
+    appears in more than one module it is emitted only once (first
+    occurrence wins).  Code chunks preserve declaration order.
+
+    Intended for building a single-file harness that inlines all
+    dependency modules before the current module so that every symbol
+    is in scope without explicit inter-module Haskell imports.
+    """
+    seen:         set[str]  = set()
+    import_lines: list[str] = []
+    code_chunks:  list[str] = []
+
+    for mod in modules:
+        imp, chunks = _assemble_body(mod)
+        for line in imp:
+            if line not in seen:
+                seen.add(line)
+                import_lines.append(line)
+        code_chunks.extend(chunks)
+
+    return import_lines, code_chunks
+
+
 # ── Public assembler ──────────────────────────────────────────
 
 def assemble(module: Module) -> str:
@@ -163,6 +193,36 @@ def assemble(module: Module) -> str:
     """
     mod_name = _module_name(module.title)
     import_lines, code_chunks = _assemble_body(module)
+
+    if not code_chunks and not import_lines:
+        return ""
+
+    parts: list[str] = [f"module {mod_name} where"]
+    if import_lines:
+        parts.append("\n".join(import_lines))
+    parts.extend(code_chunks)
+    return "\n\n".join(parts)
+
+
+def assemble_with_deps(
+    module: Module,
+    dep_modules: list[Module],
+) -> str:
+    """Assemble *module* with inlined *dep_modules* into one Haskell source.
+
+    Dependencies are inlined before the current module so every symbol
+    they define is in scope.  This is the single-file equivalent of
+    linking: ``dep_modules`` play the role of compiled libraries.
+
+    The module header uses *module*'s name (not ``NotlobRunner``), so
+    the result is a proper named module suitable for direct compilation
+    as well as ``runghc``.
+
+    Returns an empty string if neither the module nor any dependency
+    contains code.
+    """
+    mod_name = _module_name(module.title)
+    import_lines, code_chunks = _merge_modules(dep_modules + [module])
 
     if not code_chunks and not import_lines:
         return ""

@@ -74,9 +74,23 @@ def main() -> None:
 
     run_p = sub.add_parser("run", help="assemble and execute a .lob file")
     _add_file_arg(run_p)
+    run_p.add_argument(
+        "--keep-generated-src", metavar="PATH", default=None,
+        help=(
+            "write generated source file(s) to this directory "
+            "(overrides ~keep-generated-src in binding.lob)"
+        ),
+    )
 
     test_p = sub.add_parser("test", help="run all claims in a .lob file")
     _add_file_arg(test_p)
+    test_p.add_argument(
+        "--keep-generated-src", metavar="PATH", default=None,
+        help=(
+            "write generated source file(s) to this directory "
+            "(overrides ~keep-generated-src in binding.lob)"
+        ),
+    )
 
     weave_p = sub.add_parser(
         "weave", help="render a .lob file as Markdown"
@@ -151,9 +165,15 @@ def main() -> None:
             language=args.language,
         ))
     elif args.command == "run":
-        sys.exit(cmd_run(_resolve_path(args.file, args.module_mode)))
+        sys.exit(cmd_run(
+            _resolve_path(args.file, args.module_mode),
+            keep_generated_src=args.keep_generated_src,
+        ))
     elif args.command == "test":
-        sys.exit(cmd_test(_resolve_path(args.file, args.module_mode)))
+        sys.exit(cmd_test(
+            _resolve_path(args.file, args.module_mode),
+            keep_generated_src=args.keep_generated_src,
+        ))
     elif args.command == "graph":
         sys.exit(cmd_graph(
             _resolve_path(args.file, args.module_mode),

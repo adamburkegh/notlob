@@ -105,12 +105,16 @@ def run_examples(
     module: Module,
     file_path: Path | None = None,
     cache: Any = None,
+    keep_dir: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all ~example claims in a module and return results.
 
     *file_path*, when provided, is injected as ``__file__`` into the
     execution namespace so that modules can locate data files relative
     to themselves.
+
+    *keep_dir*, when provided, causes the assembled module source to be
+    written to ``<keep_dir>/_examples.py`` before execution.
 
     Assembly errors (syntax errors in code blocks, import failures,
     etc.) produce a single ERROR result with address equal to the
@@ -120,10 +124,12 @@ def run_examples(
         {"__file__": str(file_path.resolve())} if file_path else {}
     )
     mod_addr = module_address(module.title)
+    source = assemble(module)
+    _write_kept_source(keep_dir, "_examples.py", source)
 
     try:
         _load_deps(module, ns, cache)
-        exec(assemble(module), ns)
+        exec(source, ns)
     except Exception as exc:
         return [ClaimResult(
             address=mod_addr,
@@ -149,6 +155,7 @@ def run_tests(
     binding: dict | None = None,
     file_path: Path | None = None,
     cache: Any = None,
+    keep_dir: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all assertions in the #Tests section and return results.
 
@@ -162,6 +169,9 @@ def run_tests(
 
     *file_path*, when provided, is injected as ``__file__`` into the
     execution namespace.
+
+    *keep_dir*, when provided, causes the assembled module source to be
+    written to ``<keep_dir>/_tests.py`` before execution.
 
     Assembly errors produce a single ERROR result as with run_examples.
     """
@@ -180,10 +190,12 @@ def run_tests(
         {"__file__": str(file_path.resolve())} if file_path else {}
     )
     mod_addr = module_address(module.title)
+    source = assemble(module)
+    _write_kept_source(keep_dir, "_tests.py", source)
 
     try:
         _load_deps(module, ns, cache)
-        exec(assemble(module), ns)
+        exec(source, ns)
     except Exception as exc:
         return [ClaimResult(
             address=mod_addr,
@@ -221,6 +233,7 @@ def run_properties(
     binding: dict | None = None,
     file_path: Path | None = None,
     cache: Any = None,
+    keep_dir: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all ~property claims in a module and return results.
 
@@ -236,6 +249,10 @@ def run_properties(
     *file_path*, when provided, is injected as ``__file__`` into the
     execution namespace.
 
+    *keep_dir*, when provided, causes each property's assembled source
+    (module code + property block) to be written to
+    ``<keep_dir>/_prop_<name>.py`` before execution.
+
     Named properties (`~property name`) use the sigil name as address.
     Unnamed properties use an ordinal: <containing>#property#n.
 
@@ -246,9 +263,11 @@ def run_properties(
     )
     mod_addr = module_address(module.title)
 
+    mod_source = assemble(module)
+
     try:
         _load_deps(module, ns, cache)
-        exec(assemble(module), ns)
+        exec(mod_source, ns)
     except Exception as exc:
         return [ClaimResult(
             address=mod_addr,
@@ -260,14 +279,34 @@ def run_properties(
     inject_ns = _build_property_ns(binding)
     results: list[ClaimResult] = []
 
-    _run_props_in(module.body, mod_addr, ns, results, inject_ns)
+    _run_props_in(
+        module.body, mod_addr, ns, results, inject_ns,
+        mod_source=mod_source, keep_dir=keep_dir,
+    )
 
     for item in module.body:
         if isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
-            _run_props_in(item.body, sub_addr, ns, results, inject_ns)
+            _run_props_in(
+                item.body, sub_addr, ns, results, inject_ns,
+                mod_source=mod_source, keep_dir=keep_dir,
+            )
 
     return results
+
+
+# ── Keep-generated-src ───────────────────────────────────────
+
+def _write_kept_source(
+    keep_dir: Path | None,
+    filename: str,
+    source: str,
+) -> None:
+    """Write *source* to ``keep_dir / filename`` if *keep_dir* is set."""
+    if keep_dir is None:
+        return
+    keep_dir.mkdir(parents=True, exist_ok=True)
+    (keep_dir / filename).write_text(source, encoding="utf-8")
 
 
 # ── Dependency loading ────────────────────────────────────────
@@ -365,6 +404,8 @@ def _run_props_in(
     module_ns:      dict,
     results:        list[ClaimResult],
     inject_ns:      dict,
+    mod_source:     str = "",
+    keep_dir:       Path | None = None,
 ) -> None:
     """Evaluate ~property claims found directly in body."""
     prop_n = 0
@@ -376,14 +417,26 @@ def _run_props_in(
 
         parts = item.sigil.split(None, 1)
         if len(parts) > 1:
-            addr = property_address(containing_addr, parts[1].strip())
+            prop_name = parts[1].strip()
+            addr = property_address(containing_addr, prop_name)
         else:
+            prop_name = f"property_{prop_n}"
             addr = claim_address(containing_addr, "property", prop_n)
+
+        prop_block = textwrap.dedent("\n".join(item.lines))
+        if keep_dir is not None:
+            kept = (
+                f"# {addr}\n"
+                f"{mod_source}\n\n"
+                f"# ~property\n"
+                f"{prop_block}\n"
+            )
+            _write_kept_source(keep_dir, f"_prop_{prop_name}.py", kept)
 
         claim_ns = dict(module_ns)
         claim_ns.update(inject_ns)
         try:
-            exec(textwrap.dedent("\n".join(item.lines)), claim_ns)
+            exec(prop_block, claim_ns)
         except Exception as exc:
             results.append(ClaimResult(
                 address=addr,

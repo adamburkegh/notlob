@@ -69,7 +69,7 @@ from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
 from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
-from notlob.bindings.haskell.assemble import _assemble_body
+from notlob.bindings.haskell.assemble import _assemble_body, _merge_modules
 from notlob.bindings.haskell.symbols import extract_symbols
 
 
@@ -102,13 +102,25 @@ def _run_harness(
     source: str,
     extra_packages: list[str] | None = None,
     timeout: int = 120,
+    keep_path: Path | None = None,
 ) -> tuple[str, str, int]:
     """Write *source* to a temp .hs file and run it with runghc.
 
     Returns ``(stdout, stderr, returncode)``.  On timeout the stderr
     is a human-readable message and returncode is 1.  If no runner is
     found, returns an appropriate error triple immediately.
+
+    If *keep_path* is provided the source is also written there before
+    execution, for inspection.  Errors writing to *keep_path* are
+    silently ignored so they never interfere with the test run.
     """
+    if keep_path is not None:
+        try:
+            keep_path.parent.mkdir(parents=True, exist_ok=True)
+            keep_path.write_text(source, encoding="utf-8")
+        except OSError:
+            pass
+
     fd, tmp_path = tempfile.mkstemp(suffix=".hs")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -158,6 +170,51 @@ def _hs_string_escape(s: str) -> str:
     )
 
 
+# ── Dependency loading ────────────────────────────────────────
+
+def _load_dep_modules(
+    module: Module,
+    file_path: Path | None,
+) -> list[Module]:
+    """Return the lob-ref dependency modules of *module* in declaration order.
+
+    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
+    section to its ``.lob`` file under the project root, parses it, and
+    returns the resulting Module objects.  Dependencies that cannot be
+    found or parsed are silently skipped — GHC will report the missing
+    symbol as a compile error, which is surfaced through the normal
+    claim-result machinery.
+
+    Returns an empty list when *file_path* is ``None`` (no project
+    context available) or when no project root is found.
+    """
+    if file_path is None:
+        return []
+
+    # Lazy imports: keep runner.py free of top-level circular deps
+    from notlob.project import (           # noqa: PLC0415
+        find_project_root,
+        module_lob_refs,
+        resolve_module_path,
+    )
+    from notlob.parser import parse_file   # noqa: PLC0415
+    from notlob.model import from_tree     # noqa: PLC0415
+
+    root = find_project_root(file_path)
+    if root is None:
+        return []
+
+    result: list[Module] = []
+    for dep_addr in module_lob_refs(module):
+        try:
+            dep_path = resolve_module_path(dep_addr, root)
+            result.append(from_tree(parse_file(dep_path)))
+        except Exception:
+            pass  # missing dep — will surface as GHC compile error
+
+    return result
+
+
 # ── Harness builders ──────────────────────────────────────────
 
 _CHECK_HELPER = """\
@@ -185,6 +242,7 @@ def _hide_user_main(source: str) -> str:
 def _build_examples_harness(
     module: Module,
     assertions: list[tuple[str, str]],
+    dep_modules: list[Module] | None = None,
 ) -> str:
     """Build a runghc harness for a list of Boolean assertions.
 
@@ -192,11 +250,16 @@ def _build_examples_harness(
     The harness calls ``_notlobCheck`` for each assertion in order and
     prints CLAIM / PASS / FAIL lines.
 
+    *dep_modules*, when provided, are inlined before *module*'s own
+    code so every symbol they define is in scope.
+
     If any code chunk defines ``main``, it is renamed to
     ``_notlobUserMain`` so it does not clash with the harness entry
     point.
     """
-    import_lines, code_chunks = _assemble_body(module)
+    import_lines, code_chunks = _merge_modules(
+        (dep_modules or []) + [module]
+    )
 
     parts: list[str] = ["module NotlobRunner where"]
 
@@ -225,14 +288,18 @@ def _build_property_harness(
     prop_lines: list[str],
     addr: str,
     prop_name: str,
+    dep_modules: list[Module] | None = None,
 ) -> str:
     """Build a runghc harness for a single QuickCheck property.
 
-    The harness imports ``Test.QuickCheck``, includes the module's user
-    code, appends the property definition from *prop_lines*, then runs
-    ``quickCheckResult`` on *prop_name* and prints PASS or FAIL.
+    The harness imports ``Test.QuickCheck``, inlines *dep_modules* and
+    *module*'s own code, appends the property definition from
+    *prop_lines*, then runs ``quickCheckWithResult`` on *prop_name* and
+    prints PASS or FAIL.
     """
-    import_lines, code_chunks = _assemble_body(module)
+    import_lines, code_chunks = _merge_modules(
+        (dep_modules or []) + [module]
+    )
 
     parts: list[str] = ["module NotlobRunner where"]
     # Import specific names so the harness works with any QuickCheck version
@@ -428,6 +495,7 @@ def run_examples(
     module: Module,
     file_path: Path | None = None,
     cache: Any = None,
+    keep_dir: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all ~example claims in *module* and return results.
 
@@ -435,9 +503,11 @@ def run_examples(
     across the module body and all subheadings, executes it, and
     returns one ClaimResult per assertion line.
 
-    *file_path* and *cache* are accepted for interface compatibility
-    but not used (Haskell execution is stateless from Python's
-    perspective).
+    *file_path* is used to locate the project root for dependency
+    resolution; lob-ref dependencies are inlined into the harness.
+
+    If *keep_dir* is set the harness source is written there as
+    ``_examples.hs`` before execution.
     """
     mod_addr = module_address(module.title)
     assertions: list[tuple[str, str]] = []
@@ -451,8 +521,10 @@ def run_examples(
     if not assertions:
         return []
 
-    harness = _build_examples_harness(module, assertions)
-    stdout, stderr, rc = _run_harness(harness)
+    dep_modules = _load_dep_modules(module, file_path)
+    harness     = _build_examples_harness(module, assertions, dep_modules)
+    keep_path   = (keep_dir / "_examples.hs") if keep_dir else None
+    stdout, stderr, rc = _run_harness(harness, keep_path=keep_path)
     return _parse_output(stdout, stderr, rc, assertions)
 
 
@@ -461,6 +533,7 @@ def run_tests(
     binding: dict | None = None,
     file_path: Path | None = None,
     cache: Any = None,
+    keep_dir: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all #Tests assertions in *module* and return results.
 
@@ -468,6 +541,9 @@ def run_tests(
     non-blank assertion line.  Named ``##`` groups receive addresses of
     the form ``<module>#Tests#<group>``; ungrouped assertions use
     ``<module>#Tests``.
+
+    If *keep_dir* is set the harness source is written there as
+    ``_tests.hs`` before execution.
     """
     if module.post_text is None:
         return []
@@ -480,7 +556,7 @@ def run_tests(
     if tests_section is None:
         return []
 
-    mod_addr  = module_address(module.title)
+    mod_addr   = module_address(module.title)
     tests_addr = f"{mod_addr}#Tests"
     assertions: list[tuple[str, str]] = []
 
@@ -489,8 +565,10 @@ def run_tests(
     if not assertions:
         return []
 
-    harness = _build_examples_harness(module, assertions)
-    stdout, stderr, rc = _run_harness(harness)
+    dep_modules = _load_dep_modules(module, file_path)
+    harness     = _build_examples_harness(module, assertions, dep_modules)
+    keep_path   = (keep_dir / "_tests.hs") if keep_dir else None
+    stdout, stderr, rc = _run_harness(harness, keep_path=keep_path)
     return _parse_output(stdout, stderr, rc, assertions)
 
 
@@ -499,6 +577,7 @@ def run_properties(
     binding: dict | None = None,
     file_path: Path | None = None,
     cache: Any = None,
+    keep_dir: Path | None = None,
 ) -> list[ClaimResult]:
     """Run all ~property claims in *module* and return results.
 
@@ -511,13 +590,17 @@ def run_properties(
 
     Named properties (``~property name``) use the sigil name as the
     address fragment; unnamed properties use an ordinal.
+
+    If *keep_dir* is set each property harness is written there as
+    ``_prop_<name>.hs`` before execution.
     """
     use_qc = (
         binding is not None
         and binding.get("property-testing") == "quickcheck"
     )
 
-    mod_addr = module_address(module.title)
+    mod_addr    = module_address(module.title)
+    dep_modules = _load_dep_modules(module, file_path)
     results: list[ClaimResult] = []
     prop_n = 0
 
@@ -557,12 +640,18 @@ def run_properties(
                 ))
                 continue
 
-            prop_name = syms[0].name
-            harness = _build_property_harness(
-                module, item.lines, addr, prop_name,
+            prop_name  = syms[0].name
+            safe_name  = re.sub(r"[^A-Za-z0-9_]", "_", prop_name)
+            harness    = _build_property_harness(
+                module, item.lines, addr, prop_name, dep_modules,
             )
+            keep_path  = (
+                keep_dir / f"_prop_{safe_name}.hs"
+            ) if keep_dir else None
             stdout, stderr, rc = _run_harness(
-                harness, extra_packages=["QuickCheck"],
+                harness,
+                extra_packages=["QuickCheck"],
+                keep_path=keep_path,
             )
             results.append(
                 _parse_property_output(stdout, stderr, rc, addr, item.sigil)

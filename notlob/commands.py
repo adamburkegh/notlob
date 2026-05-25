@@ -186,22 +186,58 @@ def _collect_run_claims(module) -> list[Claim]:
     return claims
 
 
-def _cmd_run_haskell(module, path: Path) -> int:
-    """Assemble a Haskell module and run it with runghc.
+def _resolve_keep_dir(
+    cli_path: str | None,
+    binding:  dict,
+    root:     Path | None,
+) -> Path | None:
+    """Resolve the keep-generated-src directory from CLI flag and binding.
+
+    The CLI flag takes precedence.  A relative path is resolved against
+    the project root when one is available, otherwise against CWD.
+    """
+    raw = cli_path or binding.get("keep-generated-src")
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.is_absolute():
+        p = (root / p) if root else (Path.cwd() / p)
+    return p
+
+
+def _cmd_run_haskell(
+    module,
+    path: Path,
+    keep_dir: Path | None = None,
+) -> int:
+    """Assemble a Haskell module (with inlined deps) and run with runghc.
 
     The assembled source must define ``main :: IO ()``.  If no ``main``
     is present GHC will report a link error, which surfaces here as a
     non-zero exit code with the compiler message on stderr.
-    """
-    from notlob.bindings.haskell.assemble import assemble
-    from notlob.bindings.haskell.runner import _make_runghc_cmd, _run_harness
 
-    source = assemble(module)
+    If *keep_dir* is set the assembled source is also written there as
+    ``<module-address-slugified>.hs`` before execution.
+    """
+    from notlob.bindings.haskell.assemble import assemble_with_deps
+    from notlob.bindings.haskell.runner import (
+        _load_dep_modules, _run_harness,
+    )
+
+    dep_modules = _load_dep_modules(module, path)
+    source      = assemble_with_deps(module, dep_modules)
     if not source:
         print("ERROR  <assembly>  module contains no code", file=sys.stderr)
         return 1
 
-    stdout, stderr, rc = _run_harness(source)
+    if keep_dir is not None:
+        from notlob.graph import module_address as _mod_addr
+        slug = _mod_addr(module.title).replace("/", "_")
+        keep_path = keep_dir / f"{slug}.hs"
+    else:
+        keep_path = None
+
+    stdout, stderr, rc = _run_harness(source, keep_path=keep_path)
     if stdout:
         print(stdout, end="")
     if rc != 0:
@@ -211,7 +247,7 @@ def _cmd_run_haskell(module, path: Path) -> int:
     return 0
 
 
-def cmd_run(path: Path) -> int:
+def cmd_run(path: Path, keep_generated_src: str | None = None) -> int:
     """Assemble and execute *path*; return an exit code."""
     try:
         module = from_tree(parse_file(path))
@@ -221,9 +257,11 @@ def cmd_run(path: Path) -> int:
 
     binding  = _find_binding(path)
     language = binding.get("language")
+    root     = find_project_root(path)
 
     if language == "haskell":
-        return _cmd_run_haskell(module, path)
+        keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
+        return _cmd_run_haskell(module, path, keep_dir=keep_dir)
 
     root = find_project_root(path)
 
@@ -254,7 +292,7 @@ def cmd_run(path: Path) -> int:
     return 0
 
 
-def cmd_test(path: Path) -> int:
+def cmd_test(path: Path, keep_generated_src: str | None = None) -> int:
     """Run all claims in *path* and return an exit code."""
     try:
         module = from_tree(parse_file(path))
@@ -267,6 +305,7 @@ def cmd_test(path: Path) -> int:
     language = binding.get("language")
     kit, extract_symbols = _get_binding_kit(language)
     cache    = ModuleCache(root) if (root and language != "haskell") else None
+    keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
 
     doc_errors: list[str] = []
 
@@ -285,11 +324,12 @@ def cmd_test(path: Path) -> int:
         return 1
 
     results = (
-        kit.run_examples(module, file_path=path, cache=cache)
+        kit.run_examples(module, file_path=path, cache=cache,
+                         keep_dir=keep_dir)
         + kit.run_properties(module, binding=binding, file_path=path,
-                             cache=cache)
+                             cache=cache, keep_dir=keep_dir)
         + kit.run_tests(module, binding=binding, file_path=path,
-                        cache=cache)
+                        cache=cache, keep_dir=keep_dir)
     )
 
     # SKIPs don't count toward the pass/fail tally
