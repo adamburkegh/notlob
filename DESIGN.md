@@ -428,12 +428,12 @@ layer is organised language-first:
 
 ```
 notlob/bindings/
-    __init__.py          ← BindingKit dataclass + Extractor type alias
+    __init__.py          ← BindingKit dataclass + Extractor/Assembler aliases
     python/
         __init__.py      ← assembles the Python kit; exposes `kit`
-        symbols.py       ← extract_symbols: code lines → defined names
-        hypothesis.py    ← ~property-testing (future)
-        pytest.py        ← ~testing runner (future)
+        symbols.py       ← extract_symbols for stage-2 name-graph
+        assemble.py      ← assembles a Module to executable Python
+        runner.py        ← run_examples, run_properties, run_tests
     haskell/             ← future
         __init__.py
         symbols.py
@@ -446,16 +446,18 @@ capability they need without coupling to a particular language:
 ```python
 @dataclass
 class BindingKit:
-    extract_symbols: Extractor
-    # future fields: assemble, run_examples, run_properties, ...
+    extract_symbols: Extractor            # code lines → defined names
+    assemble:        Assembler            # Module → executable string
+    run_examples:    Callable[..., list]  # ~example claims
+    run_properties:  Callable[..., list]  # ~property claims
+    run_tests:       Callable[..., list]  # #Tests assertions
 ```
 
 The declarations in a `#Binding` section (`~language python`,
-`~property-testing hypothesis`, `~testing pytest`) map to submodule
+`~property-testing hypothesis`, `~unit-testing pytest`) map to submodule
 choices within the language package. The language is the primary axis;
 the tool components are secondary. A package that declares
-`~language python` gets `bindings.python.symbols` for the name-graph
-and will eventually get `bindings.python.pytest` for its test runner.
+`~language python` gets the full Python kit from `bindings.python`.
 
 **Claim runner:**
 - `~example` claims run as inline assertions in the assembled namespace
@@ -526,6 +528,53 @@ worth running before the claim runner is complete.
 ---
 
 ## Later Features
+
+**Cross-file composition (name-graph stage 4).** Each `.lob` module
+currently assembles and executes in isolation — one module cannot call
+a function defined in a sibling module. The name-graph already models
+this as stage 4, but the assembler and runner have no inter-module
+linking yet. The fix requires a package-level assembler that resolves
+cross-file symbol references and assembles modules in dependency order,
+injecting imported namespaces into dependent modules. The `#References`
+section will extend to allow `.lob` path imports alongside library
+imports, giving the tooling the information needed to build the
+dependency graph.
+
+**Linter integration.** `notlob test` assembles each module to Python
+but does not lint the result. A `notlob lint` command (or a
+`--lint` flag on `notlob test`) should run the assembled source through
+ruff and mypy. The key requirement is a *source map* from assembled
+source line numbers back to the originating `.lob` block, so that error
+messages cite the `.lob` file rather than the generated Python. The
+assembler must emit this map as a side product of assembly.
+
+**Assembly-once and `notlob build`.** `notlob test` currently assembles
+each module three times — once per runner (`run_examples`,
+`run_properties`, `run_tests`). The immediate fix is a
+`run_module(module, binding, file_path)` function that assembles once
+into a shared namespace and passes it to all three runners. The longer
+step is `notlob build`, which writes assembled source to `.py` files:
+
+- Each `.lob` file produces one `.py` file in `dist/<package>/`.
+- `#References` becomes the imports section; module code becomes the
+  body; `~run` body is wrapped in `if __name__ == "__main__":`.
+- `~example` and `~property` claims are *not* included in the build
+  artifact — they are source-level only, part of the argument rather
+  than the program.
+- `notlob build --with-tests` additionally generates a
+  `tests/test_<module>.py` from inline claims and `#Tests` sections,
+  producing a standard pytest-compatible test suite alongside the
+  library.
+- The build output is a standard Python package. The source
+  distribution includes `.lob` files; the wheel contains only `.py`.
+  A notlob-authored library is therefore installable by pure-Python
+  users with no notlob dependency — the `.lob` sources are the
+  authoritative human form, the `.py` files are the published artifact.
+
+For the Haskell binding, `notlob build` produces `.hs` files;
+compilation and property testing (QuickCheck/Hedgehog) are delegated
+to GHC/stack. The format stays language-agnostic; each binding owns
+its assembly target entirely.
 
 **Cross-reference aliasing.** Cross-references use `##Name` syntax in
 prose, validated against the doc-node graph. A future extension would

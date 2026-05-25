@@ -30,7 +30,7 @@ text of the work.
 Stripping punctuation and lowercasing gives a flat word list; a
 Counter over that list is the frequency distribution.
 
-    def word_frequencies(text: str) -> Counter:
+    def word_frequencies(text: str) -> Counter[str]:
         words = re.findall(r"[a-z]+", text.lower())
         return Counter(words)
 
@@ -58,8 +58,8 @@ in ALL CAPS followed by a period on its own line.  Counting these
 labels gives turn counts by character.  Counting turns rather than
 lines avoids inflating characters who speak in long monologues.
 
-    def parse_speakers(text: str) -> Counter:
-        turns: Counter = Counter()
+    def parse_speakers(text: str) -> Counter[str]:
+        turns: Counter[str] = Counter()
         for line in text.splitlines():
             m = re.match(r'^([A-Z][A-Z ]+)\.$', line.strip())
             if m:
