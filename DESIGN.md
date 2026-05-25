@@ -23,6 +23,13 @@ The key moves away from Knuth:
 - The module name is the document title, and translates deterministically
   to a filesystem path
 
+**Single artifact, multiple renderings.** A `.lob` file is the primary
+artifact — not a meta-language from which separate outputs are extracted.
+The same source is read as structured text in an editor, rendered as a
+typeset document, executed by the runtime, traversed as a name-graph, and
+consumed as self-contained context by an LLM. These are renderings, not
+extractions; the `.lob` file does not change between them.
+
 The LLM collaboration story: a `.lob` file is self-contained context.
 Prose establishes the concept. Claims make it checkable. Examples make it
 palpable. Tests nail it to the executable surface. An LLM reading a
@@ -44,44 +51,45 @@ A `.lob` file has two sections divided by `---`: the essay body and the
 post-text.
 
 ```
-#Module Name        ← document title and module address
+#Module Name
 
 Prose establishing the concept...
 
-    code block      ← indented; execution substrate (Python or Haskell)
+    code block
 
-~example            ← concrete executable claim
+~example
     expression == value
 
-~property           ← abstract claim, verified by property testing
+~property
     @given(...)
     def _(x):
         assert condition
 
-~run                ← entry-point claim; executes only on notlob run
+~run
     main()
 
-##Subsection        ← heading hierarchy creates doc-node graph
+##Subsection
 
 Further prose...
 
----                 ← semantic boundary: post-text begins here
+---
 
-#Tests              ← reserved heading, compiler runs these
-
-    expression == value
-    expression == value
-
-##boundary conditions   ← grouping headings within tests
+#Tests
 
     expression == value
+    expression == value
 
-#Binding            ← reserved heading, declares execution substrate
+##boundary conditions
+
+    expression == value
+
+#Binding
     ~language python
     ~property-testing hypothesis
     ~unit-testing pytest
 
-#References         ← reserved heading, imports for this module only
+#References
+    #Imported Module
     from library import Thing
 ```
 
@@ -94,7 +102,9 @@ the document title and the module address. It translates deterministically
 to `pricing/discount/strategies/` — lowercase, spaces to slashes. The
 author maintains the title; the tooling derives the path. The `.`
 namespace separator is a machine convention that should not leak into the
-human-facing layer.
+human-facing layer. The tooling enforces consistency: `notlob test`
+reports an address mismatch as a build error if a module's title-derived
+address does not match its file path, before running any claims.
 
 **`---` as post-text boundary.** Everything after `---` is post-text. The
 compiler treats `#Tests`, `#Binding`, and `#References` as reserved
@@ -166,6 +176,46 @@ epistemically humble, just facts.
 argument depends on, after the argument has been made. Code blocks in the
 essay body do not contain imports; `#References` is the authoritative
 import list.
+
+**Two kinds of `#References` entry.** A `#References` section contains
+two interleaved kinds of line:
+
+- *Lob module references* — lines whose stripped content begins with `#`,
+  e.g. `    #Gutenberg Corpus`. The label is resolved to a module in the
+  same project by title; the module's names are loaded into the importing
+  module's namespace before assembly.
+- *Language imports* — all other non-blank lines, e.g.
+  `    from pathlib import Path`. These are passed through verbatim to
+  the language runtime.
+
+The `#` prefix is unambiguous in the `.lob` line grammar — no new syntax
+is required; the existing dereference operator doubles as the import
+sigil.
+
+**Lob-to-lob imports must be declared explicitly.** Each module declares
+exactly which other lob modules it depends on. There is no implicit
+package import (as in Java, where all classes in a package are available
+to any other class in that package without declaration). If module A uses
+names from C, A must list `#C` in its own `#References`, even if B
+(which A already imports) also imports C.
+
+This explicitness is intentional. The small friction it creates is a
+design pressure: if two modules are routinely needed together, that is a
+signal they belong in one module. Explicit imports make the dependency
+graph readable directly from source; the `#References` list is a true
+bibliography.
+
+**Python-level imports are transitive across lob boundaries — by binding
+design, not by notlob rule.** When module B declares
+`from decimal import Decimal`, that name is visible to any lob module
+that imports B. This follows from the Python binding's exec-chain
+implementation: dependency namespaces are merged before the importing
+module is executed, so Python names travel with their enclosing namespace.
+It is not a notlob design decision; it is Python behaving Pythonically.
+Other bindings — Haskell, compiled languages — will enforce their own
+module boundaries and will not exhibit this behaviour. The take-away: lob
+module boundaries govern notlob theory (explicit, declared, navigable);
+language-level name visibility is governed by the language binding.
 
 **Node addresses and labels are distinct.** Every named node in the
 name-graph has two representations:
@@ -314,6 +364,7 @@ not 70%.
     ~unit-testing pytest
 
 #References
+    #Pricing Base
     from decimal import Decimal
 ```
 
@@ -336,33 +387,40 @@ access will also be exposed via MCP.
 
 **Name-graph:** The central data structure of the tooling layer. Every
 named thing in a `.lob` file or package is a node; relationships between
-them are edges. The name-graph is built in stages:
+them are edges. The name-graph accumulates in layers, each adding richer
+information:
 
-- *Stage 1 — structural names.* Module addresses and subheading nodes,
-  derived from the `.lob` parser alone. No language binding required.
-  Sufficient for cross-reference validation, doc-node navigation, and
-  LLM context. This layer is binding-agnostic and always available.
+- *Structure.* Module addresses and subheading nodes, derived from the
+  `.lob` parser alone. No language binding required. Sufficient for
+  cross-reference validation, doc-node navigation, and LLM context.
+  This layer is binding-agnostic and always available.
 
-- *Stage 2 — defined symbols.* Code-level names extracted from code
-  blocks and named `~property` claims by a language-specific analyser.
-  Code block names (functions, classes, top-level assignments) become
-  `NodeKind.SYMBOL` nodes under their containing structural node. Named
-  `~property` claims become `NodeKind.PROPERTY` nodes, with any named
-  functions defined within them as `NodeKind.SYMBOL` children. The `_`
-  convention marks anonymous witness functions and they are not
-  extracted. This layer is where the binding earns its keep.
+- *Symbols.* Code-level names extracted from code blocks and named
+  `~property` claims by a language-specific analyser. Code block names
+  (functions, classes, top-level assignments) become `NodeKind.SYMBOL`
+  nodes under their containing structural node. Named `~property` claims
+  become `NodeKind.PROPERTY` nodes, with any named functions defined
+  within them as `NodeKind.SYMBOL` children. The `_` convention marks
+  anonymous witness functions and they are not extracted. This layer is
+  where the binding earns its keep.
 
-- *Stage 3 — reference edges.* Uses as well as definitions: which claims
-  reference which symbols, which prose cross-references which nodes. The
-  graph becomes a navigable map of the argument.
+- *Cross-references.* Prose `#Label` and `##Label` mentions are
+  first-class `Ref` objects extracted by the lexer. The tooling validates
+  them against the name-graph using a three-step resolution order: symbol
+  or subheading in the current module, then module reached via a declared
+  `IMPORTS` edge. Unresolved references are build errors, reported
+  alongside address mismatches before any claim runs. Planned extension:
+  `REFERENCES` edges recording each resolved mention, enabling navigation
+  and cross-reference coverage analysis.
 
-- *Stage 4 — cross-file.* Module addresses resolved across a package,
-  with `binding.lob` providing the package root. The name-graph spans
-  the full package.
+- *Package graph.* Module addresses resolved across a package, with
+  `binding.lob` providing the project root. IMPORTS edges connect
+  modules via their declared `#References`; the name-graph spans the
+  full package.
 
-The seam between stage 1 and stage 2 is the binding boundary. The
-structural layer is the common vocabulary across all languages; the
-symbolic layer is language-specific richness.
+The seam between the structural and symbolic layers is the binding
+boundary. The structural layer is the common vocabulary across all
+languages; the symbolic layer is language-specific richness.
 
 **Binding kit architecture:** A binding is not a single function; it is a
 kit of cooperating tools that share a language substrate. The binding
@@ -432,6 +490,30 @@ language binding → names available in the relevant claim context*. A
 Haskell binding would respond to `~property-testing quickcheck` by
 preparing a completely different execution strategy; the `~property` sigil
 is language-agnostic, the binding owns the implementation entirely.
+
+**Document output (weave).** The runtime can render a `.lob` file or
+package as a human-readable document — the complement of execution.
+Target formats:
+
+- *Markdown* — near-term target.  Module heading becomes `# Title`;
+  subheadings become `## Subheading`; prose blocks become paragraphs;
+  code blocks become fenced ` ```python ` blocks; inline refs become
+  anchor links backed by the name-graph (no dead links).  Claims render
+  as labelled blocks — `~example` as a numbered example, `~property` as
+  a named invariant — distinct from plain code.  A package weave
+  produces a linked set of `.md` files.
+
+- *Typst* — medium-term target for typeset PDF output.  Typst is chosen
+  over LaTeX because notlob source uses `#` heavily; generating LaTeX
+  would require escaping a minefield of special characters.  Typst has
+  no such conflict and produces comparable output with far less
+  ceremony.  Claims map naturally to Typst theorem/example environments;
+  cross-references become typed `@label` citations backed by the
+  name-graph.
+
+The weave operation exposes the same validated cross-reference structure
+that the runtime uses — a rendered document cannot contain a dead link
+to a node that does not exist.
 
 **Diagnostics:** Failures report by doc-node address, not line number. A
 failing claim in `##Stacking Discounts` says so. The node has a prose
@@ -504,6 +586,27 @@ programming languages.
 import a named `.lob` package defining a standard toolset —
 `import notlob/bindings/python-hypothesis` — making the binding itself a
 literate document inspectable in the same format.
+
+**Markdown weave.** `notlob weave` renders a `.lob` file or package to
+Markdown.  Inline refs become anchor links; claims render as labelled
+blocks; a package weave produces a linked set of `.md` files.
+
+**Typst weave.** A Typst backend for `notlob weave` producing PDF.
+Claims become typed environments (example, property/invariant);
+cross-references become `@label` citations.  Typst is preferred over
+direct LaTeX generation because the notlob `#` syntax conflicts with
+LaTeX comment characters.
+
+**Tree-sitter grammar.** A `grammar.js` living in this repository
+(not a separate package — `grammar.js` *is* the canonical notlob
+grammar, not a reimplementation of one).  The primary motivation is
+editor tooling: syntax highlighting, language injection of Python into
+code blocks, and navigation queries.  The compiled C parser is
+generated by CI and committed; users never run `tree-sitter generate`.
+The Python bindings (`tree-sitter` package) would allow the runtime
+parser to be replaced with the Tree-sitter parser, removing the Lark
+dependency, but this is secondary — editor support is the immediate
+gain.
 
 ---
 

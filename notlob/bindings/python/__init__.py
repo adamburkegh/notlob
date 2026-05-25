@@ -11,11 +11,9 @@ Usage::
     results = kit.run_examples(module, file_path=path)
 """
 
-from notlob.bindings import BindingKit
+from notlob.bindings import BindingKit, ClaimResult, Status
 from notlob.bindings.python.assemble import assemble
-from notlob.bindings.python.runner import (
-    ClaimResult, Status, run_examples, run_tests, run_properties,
-)
+from notlob.bindings.python.runner import run_examples, run_tests, run_properties
 from notlob.bindings.python.symbols import extract_symbols
 
 #: The assembled Python binding kit.

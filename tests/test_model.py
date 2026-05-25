@@ -12,6 +12,7 @@ import pytest
 
 from notlob import parse, parse_file, from_tree
 from notlob import (
+    Ref,
     Module, Subheading, CodeBlock, Claim, ProseBlock,
     PostText, TestsSection, TestGroup,
     BindingSection, ReferencesSection,
@@ -52,18 +53,51 @@ class TestProseBlock:
         m = model("#T\nSome prose.\n")
         assert len(m.body) == 1
         assert isinstance(m.body[0], ProseBlock)
-        assert m.body[0].lines == ["Some prose."]
+        assert m.body[0].spans == ["Some prose."]
 
     def test_consecutive_lines_one_block(self):
         m = model("#T\nLine one.\nLine two.\n")
         assert len(m.body) == 1
-        assert m.body[0].lines == ["Line one.", "Line two."]
+        # Line boundary is preserved as a "\n" span so that renderers
+        # (weave, LLM context) produce accurate source text.
+        assert m.body[0].spans == ["Line one.", "\n", "Line two."]
 
     def test_blank_separates_paragraphs(self):
         m = model("#T\nFirst.\n\nSecond.\n")
         assert len(m.body) == 2
-        assert m.body[0].lines == ["First."]
-        assert m.body[1].lines == ["Second."]
+        assert m.body[0].spans == ["First."]
+        assert m.body[1].spans == ["Second."]
+
+    def test_inline_ref_produces_ref_object(self):
+        m = model("#T\nSee #Foo Bar for details.\n")
+        block = m.body[0]
+        assert isinstance(block, ProseBlock)
+        refs = [s for s in block.spans if isinstance(s, Ref)]
+        assert len(refs) == 1
+        assert refs[0].label == "Foo Bar"
+        assert refs[0].sub is False
+
+    def test_inline_subheading_ref(self):
+        m = model("#T\nAs shown in ##Word Frequencies below.\n")
+        refs = [s for s in m.body[0].spans if isinstance(s, Ref)]
+        assert len(refs) == 1
+        assert refs[0].label == "Word Frequencies"
+        assert refs[0].sub is True
+
+    def test_multiple_refs_in_one_block(self):
+        m = model("#T\nUses #Foo and #Bar Baz together.\n")
+        refs = [s for s in m.body[0].spans if isinstance(s, Ref)]
+        assert [r.label for r in refs] == ["Foo", "Bar Baz"]
+
+    def test_plain_prose_no_refs(self):
+        m = model("#T\nNo references here at all.\n")
+        spans = m.body[0].spans
+        assert all(isinstance(s, str) for s in spans)
+
+    def test_hash_number_not_a_ref(self):
+        m = model("#T\nSee EBook #1524 for the source.\n")
+        refs = [s for s in m.body[0].spans if isinstance(s, Ref)]
+        assert refs == []
 
 
 # ── CodeBlock ────────────────────────────────────────────────

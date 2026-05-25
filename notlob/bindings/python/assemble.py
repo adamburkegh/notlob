@@ -23,6 +23,7 @@ import textwrap
 
 from notlob.graph import module_address, subheading_address
 from notlob.model import CodeBlock, Module, ReferencesSection, Subheading
+from notlob.project import parse_python_imports
 
 
 def assemble(module: Module) -> str:
@@ -36,8 +37,9 @@ def assemble(module: Module) -> str:
     if module.post_text is not None:
         for section in module.post_text.sections:
             if isinstance(section, ReferencesSection):
+                import_lines = parse_python_imports(section.lines)
                 text = textwrap.dedent(
-                    "\n".join(section.lines)
+                    "\n".join(import_lines)
                 ).strip()
                 if text:
                     chunks.append(text)

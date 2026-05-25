@@ -1,7 +1,12 @@
-"""notlob.graph — Name-graph (stages 1 and 2).
+"""notlob.graph — Name-graph: structure, symbols, and cross-references.
 
-Stage 1: module and subheading nodes derived from document structure.
-Stage 2: symbol nodes derived from code blocks via a language binding.
+Structure:        module and subheading nodes from document structure.
+Symbols:          symbol nodes from code blocks via a language binding.
+Cross-references: REFERENCES edges from prose ``#Label`` mentions
+                  (not yet implemented).
+Package graph:    IMPORTS edges from ``#References`` lob-ref declarations;
+                  ``build_package()`` lives in ``notlob.project`` because
+                  it requires file-system access.
 
 Node addresses
 --------------
@@ -28,10 +33,10 @@ This scheme is isomorphic to URI fragment addressing.
 
 Edge vocabulary
 ---------------
-  Stage 1  contains  — module → subheading (structural containment)
-  Stage 2  defines   — module/subheading → symbol (definition site)
-
-Later stages will add: uses, references, exemplifies.
+  CONTAINS   — module → subheading          (structure)
+  DEFINES    — module/subheading → symbol   (symbols)
+  REFERENCES — node → node                  (cross-references; planned)
+  IMPORTS    — module → module              (package graph)
 
 Usage::
 
@@ -50,12 +55,18 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import fnmatch
+import json
+import textwrap
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Iterator
 
 from .bindings import Extractor
-from .model import Claim, CodeBlock, Module, Subheading
+from .model import (
+    AppendixSection, Claim, CodeBlock, Module,
+    ProseBlock, Ref, Subheading,
+)
 
 
 # ── Address computation ──────────────────────────────────────
@@ -119,8 +130,8 @@ def claim_address(containing_addr: str, kind: str, n: int) -> str:
 class NodeKind(Enum):
     MODULE     = auto()
     SUBHEADING = auto()
-    SYMBOL     = auto()    # stage 2: code-level defined name
-    PROPERTY   = auto()    # stage 2: named ~property claim
+    SYMBOL     = auto()    # symbols: code-level defined name
+    PROPERTY   = auto()    # symbols: named ~property claim
 
 
 @dataclass(frozen=True)
@@ -130,10 +141,18 @@ class Node:
     address  globally unique machine identifier (tooling-derived)
     label    human-readable name as written in source
     kind     what type of named thing this node represents
+    content  optional source payload; populated by enrich() when
+             present.  Keys: ``prose`` (str) and/or ``code`` (str).
+             Excluded from equality and hash so two nodes with the
+             same address/label/kind are considered identical
+             regardless of whether content has been attached.
     """
     address: str
     label:   str
     kind:    NodeKind
+    content: dict | None = field(
+        default=None, hash=False, compare=False,
+    )
 
     def __repr__(self) -> str:
         return f"<{self.kind.name} {self.address!r}>"
@@ -143,7 +162,8 @@ class Node:
 
 class EdgeKind(Enum):
     CONTAINS = auto()   # module → subheading
-    DEFINES  = auto()   # module/subheading → symbol  (stage 2)
+    DEFINES  = auto()   # module/subheading → symbol
+    IMPORTS  = auto()   # module → module
 
 
 @dataclass(frozen=True)
@@ -226,28 +246,134 @@ class NameGraph:
         """Resolve a #label reference to a node.
 
         Implements the three-step resolution order from DESIGN.md:
-          1. Symbol in the current module (stage 2)
-          2. Subheading in the current module
-          3. Module by label (cross-module reference)
+          1. Symbol defined in the current module.
+          2. Subheading of the current module.
+          3. A module explicitly imported by the current module
+             (requires an IMPORTS edge from *context*).
 
-        context is a module address (e.g. "roman/numerals").
-        Without context only step 3 is attempted.
+        *context* is a module address (e.g. ``"roman/numerals"``).
+        When context is given, step 3 is restricted to modules
+        reachable via a declared IMPORTS edge — unimported modules
+        are invisible even if they exist in the same package graph.
 
-        Symbols and subheadings share address space; a collision is
-        an error at add_node time, so step 1 and step 2 reduce to a
-        single lookup distinguished by NodeKind.
+        Without context, only a full MODULE scan is attempted
+        (useful for tooling / package-level lookup; never for
+        validating in-source cross-references).
+
+        Symbols and subheadings share the ``#`` address space; a
+        collision is an error at add_node time, so steps 1 and 2
+        reduce to a single address lookup distinguished by NodeKind.
         """
         if context is not None:
+            # Steps 1 & 2: symbol or subheading in the current module
             addr = f"{context}#{label}"
             node = self._nodes.get(addr)
             if node is not None:
-                # SYMBOL takes priority; SUBHEADING is also valid
                 if node.kind in (NodeKind.SYMBOL, NodeKind.SUBHEADING):
                     return node
-        for node in self._nodes.values():
-            if node.label == label and node.kind == NodeKind.MODULE:
-                return node
+            # Step 3: explicitly imported module (IMPORTS edges)
+            for edge in self._out.get(context, []):
+                if edge.kind == EdgeKind.IMPORTS:
+                    target = self._nodes.get(edge.target)
+                    if target and target.label == label:
+                        return target
+        else:
+            # No context: scan all MODULE nodes (tooling use only)
+            for node in self._nodes.values():
+                if node.label == label and node.kind == NodeKind.MODULE:
+                    return node
         return None
+
+    def search(
+        self,
+        pattern: str,
+        kind: NodeKind | None = None,
+    ) -> Iterator[Node]:
+        """Yield nodes whose label matches *pattern* (fnmatch-style).
+
+        ``*discount*`` matches any label containing "discount".
+        ``apply_*`` matches any label starting with "apply_".
+        Matching is case-sensitive.  Pass *kind* to restrict results.
+        """
+        for node in self._nodes.values():
+            if kind is not None and node.kind != kind:
+                continue
+            if fnmatch.fnmatch(node.label, pattern):
+                yield node
+
+    def parents(
+        self,
+        address: str,
+        kind: EdgeKind = EdgeKind.IMPORTS,
+    ) -> Iterator[Node]:
+        """Yield nodes that have an edge of *kind* pointing to *address*.
+
+        The complement of :meth:`children`: where ``children`` follows
+        edges forward, ``parents`` follows them in reverse.  Primarily
+        useful for ``IMPORTS`` edges — finding every module that imports
+        a given module.
+        """
+        for edge in self._edges:
+            if edge.kind == kind and edge.target == address:
+                source = self._nodes.get(edge.source)
+                if source:
+                    yield source
+
+    # ── Serialisation ─────────────────────────────────────────
+
+    def to_dict(self, include_content: bool = False) -> dict:
+        """Serialise the graph to a plain dict.
+
+        The returned structure conforms to the JSON Schema at
+        ``notlob/schema/name_graph.json``::
+
+            {
+                "nodes": [{"address": ..., "label": ..., "kind": ...}, ...],
+                "edges": [{"source": ..., "target": ..., "kind": ...}, ...]
+            }
+
+        Pass *include_content=True* to attach each node's ``content``
+        dict when present.  The lean default omits content entirely,
+        keeping the output suitable for structural queries and large
+        packages.
+        """
+        nodes = []
+        for node in self._nodes.values():
+            d: dict = {
+                "address": node.address,
+                "label":   node.label,
+                "kind":    node.kind.name,
+            }
+            if include_content and node.content is not None:
+                d["content"] = node.content
+            nodes.append(d)
+        return {
+            "nodes": nodes,
+            "edges": [
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "kind":   edge.kind.name,
+                }
+                for edge in self._edges
+            ],
+        }
+
+    def to_json(
+        self,
+        indent: int = 2,
+        include_content: bool = False,
+    ) -> str:
+        """Serialise the graph to a JSON string.
+
+        *indent* controls pretty-printing; pass ``None`` for compact
+        single-line output.  *include_content* is forwarded to
+        :meth:`to_dict`.
+        """
+        return json.dumps(
+            self.to_dict(include_content=include_content),
+            indent=indent,
+        )
 
     def __len__(self) -> int:
         return len(self._nodes)
@@ -259,13 +385,60 @@ class NameGraph:
         )
 
 
-# ── Stage-1 builder ──────────────────────────────────────────
+# ── Content helpers ──────────────────────────────────────────
+
+def _prose_text(body: list) -> str | None:
+    """Concatenate ProseBlock text from direct *body* items.
+
+    Inline refs are re-serialised with their sigil (``#Label``).
+    Subheadings in *body* are ignored — they carry their own content.
+    """
+    parts: list[str] = []
+    for item in body:
+        if isinstance(item, ProseBlock):
+            for span in item.spans:
+                if isinstance(span, str):
+                    parts.append(span)
+                else:
+                    parts.append(
+                        ("##" if span.sub else "#") + span.label
+                    )
+    text = "".join(parts).strip()
+    return text or None
+
+
+def _code_text(body: list) -> str | None:
+    """Concatenate dedented CodeBlock text from direct *body* items.
+
+    Multiple blocks are joined with a blank line between them.
+    Subheadings in *body* are ignored — they carry their own content.
+    """
+    blocks = [
+        textwrap.dedent("\n".join(item.lines))
+        for item in body
+        if isinstance(item, CodeBlock)
+    ]
+    return "\n\n".join(blocks) if blocks else None
+
+
+def _node_content(prose: str | None, code: str | None) -> dict | None:
+    """Build a content dict from *prose* and *code*, or return None."""
+    d: dict[str, str] = {}
+    if prose:
+        d["prose"] = prose
+    if code:
+        d["code"] = code
+    return d or None
+
+
+# ── Structure ────────────────────────────────────────────────
 
 def build(module: Module) -> NameGraph:
-    """Build a stage-1 NameGraph from a Module.
+    """Build a structural NameGraph from a Module.
 
     Creates a node for the module and one for each subheading,
-    with contains edges from the module to its subheadings.
+    with CONTAINS edges from the module to its subheadings.
+    Content (prose and module-level code) is attached to each node.
     """
     graph = NameGraph()
     addr  = module_address(module.title)
@@ -274,6 +447,10 @@ def build(module: Module) -> NameGraph:
         address=addr,
         label=module.title,
         kind=NodeKind.MODULE,
+        content=_node_content(
+            _prose_text(module.body),
+            _code_text(module.body),
+        ),
     ))
 
     for item in module.body:
@@ -293,6 +470,10 @@ def _add_subheading(
         address=sub_addr,
         label=sub.title,
         kind=NodeKind.SUBHEADING,
+        content=_node_content(
+            _prose_text(sub.body),
+            _code_text(sub.body),
+        ),
     ))
     graph.add_edge(Edge(
         source=module_addr,
@@ -301,14 +482,14 @@ def _add_subheading(
     ))
 
 
-# ── Stage-2 enrichment ───────────────────────────────────────
+# ── Symbol enrichment ────────────────────────────────────────
 
 def enrich(
     graph:     NameGraph,
     module:    Module,
     extractor: Extractor,
 ) -> None:
-    """Enrich a stage-1 graph with symbol nodes (stage 2).
+    """Enrich a structural graph with symbol nodes.
 
     Walks the module body and extracts symbols from each code block
     using the provided language-specific extractor.  Symbols defined
@@ -352,12 +533,13 @@ def _add_symbols(
     containing_addr: str,
     extractor:      Extractor,
 ) -> None:
-    for name in extractor(block.lines):
-        addr = symbol_address(mod_addr, name)
+    for info in extractor(block.lines):
+        addr = symbol_address(mod_addr, info.name)
         graph.add_node(Node(
             address=addr,
-            label=name,
+            label=info.name,
             kind=NodeKind.SYMBOL,
+            content=_node_content(None, info.source),
         ))
         graph.add_edge(Edge(
             source=containing_addr,
@@ -383,10 +565,12 @@ def _add_named_property(
 
     name = parts[1].strip()
     prop_addr = property_address(containing_addr, name)
+    claim_src = textwrap.dedent("\n".join(claim.lines))
     graph.add_node(Node(
         address=prop_addr,
         label=name,
         kind=NodeKind.PROPERTY,
+        content=_node_content(None, claim_src or None),
     ))
     graph.add_edge(Edge(
         source=containing_addr,
@@ -394,17 +578,96 @@ def _add_named_property(
         kind=EdgeKind.DEFINES,
     ))
 
-    for sym_name in extractor(claim.lines):
-        if sym_name == '_':
+    for info in extractor(claim.lines):
+        if info.name == '_':
             continue   # anonymous witness — not extracted
-        sym_addr = f"{prop_addr}#{sym_name}"
+        sym_addr = f"{prop_addr}#{info.name}"
         graph.add_node(Node(
             address=sym_addr,
-            label=sym_name,
+            label=info.name,
             kind=NodeKind.SYMBOL,
+            content=_node_content(None, info.source),
         ))
         graph.add_edge(Edge(
             source=prop_addr,
             target=sym_addr,
             kind=EdgeKind.DEFINES,
         ))
+
+
+# ── Cross-reference validation ────────────────────────────────
+
+@dataclass(frozen=True)
+class RefError:
+    """An unresolved inline cross-reference in prose.
+
+    *location* is the address of the containing node (module or
+    subheading).  *ref* is the ``Ref`` that could not be resolved.
+    """
+    location: str
+    ref:      Ref
+
+    def __str__(self) -> str:
+        sigil = "##" if self.ref.sub else "#"
+        return (
+            f"{self.location}: "
+            f"unresolved reference {sigil}{self.ref.label}"
+        )
+
+
+def validate_refs(
+    graph:  NameGraph,
+    module: Module,
+) -> list[RefError]:
+    """Return a list of unresolved prose cross-references in *module*.
+
+    Walks every :class:`~notlob.model.ProseBlock` in the module body
+    (including those inside subheadings and appendix sections) and
+    calls :meth:`NameGraph.resolve` on each :class:`~notlob.model.Ref`.
+
+    ``#Label`` references are validated via the full three-step
+    resolution order.  ``##Label`` references are validated against
+    subheadings of the current module only.
+
+    An unresolved reference is a first-class error; the returned list
+    is empty when all references resolve.
+    """
+    mod_addr = module_address(module.title)
+    errors   = list(_ref_errors(graph, module.body, mod_addr, mod_addr))
+    if module.post_text:
+        for sec in module.post_text.sections:
+            if isinstance(sec, AppendixSection):
+                errors.extend(
+                    _ref_errors(graph, sec.body, mod_addr, mod_addr)
+                )
+    return errors
+
+
+def _ref_errors(
+    graph:    NameGraph,
+    body:     list,
+    mod_addr: str,
+    loc_addr: str,
+) -> Iterator[RefError]:
+    """Yield RefErrors for each unresolved Ref in *body*."""
+    for item in body:
+        if isinstance(item, ProseBlock):
+            for span in item.spans:
+                if isinstance(span, Ref) and not _resolves(
+                    graph, span, mod_addr
+                ):
+                    yield RefError(location=loc_addr, ref=span)
+        elif isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            yield from _ref_errors(
+                graph, item.body, mod_addr, sub_addr
+            )
+
+
+def _resolves(graph: NameGraph, ref: Ref, mod_addr: str) -> bool:
+    """Return True if *ref* resolves against *graph* in *mod_addr*."""
+    if ref.sub:
+        # ##Label: only a subheading of the current module
+        node = graph.node(f"{mod_addr}#{ref.label}")
+        return node is not None and node.kind == NodeKind.SUBHEADING
+    return graph.resolve(ref.label, context=mod_addr) is not None

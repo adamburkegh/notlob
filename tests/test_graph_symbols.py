@@ -1,7 +1,9 @@
-"""Tests for the stage-2 name-graph enrichment.
+"""Tests for symbol enrichment in the name-graph.
 
-enrich() adds symbol nodes and DEFINES edges to an existing stage-1
-graph using a language-specific extractor.
+enrich() adds SYMBOL nodes and DEFINES edges to a structural graph
+using a language-specific extractor.  Covers symbol address
+computation, module- vs subheading-scoped DEFINES edges, address
+collision detection, and resolve() with symbol context.
 """
 
 from pathlib import Path

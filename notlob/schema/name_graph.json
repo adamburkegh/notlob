@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notlob/name-graph",
+  "title": "NameGraph",
+  "description": "Serialised notlob name-graph produced by NameGraph.to_dict().",
+  "type": "object",
+  "required": ["nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "nodes": {
+      "description": "All named nodes in the graph.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/Node" }
+    },
+    "edges": {
+      "description": "All directed edges in the graph.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/Edge" }
+    }
+  },
+  "definitions": {
+    "Node": {
+      "description": "A named node: module, subheading, symbol, or property.",
+      "type": "object",
+      "required": ["address", "label", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "description": "Globally unique machine identifier, e.g. 'roman/numerals#to_roman'.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Human-readable name as written in source.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What type of named thing this node represents.",
+          "type": "string",
+          "enum": ["MODULE", "SUBHEADING", "SYMBOL", "PROPERTY"]
+        },
+        "content": {
+          "description": "Source payload; present only when include_content=True.",
+          "$ref": "#/definitions/Content"
+        }
+      }
+    },
+    "Content": {
+      "description": "Source content attached to a node.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prose": {
+          "description": "Plain text of prose blocks (refs re-serialised with sigil).",
+          "type": "string"
+        },
+        "code": {
+          "description": "Dedented source code for the node.",
+          "type": "string"
+        }
+      }
+    },
+    "Edge": {
+      "description": "A directed relationship between two nodes.",
+      "type": "object",
+      "required": ["source", "target", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "description": "Address of the source node.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Address of the target node.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Relationship type.",
+          "type": "string",
+          "enum": ["CONTAINS", "DEFINES", "IMPORTS"]
+        }
+      }
+    }
+  }
+}

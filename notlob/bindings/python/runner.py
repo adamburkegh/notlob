@@ -26,8 +26,6 @@ from __future__ import annotations
 
 import ast
 import textwrap
-from dataclasses import dataclass
-from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
@@ -48,11 +46,13 @@ try:
 except ImportError:
     _PYTEST_NS = {}
 
+from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
 from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
 from notlob.bindings.python.assemble import assemble
+from notlob.project import module_lob_refs
 
 
 def _build_property_ns(binding: dict | None) -> dict:
@@ -101,34 +101,10 @@ def _build_test_ns(binding: dict | None) -> dict:
     return {}
 
 
-class Status(Enum):
-    PASS  = auto()
-    FAIL  = auto()
-    ERROR = auto()
-
-
-@dataclass(frozen=True)
-class ClaimResult:
-    """The outcome of evaluating one assertion line.
-
-    address  Claim address: containing_addr#example#n
-    line     The source assertion text (without leading 'assert ')
-    status   PASS, FAIL, or ERROR
-    left     Evaluated left-hand side  (FAIL only; None otherwise)
-    right    Evaluated right-hand side (FAIL only; None otherwise)
-    error    Exception raised          (ERROR only; None otherwise)
-    """
-    address: str
-    line:    str
-    status:  Status
-    left:    Any           = None
-    right:   Any           = None
-    error:   Exception | None = None
-
-
 def run_examples(
     module: Module,
     file_path: Path | None = None,
+    cache: Any = None,
 ) -> list[ClaimResult]:
     """Run all ~example claims in a module and return results.
 
@@ -146,6 +122,7 @@ def run_examples(
     mod_addr = module_address(module.title)
 
     try:
+        _load_deps(module, ns, cache)
         exec(assemble(module), ns)
     except Exception as exc:
         return [ClaimResult(
@@ -171,6 +148,7 @@ def run_tests(
     module: Module,
     binding: dict | None = None,
     file_path: Path | None = None,
+    cache: Any = None,
 ) -> list[ClaimResult]:
     """Run all assertions in the #Tests section and return results.
 
@@ -204,6 +182,7 @@ def run_tests(
     mod_addr = module_address(module.title)
 
     try:
+        _load_deps(module, ns, cache)
         exec(assemble(module), ns)
     except Exception as exc:
         return [ClaimResult(
@@ -241,6 +220,7 @@ def run_properties(
     module: Module,
     binding: dict | None = None,
     file_path: Path | None = None,
+    cache: Any = None,
 ) -> list[ClaimResult]:
     """Run all ~property claims in a module and return results.
 
@@ -267,6 +247,7 @@ def run_properties(
     mod_addr = module_address(module.title)
 
     try:
+        _load_deps(module, ns, cache)
         exec(assemble(module), ns)
     except Exception as exc:
         return [ClaimResult(
@@ -287,6 +268,24 @@ def run_properties(
             _run_props_in(item.body, sub_addr, ns, results, inject_ns)
 
     return results
+
+
+# ── Dependency loading ────────────────────────────────────────
+
+def _load_deps(
+    module: Module,
+    ns:     dict,
+    cache:  Any,        # ModuleCache | None  (avoids circular import)
+) -> None:
+    """Merge dependency namespaces into *ns* using *cache*.
+
+    A no-op when *cache* is None — callers that have no project root
+    (e.g. single-file tests) are unaffected.
+    """
+    if cache is None:
+        return
+    for dep_addr in module_lob_refs(module):
+        ns.update(cache.load(dep_addr))
 
 
 # ── Internals ─────────────────────────────────────────────────

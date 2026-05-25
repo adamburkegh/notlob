@@ -1,9 +1,25 @@
 """notlob.parser - Parse .lob source files into a Lark Tree.
 
-Two-phase approach:
-  1. The line lexer classifies each source line into a typed Token.
-     This is deterministic — one line, one token, no ambiguity.
-  2. Lark parses the token stream against grammar.lark.
+Two-phase approach
+------------------
+1. The line lexer (``_LobLexer``) classifies each source line into one
+   or more typed tokens.  Structural lines produce a single token each
+   (MOD_HEAD, SUBHEAD, SIGIL, INDENT, BLANK, SEPARATOR, or a post-text
+   head token).  Prose lines are sub-tokenised into PROSE_TEXT, REF,
+   and PROSE_NL tokens by ``_tokenize_prose``.
+
+2. Lark parses the flat token stream against ``grammar.lark`` using an
+   LALR parser.  Because classification happens in phase 1, the grammar
+   is entirely structural — no regex, no lexer ambiguity.
+
+Line-start invariant
+--------------------
+``#`` and ``##`` at column zero are always structural tokens (MOD_HEAD,
+SUBHEAD, or a reserved post-text head like TESTS_HEAD).  ``_classify``
+checks for these before falling through to prose.  Consequently, inline
+refs (``#Label``, ``##Label``) only ever appear mid-line, as PROSE_TEXT
+and REF tokens produced by ``_tokenize_prose``.  The grammar relies on
+this invariant to avoid any heading / reference ambiguity.
 
 Usage::
 
@@ -34,28 +50,62 @@ _RESERVED_HEADS: dict[str, str] = {
     "#References": "REFERENCES_HEAD",
 }
 
+# Matches ##Label or #Label in prose: capital letter start, optional
+# Title Case continuation (space + capital letter + word chars).
+# Lookbehind prevents matching # inside URLs or identifiers.
+_REF_PAT = re.compile(
+    r'(?<![/\w])(##?[A-Z][A-Za-z0-9_]*(?:[ ][A-Z][A-Za-z0-9_]*)*)'
+)
 
-def _classify(line: str) -> Token:
-    """Classify one source line (with trailing newline) as a Token."""
+
+def _classify(line: str) -> Token | None:
+    """Classify one source line as a single Token, or None for prose.
+
+    Every check here is a plain string operation — no regex.  The only
+    regex in this module is _REF_PAT, which handles the sub-token
+    structure *within* prose lines.
+
+    Returns None when the line is unindented prose; the caller is
+    responsible for sub-tokenising it into PROSE_TEXT, REF, and
+    PROSE_NL tokens.
+    """
     stripped = line.rstrip("\n")
 
     if stripped == "---":
         return Token("SEPARATOR", stripped)
     if stripped in _RESERVED_HEADS:
         return Token(_RESERVED_HEADS[stripped], stripped)
-    if re.match(r"#Appendix:", stripped):
+    if stripped.startswith("#Appendix:"):
         return Token("APPENDIX_HEAD", stripped)
     if stripped.startswith("##"):
         return Token("SUBHEAD", stripped[2:].strip())
-    if re.match(r"#[^#]", stripped):
+    if stripped.startswith("#"):        # MOD_HEAD (## already handled above)
         return Token("MOD_HEAD", stripped[1:].strip())
-    if re.match(r"~[a-z]", stripped):
+    if stripped.startswith("~") and stripped[1:2].islower():
         return Token("SIGIL", stripped)
     if stripped == "":
         return Token("BLANK", stripped)
-    if stripped != stripped.lstrip():   # line has leading whitespace
+    if stripped[:1] in (" ", "\t"):     # line has leading whitespace
         return Token("INDENT", stripped)
-    return Token("PROSE", stripped)
+    return None                         # prose — sub-tokenise below
+
+
+def _tokenize_prose(line: str):
+    """Yield PROSE_TEXT, REF, and PROSE_NL tokens from one prose line.
+
+    Splits the line on the REF pattern.  Each match becomes a REF
+    token; surrounding text becomes PROSE_TEXT.  A PROSE_NL sentinel
+    is emitted last, marking the end of the line for the grammar's
+    ``prose_line`` rule.
+    """
+    for part in _REF_PAT.split(line):
+        if not part:
+            continue
+        if _REF_PAT.fullmatch(part):
+            yield Token("REF", part)
+        else:
+            yield Token("PROSE_TEXT", part)
+    yield Token("PROSE_NL", "")
 
 
 class _LobLexer(Lexer):
@@ -67,7 +117,11 @@ class _LobLexer(Lexer):
     def lex(self, data: str):
         for line in data.splitlines(keepends=True):
             if line:
-                yield _classify(line)
+                tok = _classify(line)
+                if tok is None:
+                    yield from _tokenize_prose(line.rstrip("\n"))
+                else:
+                    yield tok
 
     def make_lexer_state(self, text):
         return LexerState(text)

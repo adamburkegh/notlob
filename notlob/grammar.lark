@@ -1,10 +1,17 @@
 // notlob.lark
 // Grammar for .lob literate source files.
 //
-// Terminals are line-level tokens produced by the Notlob lexer;
-// each token represents exactly one source line.
-// The lexer classifies lines before parsing, so the grammar
-// contains no regex — only structural rules.
+// The format is fundamentally line-oriented: each source line is one
+// semantic unit.  The Notlob line lexer classifies every line into a
+// single typed token before Lark sees it, so this grammar contains no
+// regex — only structural rules over pre-classified tokens.
+//
+// Line-start invariant: `#` and `##` at column zero are always
+// structural (MOD_HEAD, SUBHEAD, or a reserved post-text head).
+// Inline refs (#Label, ##Label) only occur mid-prose, within a
+// prose_line.  This invariant is enforced by _classify() in parser.py
+// and means the grammar never needs to disambiguate heading syntax
+// from reference syntax — context already separates them.
 
 start: module
 
@@ -20,21 +27,30 @@ body_item: subheading
          | prose_block
          | BLANK
 
-// Subheadings are flat within a module (no ## nesting).
+// Subheadings are flat within a module — ## nesting is not permitted.
+// _sub_item mirrors body_item without the subheading alternative,
+// enforcing the flat constraint directly in the grammar.
 subheading: SUBHEAD _sub_item*
 _sub_item: code_block | claim | prose_block | BLANK
 
-// Indented block: begins with an indented line; may contain
-// further indented or blank lines.  A non-indented token
-// (PROSE, SIGIL, SUBHEAD, …) terminates the block.
-code_block: INDENT _block_line*
+// An indented block begins with an INDENT line and continues while
+// each subsequent line is INDENT or BLANK.  The block terminates at
+// the first non-blank, non-indented token (SUBHEAD, SIGIL, MOD_HEAD,
+// PROSE_TEXT, REF, or SEPARATOR).
+code_block: INDENT _body_line*
 
-// A claim sigil followed by its indented body.
-claim: SIGIL _block_line+
+// A claim sigil followed by its indented body (at least one line).
+claim: SIGIL _body_line+
 
-prose_block: PROSE+
+// A prose block is one or more prose lines.  Each prose_line is a
+// sequence of plain-text fragments and inline refs, terminated by a
+// PROSE_NL sentinel.  Blank lines between paragraphs produce separate
+// prose_block nodes because BLANK is a body_item, not part of a
+// prose_line.
+prose_block: prose_line+
+prose_line:  (PROSE_TEXT | REF)+ PROSE_NL
 
-_block_line: INDENT | BLANK
+_body_line: INDENT | BLANK
 
 // ── Post-text ───────────────────────────────────────────────
 
@@ -54,7 +70,24 @@ references_section: REFERENCES_HEAD (INDENT | BLANK)*
 appendix_section:   APPENDIX_HEAD   body_item*
 
 // ── Terminal declarations ───────────────────────────────────
-// Tokens are produced by the Notlob line lexer, not by Lark.
+// All terminals are produced by the Notlob line lexer; Lark does not
+// lex them directly.
+//
+// Structural line tokens (one per source line):
+//   MOD_HEAD   — #Title at column zero
+//   SUBHEAD    — ##Title at column zero
+//   SIGIL      — ~word at column zero
+//   INDENT     — any line whose first character is whitespace
+//   BLANK      — empty line
+//   SEPARATOR  — the literal --- line
+//
+// Post-text head tokens (one per source line):
+//   TESTS_HEAD, BINDING_HEAD, REFERENCES_HEAD, APPENDIX_HEAD
+//
+// Prose sub-tokens (multiple per source line, from _tokenize_prose):
+//   PROSE_TEXT — plain-text fragment within a prose line
+//   REF        — inline cross-reference: #Label or ##Label
+//   PROSE_NL   — end-of-prose-line sentinel (emitted once per line)
 
-%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK PROSE
+%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK PROSE_TEXT REF PROSE_NL
 %declare SEPARATOR TESTS_HEAD BINDING_HEAD REFERENCES_HEAD APPENDIX_HEAD
