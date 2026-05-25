@@ -5,7 +5,7 @@ Project Gutenberg plaintext edition (EBook #1524).  The file includes
 a preamble and postscript; we strip these by locating the sentinel
 lines that bound the play text.
 
-    _DATA = Path(__file__).parent.parent / "data"
+    _DATA: Path = Path(__file__).parent.parent / "data"
 
     def load_play(filename: str) -> str:
         """Strip Gutenberg header and footer; return play text."""
@@ -14,7 +14,7 @@ lines that bound the play text.
         end   = raw.index("*** END OF THE PROJECT GUTENBERG")
         return raw[raw.index("\n", start) + 1 : end]
 
-    HAMLET = load_play("pg1524.txt")
+    HAMLET: str = load_play("pg1524.txt")
 
 ~example
     "HAMLET." in HAMLET
@@ -27,11 +27,11 @@ top words in any English text are function words; finding "the" at
 rank 1 and "and" at rank 2 confirms we have the right text in the
 right language.
 
-    def word_frequencies(text: str) -> Counter:
+    def word_frequencies(text: str) -> Counter[str]:
         words = re.findall(r"[a-z]+", text.lower())
         return Counter(words)
 
-    WORDS = word_frequencies(HAMLET)
+    WORDS: Counter[str] = word_frequencies(HAMLET)
 
 ~example
     WORDS.most_common(1)[0][0] == "the"
@@ -59,16 +59,16 @@ Hamlet has roughly three times as many turns as the next character.
 That dominance is not incidental; it is what the play is built
 around.
 
-    def parse_speakers(text: str) -> Counter:
-        turns: Counter = Counter()
+    def parse_speakers(text: str) -> Counter[str]:
+        turns: Counter[str] = Counter()
         for line in text.splitlines():
             m = re.match(r'^([A-Z][A-Z ]+)\.$', line.strip())
             if m:
                 turns[m.group(1)] += 1
         return turns
 
-    SPEAKERS = parse_speakers(HAMLET)
-    _TOP = SPEAKERS.most_common(10)
+    SPEAKERS: Counter[str] = parse_speakers(HAMLET)
+    _TOP: list[tuple[str, int]] = SPEAKERS.most_common(10)
 
 ~example
     SPEAKERS.most_common(1)[0][0] == "HAMLET"
