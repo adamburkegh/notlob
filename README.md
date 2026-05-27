@@ -18,9 +18,64 @@ Notlob currently uses well established language toolsets for the executable elem
 
 ## Example
 
+```
+#Roman Numerals
 
+Convert integers to Roman numeral strings.  The numeral table maps each
+milestone value to its symbol.  Conversion is greedy: find the largest
+milestone that fits, append its symbol, subtract its value, repeat.
 
+    numerals :: [(Int, String)]
+    numerals =
+        [ (1000, "M"), (900, "CM"), (500, "D"), (400, "CD")
+        , (100,  "C"), (90,  "XC"), (50,  "L"), (40,  "XL")
+        , (10,   "X"), (9,   "IX"), (5,   "V"), (4,   "IV")
+        , (1,    "I")
+        ]
 
+    toRoman :: Int -> String
+    toRoman 0 = ""
+    toRoman n = snd h ++ toRoman (n - fst h)
+      where h = head $ filter ((<=n) . fst) numerals
+
+~example
+    toRoman 1    == "I"
+    toRoman 4    == "IV"
+    toRoman 1994 == "MCMXCIV"
+    toRoman 2024 == "MMXXIV"
+
+## Properties
+
+The length of the result is always positive for positive inputs, and
+toRoman never returns an empty string for a positive integer.
+
+~property
+    prop_positive :: Int -> Bool
+    prop_positive n =
+        let m = abs n `mod` 4000 + 1
+        in not (null (toRoman m))
+
+---
+
+#Tests
+
+##basic
+    toRoman 0    == ""
+    toRoman 1    == "I"
+    toRoman 5    == "V"
+    toRoman 1000 == "M"
+
+##subtractive
+    toRoman 4    == "IV"
+    toRoman 400  == "CD"
+    toRoman 900  == "CM"
+
+##compound
+    toRoman 1994 == "MCMXCIV"
+    toRoman 2024 == "MMXXIV"
+```
+
+An extended, runnable version of this example is in [examples/haskell-roman](examples/haskell-roman).
 
 ## Installing and Developing 
 
