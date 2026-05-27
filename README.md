@@ -92,9 +92,9 @@ Two basic commands, each with subcommands and help. `notlob` is for build time. 
 
 ## Origin and Ideas
 
-Notlob is inspired by the insights of Knuth, Peter Naur, Dominic Fox, and Name Oriented Programming.
+Notlob is inspired by the insights of [Knuth](https://www.cs.tufts.edu/~nr/cs257/archive/literate-programming/01-knuth-lp.pdf), [Peter Naur](https://pages.cs.wisc.edu/~remzi/Naur.pdf), [Dominic Fox](https://codepoetics.substack.com/p/holding-a-theory), and [Name Oriented Software Development](https://conflatedautomatons.org/tag/name-oriented-software-development/).
 
-Notlob was written at arms length using Claude. This README is completely hand authored. Every other artifact, including DESIGN.md, has been emitted or altered by the language extrusion machine as the result of dialogue.
+Notlob was written at arms length using Claude. This README is completely hand authored. Every other artifact, including [DESIGN.md](DESIGN.md), has been emitted or altered by the language extrusion machine as the result of dialogue.
 
 Notlob is not Python, and is not a palindrome.
 
