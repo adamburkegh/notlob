@@ -9,7 +9,7 @@ The basic visible structures are source files that colocate and interleave all t
 
 This is intended to be a codebase explaining itself to itself. Design artifacts can be tied closely to executables, and consistency demonstrated with every build. 
 
-Holding related concepts together with their examples and checkable formal properties can have two specific benefits for LLM coding agents. A single source file economises on context window and extra tool calls. Searches in the codebase can be done via the name-graph tooling, rather than requiring auxiliary filesystem searches that increase token costs and information loss through handoffs. When an LLM agent reads a notlob source file, the most important materials are already laid oout on the workbench, ready to go.
+Holding related concepts together with their examples and checkable formal properties can have two specific benefits for LLM coding agents. A single source file economises on context window and extra tool calls. Searches in the codebase can be done via the name-graph tooling, rather than requiring auxiliary filesystem searches that increase token costs and information loss through handoffs. When an LLM agent reads a notlob source file, the most important materials are already laid out on the workbench, ready to go.
 
 ## Bindings
 
