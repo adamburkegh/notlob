@@ -18,6 +18,7 @@ rather than raising.
 
 from notlob.bindings import BindingKit
 from notlob.bindings.haskell.assemble import assemble
+from notlob.bindings.haskell.lint import lint_haskell
 from notlob.bindings.haskell.runner import run_examples, run_tests, run_properties
 from notlob.bindings.haskell.symbols import extract_symbols
 
@@ -28,9 +29,10 @@ kit = BindingKit(
     run_examples=run_examples,
     run_properties=run_properties,
     run_tests=run_tests,
+    lint=lint_haskell,
 )
 
 __all__ = [
     "kit", "extract_symbols", "assemble",
-    "run_examples", "run_tests", "run_properties",
+    "run_examples", "run_tests", "run_properties", "lint_haskell",
 ]
