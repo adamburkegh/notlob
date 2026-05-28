@@ -15,6 +15,9 @@ lob    = "notlob.cli:lob_main"
 where = ["."]
 include = ["notlob*"]
 
+[tool.setuptools.package-data]
+notlob = ["docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::pytest.PytestCollectionWarning"]

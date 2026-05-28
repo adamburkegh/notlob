@@ -1,4 +1,11 @@
-# Notlob Language Design
+# Notlob — Implementation Design
+
+> **Language reference for users and agents:** see `LANGUAGE.md` in
+> this repository, or run `notlob docs` to write it to `notlob-docs/`
+> in any project.  This document covers internal architecture and
+> design rationale.
+
+---
 
 ## Philosophy
 
@@ -42,56 +49,6 @@ is not decorative; it is the hypothesis. If the format does not feel like
 that, the format is wrong. The binding layer is responsible for honouring
 this aesthetic in its own idiom: a good binding chooses test and property
 tools whose syntax reads as claims, not as boilerplate.
-
----
-
-## File Structure
-
-A `.lob` file has two sections divided by `---`: the essay body and the
-post-text.
-
-```
-#Module Name
-
-Prose establishing the concept...
-
-    code block
-
-~example
-    expression == value
-
-~property
-    @given(...)
-    def _(x):
-        assert condition
-
-~run
-    main()
-
-##Subsection
-
-Further prose...
-
----
-
-#Tests
-
-    expression == value
-    expression == value
-
-##boundary conditions
-
-    expression == value
-
-#Binding
-    ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest
-
-#References
-    #Imported Module
-    from library import Thing
-```
 
 ---
 
@@ -301,75 +258,6 @@ validates references against the doc-node graph.
 
 ---
 
-## Sample `.lob` File
-
-```
-#Pricing Discounts
-
-A discount strategy applies a multiplier to a price, yielding a reduced
-price. Strategies are values in [0,1] representing the proportion of the
-price to retain. A value of 1.0 means no discount; 0.0 means free.
-
-The choice of "proportion to retain" rather than "proportion to remove"
-is deliberate — it composes naturally under multiplication.
-See ##Stacking Discounts.
-
-    def apply_discount(strategy: Decimal, price: Decimal) -> Decimal:
-        return price * strategy
-
-~example
-    apply_discount(Decimal('0.8'), Decimal('100')) == Decimal('80')
-
-##Stacking Discounts
-
-When multiple strategies apply, they compose multiplicatively. A 20%
-discount followed by a 10% discount yields 72% of the original price,
-not 70%.
-
-~example
-    (apply_discount(Decimal('0.8'),
-                    apply_discount(Decimal('0.9'), Decimal('100')))
-     == Decimal('72'))
-
-~property
-    @given(
-        s1=st.decimals(min_value=0, max_value=1, allow_nan=False),
-        s2=st.decimals(min_value=0, max_value=1, allow_nan=False),
-        price=st.decimals(min_value=Decimal('0'), allow_nan=False),
-    )
-    def _(s1, s2, price):
-        assert (apply_discount(s1, apply_discount(s2, price))
-                == apply_discount(s1 * s2, price))
-
----
-
-#Tests
-
-##boundary conditions
-    apply_discount(Decimal('1'), Decimal('100')) == Decimal('100')
-    apply_discount(Decimal('0'), Decimal('100')) == Decimal('0')
-    apply_discount(Decimal('0.5'), Decimal('0')) == Decimal('0')
-
-##composition
-    (apply_discount(Decimal('0.8'),
-                    apply_discount(Decimal('0.9'), Decimal('100')))
-     == Decimal('72'))
-    (apply_discount(Decimal('0.9'),
-                    apply_discount(Decimal('0.8'), Decimal('100')))
-     == Decimal('72'))
-
-#Binding
-    ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest
-
-#References
-    #Pricing Base
-    from decimal import Decimal
-```
-
----
-
 ## Tooling Architecture
 
 The literate layer (parser, name-graph, claim runner, diagnostics) is
@@ -550,7 +438,7 @@ worth running before the claim runner is complete.
 
 ## Later Features
 
-**Cross-file composition (name-graph stage 4).** Each `.lob` module
+**Cross-file composition. ** Each `.lob` module
 currently assembles and executes in isolation — one module cannot call
 a function defined in a sibling module. The name-graph already models
 this as stage 4, but the assembler and runner have no inter-module

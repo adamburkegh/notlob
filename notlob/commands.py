@@ -420,6 +420,55 @@ def cmd_test(
     return 1 if (n_fail or n_lint) else 0
 
 
+# ── Init / docs / new helpers ────────────────────────────────
+
+_DOCS_DIR = Path(__file__).parent / "docs"
+
+
+def _address_to_title(address: str) -> str:
+    """Convert a module address or directory name to a title string.
+
+    ``'roman/numerals'`` → ``'Roman Numerals'``
+    ``'my-project'``     → ``'My Project'``
+    """
+    parts = (
+        address.replace("/", " ")
+               .replace("-", " ")
+               .replace("_", " ")
+               .split()
+    )
+    return " ".join(p.capitalize() for p in parts)
+
+
+def _render_binding(project_title: str, language: str) -> str:
+    """Return the content of a new ``binding.lob`` file."""
+    return (
+        f"#{project_title}\n\n"
+        "---\n\n"
+        "#Binding\n"
+        f"    ~language {language}\n"
+    )
+
+
+def _render_starter(module_title: str) -> str:
+    """Return the content of a minimal starter ``.lob`` module."""
+    return (
+        f"#{module_title}\n\n"
+        "Describe this module here.\n\n"
+        "    # code goes here\n"
+    )
+
+
+def _render_agents(project_title: str) -> str:
+    """Return the content of a project-level ``AGENTS.md`` file.
+
+    Reads ``USER-AGENTS.md`` from the bundled docs directory and
+    substitutes ``{project_title}``.
+    """
+    template = (_DOCS_DIR / "USER-AGENTS.md").read_text(encoding="utf-8")
+    return template.format(project_title=project_title)
+
+
 # ── Build ─────────────────────────────────────────────────────
 
 def _build_header(
@@ -736,3 +785,119 @@ def cmd_query_content(address: str) -> int:
         indent=2,
     ))
     return 0 if node else 1
+
+
+# ── Docs / Init / New ─────────────────────────────────────────
+
+def cmd_docs(
+    output_dir: Path | None = None,
+    full:       bool        = False,
+) -> int:
+    """Write the notlob language reference to *output_dir*.
+
+    Defaults to ``notlob-docs/`` in the current directory.  The
+    directory is created if it does not exist.  Prints
+    ``DOCS   <path>`` for each file written.
+
+    Pass *full=True* (``--full``) to also write ``DESIGN.md`` —
+    the internal architecture and design rationale.
+    """
+    out_dir = output_dir or Path("notlob-docs")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in (
+        ["LANGUAGE.md", "DESIGN.md", "USER-AGENTS.md"] if full
+        else ["LANGUAGE.md"]
+    ):
+        content  = (_DOCS_DIR / name).read_text(encoding="utf-8")
+        out_path = out_dir / name
+        out_path.write_text(content, encoding="utf-8")
+        print(f"DOCS   {out_path}")
+
+    return 0
+
+
+def cmd_init(
+    language: str = "python",
+    bare:     bool = False,
+) -> int:
+    """Initialise a new notlob project in the current directory.
+
+    Creates ``binding.lob``, a starter ``.lob`` module, and (unless
+    *bare* is True) ``AGENTS.md`` plus the language reference in
+    ``notlob-docs/``.
+
+    Fails if ``binding.lob`` already exists.
+    """
+    cwd = Path.cwd()
+    binding_path = cwd / "binding.lob"
+    if binding_path.exists():
+        print(
+            "ERROR  <init>  binding.lob already exists — "
+            "already a notlob project",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Derive project and starter-module names from the directory name.
+    dir_name      = cwd.name
+    project_title = _address_to_title(dir_name)
+    starter_slug  = dir_name.replace("-", "_").replace(" ", "_").lower()
+    starter_name  = f"{starter_slug}.lob"
+    module_title  = _address_to_title(starter_slug)
+
+    # Write binding.lob
+    binding_path.write_text(
+        _render_binding(project_title, language), encoding="utf-8"
+    )
+    print(f"INIT   binding.lob")
+
+    # Write starter module
+    starter_path = cwd / starter_name
+    starter_path.write_text(
+        _render_starter(module_title), encoding="utf-8"
+    )
+    print(f"INIT   {starter_name}")
+
+    if not bare:
+        # Write AGENTS.md
+        agents_path = cwd / "AGENTS.md"
+        agents_path.write_text(
+            _render_agents(project_title), encoding="utf-8"
+        )
+        print(f"INIT   AGENTS.md")
+
+        # Write language reference
+        cmd_docs()
+
+    return 0
+
+
+def cmd_new(name: str) -> int:
+    """Create a new ``.lob`` module named *name*.
+
+    *name* is a module address (e.g. ``roman/numerals``) relative to
+    the project root.  The title is derived from the address.  Fails
+    if the file already exists or if no project root is found.
+    """
+    root, _ = _require_root()
+    if root is None:
+        return 1
+
+    name     = name.removesuffix(".lob")
+    lob_path = root / f"{name}.lob"
+
+    if lob_path.exists():
+        print(
+            f"ERROR  <new>  {lob_path.relative_to(root)} already exists",
+            file=sys.stderr,
+        )
+        return 1
+
+    lob_path.parent.mkdir(parents=True, exist_ok=True)
+    title = _address_to_title(name)
+    lob_path.write_text(
+        _render_starter(title), encoding="utf-8"
+    )
+    print(f"NEW    {lob_path.relative_to(root)}")
+    return 0

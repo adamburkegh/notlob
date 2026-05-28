@@ -18,7 +18,8 @@ import sys
 from pathlib import Path
 
 from notlob.commands import (
-    cmd_build, cmd_graph, cmd_run, cmd_test, cmd_weave,
+    cmd_build, cmd_docs, cmd_graph, cmd_init, cmd_new,
+    cmd_run, cmd_test, cmd_weave,
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
 )
@@ -151,6 +152,41 @@ def main() -> None:
         help="include source content (prose/code) on every node",
     )
 
+    docs_p = sub.add_parser(
+        "docs",
+        help="write the language reference to notlob-docs/",
+    )
+    docs_p.add_argument(
+        "--output", "-o", metavar="DIR", default=None,
+        help="output directory (default: notlob-docs/)",
+    )
+    docs_p.add_argument(
+        "--full", action="store_true", default=False,
+        help="also write DESIGN.md (internal architecture and rationale)",
+    )
+
+    init_p = sub.add_parser(
+        "init",
+        help="initialise a new notlob project in the current directory",
+    )
+    init_p.add_argument(
+        "--language", "-l", metavar="LANG", default="python",
+        help="project language (default: python)",
+    )
+    init_p.add_argument(
+        "--bare", action="store_true", default=False,
+        help="minimal scaffold only — no AGENTS.md or docs",
+    )
+
+    new_p = sub.add_parser(
+        "new",
+        help="create a new .lob module",
+    )
+    new_p.add_argument(
+        "name",
+        help="module address, e.g. roman/numerals",
+    )
+
     query_p = sub.add_parser(
         "query", help="query the package name-graph"
     )
@@ -229,6 +265,18 @@ def main() -> None:
             _opt_path(args.file, args.module_mode),
             include_content=args.content,
         ))
+    elif args.command == "docs":
+        sys.exit(cmd_docs(
+            Path(args.output) if args.output else None,
+            full=args.full,
+        ))
+    elif args.command == "init":
+        sys.exit(cmd_init(
+            language=args.language,
+            bare=args.bare,
+        ))
+    elif args.command == "new":
+        sys.exit(cmd_new(args.name))
     elif args.command == "query":
         op = getattr(args, "query_op", None)
         if op == "children":
