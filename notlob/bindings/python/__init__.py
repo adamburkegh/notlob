@@ -13,6 +13,7 @@ Usage::
 
 from notlob.bindings import BindingKit, ClaimResult, Status
 from notlob.bindings.python.assemble import assemble
+from notlob.bindings.python.lint import lint_python
 from notlob.bindings.python.runner import run_examples, run_tests, run_properties
 from notlob.bindings.python.symbols import extract_symbols
 
@@ -23,6 +24,7 @@ kit = BindingKit(
     run_examples=run_examples,
     run_properties=run_properties,
     run_tests=run_tests,
+    lint=lint_python,
 )
 
 __all__ = [

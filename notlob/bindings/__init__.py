@@ -89,12 +89,33 @@ class BindingKit:
     run_examples     (module, *, file_path=None) -> list[ClaimResult]
     run_properties   (module, *, binding=None, file_path=None) -> list[ClaimResult]
     run_tests        (module, *, binding=None, file_path=None) -> list[ClaimResult]
+    lint             (module, *, root=None) -> list[LintResult], or None
+                     when the binding does not support static analysis.
 
-    Runner callables are typed as Callable[..., list] to avoid a
-    circular import; the element type is always ClaimResult.
+    Runner and lint callables are typed as Callable[..., list] to avoid
+    a circular import; element types are ClaimResult and LintResult
+    respectively.
     """
     extract_symbols: Extractor
     assemble:        Assembler
     run_examples:    Callable[..., list]
     run_properties:  Callable[..., list]
     run_tests:       Callable[..., list]
+    lint:            Callable[..., list] | None = None
+
+
+# ── Lint result type ──────────────────────────────────────────
+
+@dataclass(frozen=True)
+class LintResult:
+    """A lint diagnostic from a static analysis tool.
+
+    address  Section address, e.g. 'roman/numerals#Decoding'
+    code     Rule code, e.g. 'E501' or 'F401'
+    message  Human-readable diagnostic message
+    col      Column number (1-based)
+    """
+    address: str
+    code:    str
+    message: str
+    col:     int = 1

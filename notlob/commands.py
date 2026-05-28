@@ -27,7 +27,7 @@ from notlob import (
     build, enrich, from_tree, parse_file, validate_refs,
     Edge, EdgeKind, NodeKind,
 )
-from notlob.bindings import ClaimResult, Status
+from notlob.bindings import ClaimResult, LintResult, Status
 from notlob.bindings.python import extract_symbols as _py_extract, kit as _py_kit
 from notlob.bindings.python.loader import ModuleCache
 from notlob.graph import module_address
@@ -127,6 +127,10 @@ def _print_result(r: ClaimResult) -> None:
             print(f"         error: {r.error}")
     elif r.status == Status.ERROR and r.error is not None:
         print(f"         error: {r.error}")
+
+
+def _print_lint_result(r: LintResult) -> None:
+    print(f"LINT   {r.address}  {r.code}: {r.message} (col {r.col})")
 
 
 # ── Reference-graph builder ───────────────────────────────────
@@ -292,8 +296,18 @@ def cmd_run(path: Path, keep_generated_src: str | None = None) -> int:
     return 0
 
 
-def cmd_test(path: Path, keep_generated_src: str | None = None) -> int:
-    """Run all claims in *path* and return an exit code."""
+def cmd_test(
+    path:               Path,
+    keep_generated_src: str | None      = None,
+    only:               set[str] | None = None,
+) -> int:
+    """Run claims (and optionally lint) in *path*; return an exit code.
+
+    *only* restricts which check types run.  When *None* all checks run.
+    Valid values in the set: ``"lint"``, ``"examples"``, ``"props"``,
+    ``"tests"``.  Lint failures produce exit code 1 just like claim
+    failures.
+    """
     try:
         module = from_tree(parse_file(path))
     except Exception as exc:
@@ -306,6 +320,11 @@ def cmd_test(path: Path, keep_generated_src: str | None = None) -> int:
     kit, extract_symbols = _get_binding_kit(language)
     cache    = ModuleCache(root) if (root and language != "haskell") else None
     keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
+
+    run_lint     = only is None or "lint"     in only
+    run_examples = only is None or "examples" in only
+    run_props    = only is None or "props"    in only
+    run_tests_   = only is None or "tests"    in only
 
     doc_errors: list[str] = []
 
@@ -323,14 +342,29 @@ def cmd_test(path: Path, keep_generated_src: str | None = None) -> int:
             print(msg, file=sys.stderr)
         return 1
 
-    results = (
-        kit.run_examples(module, file_path=path, cache=cache,
-                         keep_dir=keep_dir)
-        + kit.run_properties(module, binding=binding, file_path=path,
-                             cache=cache, keep_dir=keep_dir)
-        + kit.run_tests(module, binding=binding, file_path=path,
-                        cache=cache, keep_dir=keep_dir)
-    )
+    # ── Lint ──────────────────────────────────────────────────
+    lint_results: list[LintResult] = []
+    if run_lint and kit.lint is not None:
+        lint_results = kit.lint(module, root=root)
+        for r in lint_results:
+            _print_lint_result(r)
+
+    # ── Claims ────────────────────────────────────────────────
+    results = []
+    if run_examples:
+        results += kit.run_examples(
+            module, file_path=path, cache=cache, keep_dir=keep_dir,
+        )
+    if run_props:
+        results += kit.run_properties(
+            module, binding=binding, file_path=path,
+            cache=cache, keep_dir=keep_dir,
+        )
+    if run_tests_:
+        results += kit.run_tests(
+            module, binding=binding, file_path=path,
+            cache=cache, keep_dir=keep_dir,
+        )
 
     # SKIPs don't count toward the pass/fail tally
     non_skip = [r for r in results if r.status != Status.SKIP]
@@ -339,12 +373,16 @@ def cmd_test(path: Path, keep_generated_src: str | None = None) -> int:
 
     n_fail = sum(1 for r in non_skip if r.status != Status.PASS)
     n_pass = len(non_skip) - n_fail
-    if n_fail:
-        print(f"\n{n_pass} passed, {n_fail} failed")
-    else:
-        print(f"\n{n_pass} passed")
+    n_lint = len(lint_results)
 
-    return 1 if n_fail else 0
+    parts = [f"{n_pass} passed"]
+    if n_fail:
+        parts.append(f"{n_fail} failed")
+    if n_lint:
+        parts.append(f"{n_lint} lint")
+    print(f"\n{', '.join(parts)}")
+
+    return 1 if (n_fail or n_lint) else 0
 
 
 # ── Graph export ──────────────────────────────────────────────

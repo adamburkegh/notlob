@@ -91,6 +91,17 @@ def main() -> None:
             "(overrides ~keep-generated-src in binding.lob)"
         ),
     )
+    test_p.add_argument(
+        "--only",
+        nargs="+",
+        choices=["lint", "examples", "props", "tests"],
+        default=None,
+        metavar="CHECK",
+        help=(
+            "run only the listed check types "
+            "(choices: lint, examples, props, tests; default: all)"
+        ),
+    )
 
     weave_p = sub.add_parser(
         "weave", help="render a .lob file as Markdown"
@@ -173,6 +184,7 @@ def main() -> None:
         sys.exit(cmd_test(
             _resolve_path(args.file, args.module_mode),
             keep_generated_src=args.keep_generated_src,
+            only=set(args.only) if args.only else None,
         ))
     elif args.command == "graph":
         sys.exit(cmd_graph(
