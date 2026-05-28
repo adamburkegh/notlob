@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from notlob.commands import (
-    cmd_graph, cmd_run, cmd_test, cmd_weave,
+    cmd_build, cmd_graph, cmd_run, cmd_test, cmd_weave,
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
 )
@@ -103,6 +103,15 @@ def main() -> None:
         ),
     )
 
+    build_p = sub.add_parser(
+        "build", help="assemble a .lob file to a source artifact"
+    )
+    _add_file_arg(build_p)
+    build_p.add_argument(
+        "--output", "-o", metavar="DIR", default="dist",
+        help="output directory (default: dist/)",
+    )
+
     weave_p = sub.add_parser(
         "weave", help="render a .lob file as Markdown"
     )
@@ -170,7 +179,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "weave":
+    if args.command == "build":
+        sys.exit(cmd_build(
+            _resolve_path(args.file, args.module_mode),
+            output_dir=Path(args.output),
+        ))
+    elif args.command == "weave":
         sys.exit(cmd_weave(
             _resolve_path(args.file, args.module_mode),
             language=args.language,

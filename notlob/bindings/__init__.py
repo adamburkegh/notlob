@@ -91,6 +91,8 @@ class BindingKit:
     run_tests        (module, *, binding=None, file_path=None) -> list[ClaimResult]
     lint             (module, *, root=None) -> list[LintResult], or None
                      when the binding does not support static analysis.
+    extension        File extension for build artifacts (e.g. ``"py"``,
+                     ``"hs"``, ``"ts"``).
 
     Runner and lint callables are typed as Callable[..., list] to avoid
     a circular import; element types are ClaimResult and LintResult
@@ -102,6 +104,9 @@ class BindingKit:
     run_properties:  Callable[..., list]
     run_tests:       Callable[..., list]
     lint:            Callable[..., list] | None = None
+    extension:       str                        = "py"
+    comment_prefix:  str                        = "#"
+    build:           Callable[..., str]  | None = None
 
 
 # ── Lint result type ──────────────────────────────────────────

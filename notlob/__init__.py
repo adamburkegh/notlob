@@ -1,3 +1,9 @@
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__: str = _pkg_version("notlob")
+except Exception:
+    __version__ = "dev"
+
 from .parser import parse, parse_file, to_dict, to_json
 from .model import (
     from_tree,

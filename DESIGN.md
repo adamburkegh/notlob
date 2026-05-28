@@ -491,6 +491,27 @@ Haskell binding would respond to `~property-testing quickcheck` by
 preparing a completely different execution strategy; the `~property` sigil
 is language-agnostic, the binding owns the implementation entirely.
 
+**CLI commands.** The notlob command surface:
+
+- `notlob run` / `lob` — assemble and execute a module.  Runs `~run`
+  claims in document order after the module code.  For compiled
+  languages (Haskell) this invokes the compiler and runtime; for
+  interpreted languages it exec's directly.
+- `notlob test` — run all claims (examples, properties, #Tests) and
+  report results by address.  Runs the linter if the binding supports
+  it.  Exit 1 on any failure or lint diagnostic.
+- `notlob build` — assemble a module (with inlined deps) and write a
+  single source file to an output directory.  No execution.  The
+  primary entry point for browser-target languages.
+- `notlob weave` — render a `.lob` file as Markdown.
+- `notlob graph` — export the package name-graph as JSON.
+- `notlob query` — navigate the name-graph from the command line
+  (`children`, `resolve`, `search`, `imports`, `imported-by`,
+  `content`).
+
+All file-targeting commands accept either a filesystem path or a module
+address via `-m` (resolved from CWD against the nearest `binding.lob`).
+
 **Document output (weave).** The runtime can render a `.lob` file or
 package as a human-readable document — the complement of execution.
 Target formats:
@@ -548,33 +569,34 @@ source line numbers back to the originating `.lob` block, so that error
 messages cite the `.lob` file rather than the generated Python. The
 assembler must emit this map as a side product of assembly.
 
-**Assembly-once and `notlob build`.** `notlob test` currently assembles
-each module three times — once per runner (`run_examples`,
-`run_properties`, `run_tests`). The immediate fix is a
-`run_module(module, binding, file_path)` function that assembles once
-into a shared namespace and passes it to all three runners. The longer
-step is `notlob build`, which writes assembled source to `.py` files:
+**`notlob build`.** Assembles a module (with inlined dependencies)
+into a single source file:
 
-- Each `.lob` file produces one `.py` file in `dist/<package>/`.
-- `#References` becomes the imports section; module code becomes the
-  body; `~run` body is wrapped in `if __name__ == "__main__":`.
-- `~example` and `~property` claims are *not* included in the build
-  artifact — they are source-level only, part of the argument rather
-  than the program.
-- `notlob build --with-tests` additionally generates a
-  `tests/test_<module>.py` from inline claims and `#Tests` sections,
-  producing a standard pytest-compatible test suite alongside the
-  library.
-- The build output is a standard Python package. The source
-  distribution includes `.lob` files; the wheel contains only `.py`.
-  A notlob-authored library is therefore installable by pure-Python
-  users with no notlob dependency — the `.lob` sources are the
-  authoritative human form, the `.py` files are the published artifact.
+```
+notlob build -m roman/numerals/app --output dist/
+→ dist/roman_numerals_app.hs
+```
 
-For the Haskell binding, `notlob build` produces `.hs` files;
-compilation and property testing (QuickCheck/Hedgehog) are delegated
-to GHC/stack. The format stays language-agnostic; each binding owns
-its assembly target entirely.
+Design decisions:
+
+- *Single file per invocation.* All lob-ref dependencies are inlined
+  into one self-contained artifact. The output filename is the module
+  address slug plus the language extension (e.g. `roman_numerals_app.hs`).
+  Directory structure is not preserved in the output; the slug encodes it.
+- *Claims are not emitted.* `~example`, `~property`, and `#Tests` content
+  is source-level only. The build artifact contains only code blocks —
+  the program, not the argument.
+- *Language-specific extension.* Each `BindingKit` declares its
+  `extension` (`"hs"`, `"py"`, `"ts"`). `cmd_build` uses it; no
+  language-specific branching in the command layer.
+- *Dep inlining is binding-determined.* Haskell inlines deps into a
+  single `module Foo where` file. Python currently writes the module's
+  own assembled source without inlining (Python deps are resolved at
+  runtime by the loader). TypeScript will inline, like Haskell.
+- *Primary motivation: browser-target languages.* `notlob run` assumes
+  the language has an invocable runtime. For TypeScript/JavaScript, the
+  "runtime" is a browser; `notlob build` is the correct entry point,
+  producing a `.ts` or `.js` file to serve from `dist/`.
 
 **Cross-reference aliasing.** Cross-references use `##Name` syntax in
 prose, validated against the doc-node graph. A future extension would

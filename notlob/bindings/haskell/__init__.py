@@ -16,11 +16,31 @@ The runner requires ``runghc`` on PATH or the Stack build tool
 rather than raising.
 """
 
+from pathlib import Path
+
 from notlob.bindings import BindingKit
-from notlob.bindings.haskell.assemble import assemble
+from notlob.bindings.haskell.assemble import assemble, assemble_with_deps
 from notlob.bindings.haskell.lint import lint_haskell
-from notlob.bindings.haskell.runner import run_examples, run_tests, run_properties
+from notlob.bindings.haskell.runner import (
+    _load_dep_modules, run_examples, run_tests, run_properties,
+)
 from notlob.bindings.haskell.symbols import extract_symbols
+from notlob.model import Module
+
+
+def build_haskell(
+    module: Module,
+    file_path: Path | None = None,
+) -> str:
+    """Assemble *module* with inlined deps for the build command.
+
+    Loads lob-ref dependencies from the project tree rooted at
+    *file_path*, inlines their code before the module's own code, and
+    returns a single self-contained Haskell source string.
+    """
+    dep_modules = _load_dep_modules(module, file_path)
+    return assemble_with_deps(module, dep_modules)
+
 
 #: The assembled Haskell binding kit.
 kit = BindingKit(
@@ -30,6 +50,9 @@ kit = BindingKit(
     run_properties=run_properties,
     run_tests=run_tests,
     lint=lint_haskell,
+    extension="hs",
+    comment_prefix="--",
+    build=build_haskell,
 )
 
 __all__ = [
