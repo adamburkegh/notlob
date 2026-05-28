@@ -173,6 +173,33 @@ class TestCmdQuerySearch:
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
+    def test_bare_word_auto_wraps_as_substring(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """A pattern with no wildcards is wrapped as *pattern*."""
+        root = _project(tmp_path)
+        _write(root, "t.lob", (
+            "#T\n"
+            "    def apply_discount(): pass\n"
+            "    def apply_tax(): pass\n"
+        ))
+        monkeypatch.chdir(root)
+        cmd_query_search("discount")   # no wildcards
+        data   = json.loads(capsys.readouterr().out)
+        labels = [n["label"] for n in data]
+        assert "apply_discount" in labels
+
+    def test_bare_word_no_match_returns_empty(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """A bare word that matches nothing returns []."""
+        root = _project(tmp_path)
+        _write(root, "t.lob", "#T\n    def compute(): pass\n")
+        monkeypatch.chdir(root)
+        cmd_query_search("missing")
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
 
 # ── cmd_query_imports / imported_by ───────────────────────────
 

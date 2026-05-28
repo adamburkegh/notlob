@@ -296,26 +296,24 @@ def cmd_run(path: Path, keep_generated_src: str | None = None) -> int:
     return 0
 
 
-def cmd_test(
+def _test_module(
     path:               Path,
+    root:               Path | None,
+    binding:            dict,
     keep_generated_src: str | None      = None,
     only:               set[str] | None = None,
-) -> int:
-    """Run claims (and optionally lint) in *path*; return an exit code.
+) -> tuple[int, int, int]:
+    """Test one module; print per-claim output.
 
-    *only* restricts which check types run.  When *None* all checks run.
-    Valid values in the set: ``"lint"``, ``"examples"``, ``"props"``,
-    ``"tests"``.  Lint failures produce exit code 1 just like claim
-    failures.
+    Returns *(n_pass, n_fail, n_lint)*.  Parse or document errors count
+    as one failure and short-circuit claim execution.
     """
     try:
         module = from_tree(parse_file(path))
     except Exception as exc:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
-        return 1
+        return 0, 1, 0
 
-    binding  = _find_binding(path)
-    root     = find_project_root(path)
     language = binding.get("language")
     kit, extract_symbols = _get_binding_kit(language)
     cache    = ModuleCache(root) if (root and language != "haskell") else None
@@ -340,7 +338,7 @@ def cmd_test(
     if doc_errors:
         for msg in doc_errors:
             print(msg, file=sys.stderr)
-        return 1
+        return 0, 1, 0
 
     # ── Lint ──────────────────────────────────────────────────
     lint_results: list[LintResult] = []
@@ -366,7 +364,6 @@ def cmd_test(
             cache=cache, keep_dir=keep_dir,
         )
 
-    # SKIPs don't count toward the pass/fail tally
     non_skip = [r for r in results if r.status != Status.SKIP]
     for r in results:
         _print_result(r)
@@ -374,6 +371,44 @@ def cmd_test(
     n_fail = sum(1 for r in non_skip if r.status != Status.PASS)
     n_pass = len(non_skip) - n_fail
     n_lint = len(lint_results)
+    return n_pass, n_fail, n_lint
+
+
+def cmd_test(
+    path:               Path | None      = None,
+    keep_generated_src: str | None       = None,
+    only:               set[str] | None  = None,
+) -> int:
+    """Run claims in *path* (or all project modules) and return an exit code.
+
+    When *path* is omitted, discovers the project from CWD and tests
+    every module.  Pass a specific *.lob* path to test a single module.
+
+    *only* restricts which check types run.  When *None* all checks run.
+    Valid values in the set: ``"lint"``, ``"examples"``, ``"props"``,
+    ``"tests"``.  Lint failures produce exit code 1 just like claim
+    failures.
+    """
+    if path is not None:
+        root    = find_project_root(path)
+        binding = _find_binding(path)
+        n_pass, n_fail, n_lint = _test_module(
+            path, root, binding, keep_generated_src, only,
+        )
+    else:
+        root, binding = _require_root()
+        if root is None:
+            return 1
+        n_pass = n_fail = n_lint = 0
+        for lob_path in sorted(root.glob("**/*.lob")):
+            if lob_path.name == "binding.lob":
+                continue
+            p, f, l = _test_module(
+                lob_path, root, binding, keep_generated_src, only,
+            )
+            n_pass += p
+            n_fail += f
+            n_lint += l
 
     parts = [f"{n_pass} passed"]
     if n_fail:
@@ -407,34 +442,16 @@ def _build_header(
     )
 
 
-def cmd_build(path: Path, output_dir: Path) -> int:
-    """Assemble *path* (with inlined deps) and write to *output_dir*.
+def _build_one(path: Path, kit, output_dir: Path) -> int:
+    """Build a single module and write the artifact to *output_dir*.
 
-    The output filename is ``<slug>.<ext>`` where *slug* is the module
-    address with ``/`` replaced by ``_`` and *ext* is the language
-    extension from the binding kit (e.g. ``hs``, ``py``).
-
-    Each binding's ``build`` callable owns the assembly strategy — e.g.
-    Haskell inlines dependencies; Python writes the module's own source.
-
-    Prints ``BUILD  <path>`` on success.
+    Returns 0 on success, 1 on error.  Prints ``BUILD  <out_path>`` on
+    success, or an ERROR line on failure.
     """
     try:
         module = from_tree(parse_file(path))
     except Exception as exc:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
-        return 1
-
-    binding  = _find_binding(path)
-    language = binding.get("language")
-    kit, _   = _get_binding_kit(language)
-
-    if kit.build is None:
-        print(
-            f"ERROR  <build>  no build support for language "
-            f"{language!r}",
-            file=sys.stderr,
-        )
         return 1
 
     source = kit.build(module, path)
@@ -452,28 +469,85 @@ def cmd_build(path: Path, output_dir: Path) -> int:
     return 0
 
 
+def cmd_build(path: Path | None = None, output_dir: Path = Path("dist")) -> int:
+    """Assemble *path* (or all project modules) and write to *output_dir*.
+
+    When *path* is omitted, discovers the project from CWD and builds
+    every module.  Pass a specific *.lob* path to build a single module.
+
+    The output filename is ``<slug>.<ext>`` where *slug* is the module
+    address with ``/`` replaced by ``_`` and *ext* is the language
+    extension from the binding kit (e.g. ``hs``, ``py``).
+
+    Each binding's ``build`` callable owns the assembly strategy — e.g.
+    Haskell inlines dependencies; Python writes the module's own source.
+    """
+    if path is not None:
+        binding  = _find_binding(path)
+        language = binding.get("language")
+        kit, _   = _get_binding_kit(language)
+        if kit.build is None:
+            print(
+                f"ERROR  <build>  no build support for language "
+                f"{language!r}",
+                file=sys.stderr,
+            )
+            return 1
+        return _build_one(path, kit, output_dir)
+
+    root, binding = _require_root()
+    if root is None:
+        return 1
+    language = binding.get("language")
+    kit, _   = _get_binding_kit(language)
+    if kit.build is None:
+        print(
+            f"ERROR  <build>  no build support for language "
+            f"{language!r}",
+            file=sys.stderr,
+        )
+        return 1
+    rc = 0
+    for lob_path in sorted(root.glob("**/*.lob")):
+        if lob_path.name == "binding.lob":
+            continue
+        if _build_one(lob_path, kit, output_dir) != 0:
+            rc = 1
+    return rc
+
+
 # ── Graph export ──────────────────────────────────────────────
 
-def cmd_graph(path: Path, include_content: bool = False) -> int:
+def cmd_graph(
+    path:            Path | None = None,
+    include_content: bool        = False,
+) -> int:
     """Print the package name-graph as JSON to stdout.
 
-    When *path* is inside a notlob project (a ``binding.lob`` is
-    found), the full package graph is built and exported.  For a
-    standalone file the single-module graph is used instead.
+    When *path* is omitted, discovers the project from CWD and exports
+    the full package graph.  Pass a specific *.lob* path to export that
+    file's module graph (or its project graph when it is inside a
+    project).
 
-    The language binding (from the project's ``binding.lob``) controls
-    which symbol extractor is used.
-
-    Pass *include_content=True* to attach prose/code to every node.
+    The language binding (from ``binding.lob``) controls symbol
+    extraction.  Pass *include_content=True* to attach prose/code to
+    every node.
     """
-    root = find_project_root(path)
-    binding = _find_binding(path) if root else {}
-    language = binding.get("language")
+    if path is not None:
+        root    = find_project_root(path)
+        binding = _find_binding(path) if root else {}
+    else:
+        root, binding = _require_root()
+        if root is None:
+            return 1
+
+    language = (binding or {}).get("language")
     _, extract_symbols = _get_binding_kit(language)
 
     if root is not None:
         graph = build_package(root, extract_symbols)
     else:
+        # standalone file — only reachable via an explicit path arg
         try:
             module = from_tree(parse_file(path))
         except Exception as exc:
@@ -499,8 +573,14 @@ def _node_dict(node, include_content: bool = False) -> dict:
     return d
 
 
-def _require_graph(hint: Path | None = None):
-    """Build the package graph, or return None with an error printed."""
+def _require_root(
+    hint: Path | None = None,
+) -> tuple[Path, dict] | tuple[None, None]:
+    """Return *(root, binding)* for the project containing *hint* (CWD).
+
+    Prints an error and returns *(None, None)* when no project root is
+    found.
+    """
     root = find_project_root(hint or Path.cwd())
     if root is None:
         print(
@@ -508,9 +588,18 @@ def _require_graph(hint: Path | None = None):
             "run from inside a notlob project",
             file=sys.stderr,
         )
+        return None, None
+    return root, _find_binding(root / "binding.lob")
+
+
+def _require_graph(hint: Path | None = None):
+    """Build the package graph, or return None with an error printed."""
+    root, binding = _require_root(hint)
+    if root is None:
         return None
-    binding = _find_binding(root / "binding.lob")
-    _, extract_symbols = _get_binding_kit(binding.get("language"))
+    _, extract_symbols = _get_binding_kit(
+        binding.get("language") if binding else None
+    )
     return build_package(root, extract_symbols)
 
 
@@ -545,10 +634,16 @@ def cmd_query_search(
     pattern: str,
     kind_str: str | None = None,
 ) -> int:
-    """Print nodes whose label matches *pattern* (fnmatch-style)."""
+    """Print nodes whose label matches *pattern* (fnmatch-style).
+
+    Bare words (no ``*`` or ``?`` wildcards) are automatically wrapped
+    as ``*pattern*`` for convenient substring matching.
+    """
     graph = _require_graph()
     if graph is None:
         return 1
+    if "*" not in pattern and "?" not in pattern:
+        pattern = f"*{pattern}*"
     kind    = NodeKind[kind_str] if kind_str else None
     results = list(graph.search(pattern, kind))
     print(json.dumps([_node_dict(n) for n in results], indent=2))
@@ -575,8 +670,15 @@ def cmd_query_imported_by(address: str) -> int:
     return 0
 
 
-def cmd_weave(path: Path, language: str | None = None) -> int:
-    """Render *path* as Markdown and write to stdout.
+def cmd_weave(
+    path:     Path | None = None,
+    language: str  | None = None,
+) -> int:
+    """Render *path* (or all project modules) as Markdown to stdout.
+
+    When *path* is omitted, discovers the project from CWD and renders
+    every module in sorted path order, separated by ``---`` dividers.
+    Pass a specific *.lob* path to render a single module.
 
     The language tag for fenced code blocks is resolved in order:
     1. The *language* argument if supplied (from ``--language`` flag).
@@ -584,15 +686,37 @@ def cmd_weave(path: Path, language: str | None = None) -> int:
     3. The default ``"python"``.
     """
     from notlob.weave import weave_markdown   # lazy — avoids circular dep
-    try:
-        module = from_tree(parse_file(path))
-    except Exception as exc:
-        print(f"ERROR  <parse>  {exc}", file=sys.stderr)
+
+    if path is not None:
+        try:
+            module = from_tree(parse_file(path))
+        except Exception as exc:
+            print(f"ERROR  <parse>  {exc}", file=sys.stderr)
+            return 1
+        if language is None:
+            binding  = _find_binding(path)
+            language = binding.get("language", "python")
+        print(weave_markdown(module, language), end="")
+        return 0
+
+    root, binding = _require_root()
+    if root is None:
         return 1
     if language is None:
-        binding  = _find_binding(path)
-        language = binding.get("language", "python")
-    print(weave_markdown(module, language), end="")
+        language = (binding or {}).get("language", "python")
+
+    first = True
+    for lob_path in sorted(root.glob("**/*.lob")):
+        if lob_path.name == "binding.lob":
+            continue
+        try:
+            module = from_tree(parse_file(lob_path))
+        except Exception:
+            continue
+        if not first:
+            print("\n---\n")
+        print(weave_markdown(module, language), end="")
+        first = False
     return 0
 
 

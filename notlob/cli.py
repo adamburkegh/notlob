@@ -47,11 +47,23 @@ def _resolve_path(file_or_addr: str, module_mode: bool) -> Path:
     return resolve_module_path(file_or_addr, root)
 
 
-def _add_file_arg(p) -> None:
-    """Add the shared file/address positional and -m flag to a subparser."""
+def _add_file_arg(p, required: bool = True) -> None:
+    """Add the shared file/address positional and -m flag to a subparser.
+
+    When *required* is False the file argument is optional; omitting it
+    causes the command to operate on the entire project (CWD-based
+    discovery).
+    """
     p.add_argument(
         "file",
-        help="path to .lob file, or module address when -m is used",
+        nargs=None if required else "?",
+        default=None,
+        help=(
+            "path to .lob file, or module address when -m is used; "
+            "omit to operate on the whole project"
+            if not required else
+            "path to .lob file, or module address when -m is used"
+        ),
     )
     p.add_argument(
         "-m", "--module",
@@ -82,8 +94,11 @@ def main() -> None:
         ),
     )
 
-    test_p = sub.add_parser("test", help="run all claims in a .lob file")
-    _add_file_arg(test_p)
+    test_p = sub.add_parser(
+        "test",
+        help="run all claims in a .lob file, or the whole project",
+    )
+    _add_file_arg(test_p, required=False)
     test_p.add_argument(
         "--keep-generated-src", metavar="PATH", default=None,
         help=(
@@ -104,18 +119,20 @@ def main() -> None:
     )
 
     build_p = sub.add_parser(
-        "build", help="assemble a .lob file to a source artifact"
+        "build",
+        help="assemble a .lob file (or the whole project) to source artifacts",
     )
-    _add_file_arg(build_p)
+    _add_file_arg(build_p, required=False)
     build_p.add_argument(
         "--output", "-o", metavar="DIR", default="dist",
         help="output directory (default: dist/)",
     )
 
     weave_p = sub.add_parser(
-        "weave", help="render a .lob file as Markdown"
+        "weave",
+        help="render a .lob file (or the whole project) as Markdown",
     )
-    _add_file_arg(weave_p)
+    _add_file_arg(weave_p, required=False)
     weave_p.add_argument(
         "--language", default=None, metavar="LANG",
         help=(
@@ -125,9 +142,10 @@ def main() -> None:
     )
 
     graph_p = sub.add_parser(
-        "graph", help="export the package name-graph as JSON"
+        "graph",
+        help="export the package name-graph as JSON",
     )
-    _add_file_arg(graph_p)
+    _add_file_arg(graph_p, required=False)
     graph_p.add_argument(
         "--content", action="store_true", default=False,
         help="include source content (prose/code) on every node",
@@ -179,14 +197,20 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    def _opt_path(file_arg, module_mode):
+        """Resolve an optional file argument; return None when absent."""
+        if file_arg is None:
+            return None
+        return _resolve_path(file_arg, module_mode)
+
     if args.command == "build":
         sys.exit(cmd_build(
-            _resolve_path(args.file, args.module_mode),
+            _opt_path(args.file, args.module_mode),
             output_dir=Path(args.output),
         ))
     elif args.command == "weave":
         sys.exit(cmd_weave(
-            _resolve_path(args.file, args.module_mode),
+            _opt_path(args.file, args.module_mode),
             language=args.language,
         ))
     elif args.command == "run":
@@ -196,13 +220,13 @@ def main() -> None:
         ))
     elif args.command == "test":
         sys.exit(cmd_test(
-            _resolve_path(args.file, args.module_mode),
+            _opt_path(args.file, args.module_mode),
             keep_generated_src=args.keep_generated_src,
             only=set(args.only) if args.only else None,
         ))
     elif args.command == "graph":
         sys.exit(cmd_graph(
-            _resolve_path(args.file, args.module_mode),
+            _opt_path(args.file, args.module_mode),
             include_content=args.content,
         ))
     elif args.command == "query":

@@ -2,6 +2,8 @@
 
 cmd_build assembles a module (with inlined deps where supported) and
 writes the result to a single file in the requested output directory.
+When no path is given it discovers the project from CWD and builds
+every module.
 """
 
 from __future__ import annotations
@@ -240,3 +242,39 @@ class TestCmdBuildHaskell:
         # Dep code should be present in the single output file.
         assert "toRoman" in source
         assert "main" in source
+
+
+# ── Project-mode build (no path arg) ─────────────────────────
+
+class TestCmdBuildProjectMode:
+    def test_builds_all_modules(self, tmp_path, monkeypatch):
+        """No path arg builds every module in the project."""
+        root = _py_project(tmp_path)
+        _write(root, "alpha.lob", "#Alpha\n\n    x = 1\n")
+        _write(root, "beta.lob",  "#Beta\n\n    y = 2\n")
+        out = tmp_path / "dist"
+        monkeypatch.chdir(root)
+        assert cmd_build(output_dir=out) == 0
+        assert (out / "alpha.py").exists()
+        assert (out / "beta.py").exists()
+
+    def test_skips_binding_lob(self, tmp_path, monkeypatch):
+        """binding.lob is not included in the build output."""
+        root = _py_project(tmp_path)
+        _write(root, "mod.lob", "#Mod\n\n    x = 1\n")
+        out = tmp_path / "dist"
+        monkeypatch.chdir(root)
+        cmd_build(output_dir=out)
+        names = [p.name for p in out.iterdir()]
+        assert not any("binding" in n for n in names)
+
+    def test_no_project_root_returns_1(self, tmp_path, monkeypatch):
+        """Without a binding.lob in CWD tree, returns exit code 1."""
+        monkeypatch.chdir(tmp_path)
+        assert cmd_build(output_dir=tmp_path / "dist") == 1
+
+    def test_returns_zero_on_success(self, tmp_path, monkeypatch):
+        root = _py_project(tmp_path)
+        _write(root, "thing.lob", "#Thing\n\n    x = 1\n")
+        monkeypatch.chdir(root)
+        assert cmd_build(output_dir=tmp_path / "dist") == 0
