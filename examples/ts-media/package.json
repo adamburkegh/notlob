@@ -1,0 +1,8 @@
+{
+  "name": "ts-media",
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0"
+  }
+}

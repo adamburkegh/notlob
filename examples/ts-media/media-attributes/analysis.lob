@@ -1,0 +1,229 @@
+#Media-Attributes Analysis
+
+Core data types, sample dataset, and analysis algorithms for exploring
+how media forms differ across eight perceptual and social dimensions.
+The functions here are pure — no browser APIs — so they can be fully
+tested and reused by any rendering layer.
+
+    interface Axis {
+      readonly label: string;
+      readonly short: string;
+      readonly color: string;
+    }
+
+    interface MediaItem {
+      readonly name: string;
+      readonly tag:  string;
+      readonly vals: readonly number[];
+    }
+
+##Axes
+
+Eight dimensions capture the independent ways that media forms differ.
+Each axis runs from a low to a high pole; values are integers on a
+1–10 scale.
+
+    const AXES: readonly Axis[] = [
+      { label: 'Durable → Disposable',    short: 'Disposable',  color: '#0F6E56' },
+      { label: 'Low → High sensory',      short: 'Sensory',     color: '#185FA5' },
+      { label: 'Static → Moving',         short: 'Moving',      color: '#854F0B' },
+      { label: 'Personal → Global',       short: 'Global',      color: '#993556' },
+      { label: 'Read-only → Interactive', short: 'Interactive', color: '#1D6B8A' },
+    ];
+
+~example
+    AXES.length === 5
+    AXES[0].short === 'Disposable'
+
+##Data
+
+Nine media forms chosen for breadth: two text forms, two digital,
+one each of video, interactive, audio, live, and visual.  Together
+they span the full range of each axis and produce interesting
+clustering behaviour.
+
+    const MEDIA: readonly MediaItem[] = [
+      { name: 'Novel',        tag: 'text',        vals: [9, 3, 1, 4, 1] },
+      { name: 'Newspaper',    tag: 'text',        vals: [2, 3, 1, 8, 2] },
+      { name: 'Feature film', tag: 'video',       vals: [7, 8, 9, 6, 1] },
+      { name: 'Video game',   tag: 'interactive', vals: [5, 7, 8, 5, 9] },
+      { name: 'Podcast',      tag: 'audio',       vals: [3, 4, 1, 6, 2] },
+      { name: 'Live concert', tag: 'live',        vals: [5, 9, 7, 7, 2] },
+      { name: 'Social media', tag: 'digital',     vals: [1, 4, 4, 9, 7] },
+      { name: 'TikTok',       tag: 'digital',     vals: [1, 7, 9, 10, 6] },
+      { name: 'Paintings',    tag: 'visual',      vals: [10, 6, 1, 4, 1] },
+    ];
+
+~example
+    MEDIA.length === 9
+    MEDIA[0].name === 'Novel'
+    MEDIA[8].tag  === 'visual'
+
+##Distance
+
+Euclidean distance between two attribute vectors.  Because all axes
+share the same 1–10 scale, raw Euclidean distance is a reasonable
+similarity measure without normalisation.
+
+    function dist(a: readonly number[], b: readonly number[]): number {
+      return Math.sqrt(a.reduce((sum, v, i) => sum + (v - b[i]) ** 2, 0));
+    }
+
+~example
+    dist([0, 0], [3, 4]) === 5
+    dist([0, 0], [0, 0]) === 0
+    dist([1, 0], [0, 0]) === 1
+
+##Clustering
+
+Standard k-means with random centroid initialisation.  Assignments
+are stable in practice within 150 iterations on this dataset; the
+caller may pass a smaller value for testing.
+
+With k = 1 the result is trivially deterministic: every item lands
+in cluster 0 regardless of initialisation.
+
+    function kmeans(
+      data:  readonly MediaItem[],
+      k:     number,
+      iters: number = 150,
+    ): number[] {
+      let centroids = [...data]
+        .sort(() => Math.random() - 0.5)
+        .slice(0, k)
+        .map(d => [...d.vals]);
+      const assignments = new Array<number>(data.length).fill(0);
+
+      for (let iter = 0; iter < iters; iter++) {
+        let changed = false;
+        data.forEach((item, i) => {
+          let best = 0, bestDist = Infinity;
+          centroids.forEach((c, ci) => {
+            const d = dist(item.vals, c);
+            if (d < bestDist) { bestDist = d; best = ci; }
+          });
+          if (best !== assignments[i]) { assignments[i] = best; changed = true; }
+        });
+        if (!changed) break;
+        centroids = centroids.map((_, ci) => {
+          const members = data.filter((_, i) => assignments[i] === ci);
+          if (!members.length) return centroids[ci];
+          return AXES.map((_, ai) =>
+            members.reduce((s, m) => s + m.vals[ai], 0) / members.length,
+          );
+        });
+      }
+      return assignments;
+    }
+
+~example
+    kmeans(MEDIA, 1).every(a => a === 0)
+    kmeans(MEDIA, 3).length === MEDIA.length
+    kmeans(MEDIA, 3).every(a => a >= 0 && a < 3)
+
+##Force Physics
+
+A simple spring-and-gravity simulation for laying out nodes in 2-D.
+Same-cluster pairs attract more tightly; cross-cluster pairs are pushed
+further apart.  `runForce` runs the simulation and returns the final
+node positions.
+
+    interface ForceNode {
+      readonly mediaIndex: number;
+      x: number; y: number;
+      vx: number; vy: number;
+    }
+
+    interface NodePair {
+      readonly a:    number;
+      readonly b:    number;
+      readonly dist: number;
+    }
+
+    function buildPairs(items: readonly MediaItem[]): NodePair[] {
+      const pairs: NodePair[] = [];
+      for (let a = 0; a < items.length; a++)
+        for (let b = a + 1; b < items.length; b++)
+          pairs.push({ a, b, dist: dist(items[a].vals, items[b].vals) });
+      return pairs;
+    }
+
+    function forceTick(
+      nodes:       ForceNode[],
+      pairs:       NodePair[],
+      assignments: number[],
+      W: number,
+      H: number,
+    ): void {
+      const maxD = Math.max(...pairs.map(p => p.dist), 1);
+      nodes.forEach(n => { n.vx *= 0.55; n.vy *= 0.55; });
+      nodes.forEach(n => {
+        n.vx += (W / 2 - n.x) * 0.002;
+        n.vy += (H / 2 - n.y) * 0.002;
+      });
+      pairs.forEach(({ a, b, dist: d }) => {
+        const na = nodes[a], nb = nodes[b];
+        const dx = nb.x - na.x, dy = nb.y - na.y;
+        const dd = Math.sqrt(dx * dx + dy * dy) || 1;
+        const same   = assignments[a] === assignments[b];
+        const normD  = d / maxD;
+        const target = same ? 30 + normD * 55 : 80 + normD * 90;
+        const force  = (dd - target) * 0.045;
+        const fx = dx / dd * force, fy = dy / dd * force;
+        na.vx += fx; na.vy += fy;
+        nb.vx -= fx; nb.vy -= fy;
+      });
+      nodes.forEach(n => {
+        n.x = Math.max(30,      Math.min(W - 30, n.x + n.vx));
+        n.y = Math.max(16,      Math.min(H - 16, n.y + n.vy));
+      });
+    }
+
+    function runForce(
+      items:       readonly MediaItem[],
+      assignments: number[],
+      W:           number,
+      H:           number,
+      ticks:       number = 500,
+    ): ForceNode[] {
+      const nodes: ForceNode[] = items.map((_, i) => ({
+        mediaIndex: i,
+        x: W / 2 + (Math.random() - 0.5) * 200,
+        y: H / 2 + (Math.random() - 0.5) * 180,
+        vx: 0, vy: 0,
+      }));
+      const pairs = buildPairs(items);
+      for (let t = 0; t < ticks; t++) forceTick(nodes, pairs, assignments, W, H);
+      return nodes;
+    }
+
+~example
+    buildPairs(MEDIA).length === (MEDIA.length * (MEDIA.length - 1)) / 2
+    runForce(MEDIA, kmeans(MEDIA, 1), 680, 320, 10).length === MEDIA.length
+
+---
+
+#Tests
+
+##axes and data
+    AXES.length === 5
+    MEDIA.length === 9
+    MEDIA.every(m => m.vals.length === AXES.length)
+    MEDIA.every(m => m.vals.every(v => v >= 1 && v <= 10))
+
+##distance
+    dist([0, 0], [3, 4]) === 5
+    dist([0, 0], [0, 0]) === 0
+    dist([1, 0], [0, 0]) === 1
+    dist([3, 4], [0, 0]) === dist([0, 0], [3, 4])
+
+##clustering
+    kmeans(MEDIA, 1).every(a => a === 0)
+    kmeans(MEDIA, 3).length === MEDIA.length
+    kmeans(MEDIA, 3).every(a => a >= 0 && a < 3)
+    kmeans(MEDIA, 9).every(a => a >= 0 && a < 9)
+
+##pairs
+    buildPairs(MEDIA).length === (MEDIA.length * (MEDIA.length - 1)) / 2
+    buildPairs(MEDIA).every(p => p.a < p.b)
+    buildPairs(MEDIA).every(p => p.dist >= 0)

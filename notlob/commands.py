@@ -53,6 +53,12 @@ def _get_binding_kit(language: str | None):
             extract_symbols as _hs_extract,
         )
         return _hs_kit, _hs_extract
+    if language == "typescript":
+        from notlob.bindings.typescript import (
+            kit as _ts_kit,
+            extract_symbols as _ts_extract,
+        )
+        return _ts_kit, _ts_extract
     # default — python
     return _py_kit, _py_extract
 

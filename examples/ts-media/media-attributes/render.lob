@@ -1,0 +1,184 @@
+#Media-Attributes Render
+
+Browser rendering layer for the media-attributes visualisation.
+This module targets the DOM; the analysis module supplies the data
+and algorithms, and the HTML page must provide the elements referenced
+below.
+
+The pure geometry functions (`radarPoints`, `radarSVG`) are testable;
+the DOM functions (`renderRadars`, `renderForce`, etc.) are not.
+
+##Colours
+
+Cluster fill colours and per-tag accent colours.  The nine-slot
+`CLUSTER_COLORS` palette gives each k-means cluster a distinct hue
+across the full k range (2–9).
+
+    const CLUSTER_COLORS: readonly string[] = [
+      '#534AB7', '#0F6E56', '#993C1D', '#185FA5',
+      '#854F0B', '#993556', '#1D6B8A', '#7B6A00', '#3C6B3C',
+    ];
+
+    const TAG_COLORS: Readonly<Record<string, string>> = {
+      text:        '#534AB7',
+      video:       '#0F6E56',
+      interactive: '#993C1D',
+      live:        '#185FA5',
+      audio:       '#854F0B',
+      visual:      '#993556',
+      digital:     '#1D6B8A',
+    };
+
+##Radar Geometry
+
+Each radar chart plots a media item's eight attribute values as a
+polygon.  The `radarPoints` function returns the polygon vertices as
+`[x, y]` pairs given a centre, radius, and value array.  At value 0
+every point sits exactly at the centre; at value 10 it sits on the
+outer ring.
+
+    function radarPoints(
+      vals: readonly number[],
+      cx:   number,
+      cy:   number,
+      r:    number,
+    ): [number, number][] {
+      return vals.map((v, i) => {
+        const angle = (Math.PI * 2 * i / vals.length) - Math.PI / 2;
+        return [cx + (v / 10) * r * Math.cos(angle),
+                cy + (v / 10) * r * Math.sin(angle)];
+      });
+    }
+
+~example
+    radarPoints([0, 0, 0, 0, 0], 5, 5, 10).length === 5
+    radarPoints([0, 0, 0, 0, 0], 5, 5, 10).every(([x, y]) => x === 5 && y === 5)
+
+##Radar SVG
+
+An inline SVG for one media item.  The `isDark` flag controls ring and
+axis stroke colours; callers should pass `matchMedia('(prefers-color-scheme:dark)').matches`
+rather than calling `matchMedia` inside the function, keeping the
+function testable.
+
+    const RS = 68, RCX = RS / 2, RCY = RS / 2 + 1, RR = 23;
+
+    function radarSVG(item: MediaItem, cc: string, isDark: boolean): string {
+      const pts  = radarPoints(item.vals, RCX, RCY, RR);
+      const ends = AXES.map((_, i) => {
+        const a = (Math.PI * 2 * i / AXES.length) - Math.PI / 2;
+        return [RCX + RR * Math.cos(a), RCY + RR * Math.sin(a)] as [number, number];
+      });
+      const gc = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+      const ac = isDark ? 'rgba(255,255,255,0.1)'  : 'rgba(0,0,0,0.1)';
+      const tc = isDark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.28)';
+
+      let rings = '';
+      [0.33, 0.66, 1].forEach(f => {
+        const rp = AXES.map((_, i) => {
+          const a = (Math.PI * 2 * i / AXES.length) - Math.PI / 2;
+          return [RCX + RR * f * Math.cos(a), RCY + RR * f * Math.sin(a)];
+        });
+        rings += `<polygon points="${rp.map(p => p.join(',')).join(' ')}" fill="none" stroke="${gc}" stroke-width="0.5"/>`;
+      });
+
+      const axlines = ends.map(([x, y], i) => {
+        const a  = (Math.PI * 2 * i / AXES.length) - Math.PI / 2;
+        const lx = (RCX + (RR + 9) * Math.cos(a)).toFixed(1);
+        const ly = (RCY + (RR + 9) * Math.sin(a) + 2).toFixed(1);
+        return `<line x1="${RCX}" y1="${RCY}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${ac}" stroke-width="0.5"/>` +
+               `<text x="${lx}" y="${ly}" text-anchor="middle" font-size="5.5" fill="${tc}">${AXES[i].short}</text>`;
+      }).join('');
+
+      const poly = `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="${cc}28" stroke="${cc}" stroke-width="1"/>`;
+      const dots = pts.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.4" fill="${cc}"/>`).join('');
+
+      return `<svg width="${RS}" height="${RS + 10}" viewBox="-9 -9 ${RS + 18} ${RS + 18}">${rings}${axlines}${poly}${dots}</svg>`;
+    }
+
+~example
+    radarSVG(MEDIA[0], '#534AB7', false).startsWith('<svg')
+    radarSVG(MEDIA[0], '#534AB7', false).includes('polygon')
+
+##DOM Rendering
+
+These functions mutate the DOM directly.  They are called from `runAll`
+and are not claimed — they require a live browser environment.
+
+    function renderAxisLegend(): void {
+      const el = document.getElementById('axisLegend')!;
+      el.innerHTML = AXES.map(ax =>
+        `<span class="alabel"><span class="adot" style="background:${ax.color}"></span>${ax.label}</span>`,
+      ).join('');
+    }
+
+    function renderRadars(assignments: number[], isDark: boolean): void {
+      const sortVal = (document.getElementById('sortBy') as HTMLSelectElement).value;
+      let indexed = MEDIA.map((m, i) => ({ m, i }));
+      if (sortVal === 'name')
+        indexed.sort((a, b) => a.m.name.localeCompare(b.m.name));
+      else if (sortVal === 'cluster')
+        indexed.sort((a, b) => assignments[a.i] - assignments[b.i]);
+      else {
+        const ai = parseInt(sortVal);
+        indexed.sort((a, b) => b.m.vals[ai] - a.m.vals[ai]);
+      }
+      document.getElementById('radarGrid')!.innerHTML = indexed.map(({ m, i }) => {
+        const cc = CLUSTER_COLORS[assignments[i] % CLUSTER_COLORS.length];
+        return `<div class="rcard" style="border-color:${cc}">` +
+               `<div class="rcard-name">${m.name}</div>` +
+               `<div class="rcard-tag" style="color:${TAG_COLORS[m.tag] ?? '#888'}">${m.tag}</div>` +
+               radarSVG(m, cc, isDark) +
+               `</div>`;
+      }).join('');
+    }
+
+    function renderClusterLegend(assignments: number[], k: number): void {
+      document.getElementById('clusterLegend')!.innerHTML = Array.from({ length: k }, (_, ci) => {
+        const names = MEDIA.filter((_, i) => assignments[i] === ci).map(m => m.name).join(', ');
+        return `<span class="clabel"><span class="cdot" style="background:${CLUSTER_COLORS[ci]}"></span>` +
+               `<strong>Cluster ${ci + 1}:</strong> ${names}</span>`;
+      }).join('');
+    }
+
+    function renderForce(assignments: number[], W = 680, H = 320): void {
+      const nodes = runForce(MEDIA, assignments, W, H);
+      const pairs = buildPairs(MEDIA);
+      const maxD  = Math.max(...pairs.map(p => p.dist));
+      let html = '';
+      pairs.forEach(({ a, b, dist: d }) => {
+        if (assignments[a] !== assignments[b]) return;
+        const na = nodes[a], nb = nodes[b];
+        const op = Math.max(0.03, 0.18 - (d / maxD) * 0.15);
+        html += `<line x1="${na.x.toFixed(1)}" y1="${na.y.toFixed(1)}" x2="${nb.x.toFixed(1)}" y2="${nb.y.toFixed(1)}" ` +
+                `stroke="${CLUSTER_COLORS[assignments[a]]}" stroke-width="0.7" opacity="${op}"/>`;
+      });
+      nodes.forEach(n => {
+        const cc = CLUSTER_COLORS[assignments[n.mediaIndex] % CLUSTER_COLORS.length];
+        html += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="7" fill="${cc}22" stroke="${cc}" stroke-width="1.2"/>`;
+        html += `<text x="${n.x.toFixed(1)}" y="${(n.y + 15).toFixed(1)}" text-anchor="middle" font-size="8" fill="${cc}">${MEDIA[n.mediaIndex].name}</text>`;
+      });
+      document.getElementById('forceSvg')!.innerHTML = html;
+    }
+
+    function runAll(): void {
+      const kSlider = document.getElementById('kSlider') as HTMLInputElement;
+      const k       = parseInt(kSlider.value);
+      (document.getElementById('kVal') as HTMLElement).textContent = String(k);
+      const isDark      = matchMedia('(prefers-color-scheme:dark)').matches;
+      const assignments = kmeans(MEDIA, k);
+      renderRadars(assignments, isDark);
+      renderForce(assignments);
+      renderClusterLegend(assignments, k);
+    }
+
+~run
+    (document.getElementById('kSlider') as HTMLInputElement)
+      .addEventListener('input', runAll);
+    renderAxisLegend();
+    runAll();
+
+---
+
+#References
+    #Media-Attributes Analysis

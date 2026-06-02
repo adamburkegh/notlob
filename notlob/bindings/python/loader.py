@@ -54,6 +54,7 @@ class ModuleCache:
 
     def __init__(self, root: Path) -> None:
         self._root    = root
+        self.root     = root   # public alias for language bindings
         self._cache:    dict[str, dict] = {}
         self._building: set[str]        = set()
 
