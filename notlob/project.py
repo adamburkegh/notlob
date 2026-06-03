@@ -25,9 +25,32 @@ from typing import Callable
 from .graph import (
     module_address,
     build, enrich,
-    Edge, EdgeKind, NameGraph,
+    Edge, EdgeKind, Node, NodeKind, NameGraph,
 )
 from .model import Module, ReferencesSection
+
+
+def _parse_binding_lines(lines: list[str]) -> dict:
+    """Extract ``~sigil value`` declarations from a ``#Binding`` section.
+
+    Most sigils are single-valued and stored as ``str``.  ``~external``
+    may appear multiple times and is stored as ``list[str]``.
+    """
+    result: dict = {}
+    externals: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("~"):
+            parts = stripped[1:].split(None, 1)
+            key   = parts[0]
+            value = parts[1].strip() if len(parts) > 1 else ""
+            if key == "external":
+                externals.append(value)
+            else:
+                result[key] = value
+    if externals:
+        result["external"] = externals
+    return result
 
 
 def find_project_root(path: Path) -> Path | None:
@@ -191,4 +214,60 @@ def build_package(
                 ))
                 seen.add(key)
 
+    # Third pass: add EXTERNAL nodes from binding.lob declarations.
+    _add_external_nodes(graph, root)
+
     return graph
+
+
+def _add_external_nodes(graph: NameGraph, root: Path) -> None:
+    """Add EXTERNAL nodes and USES edges from ``binding.lob`` declarations.
+
+    Reads ``~external`` declarations from the project's ``binding.lob``
+    and adds a ``NodeKind.EXTERNAL`` node for each declared file, with a
+    ``EdgeKind.USES`` edge from the binding module (whose address is
+    derived from the ``binding.lob`` title) to the external node.
+
+    Files declared with ``~on-build`` are also added as EXTERNAL nodes
+    with a USES edge, so they appear in ``notlob query`` output.
+
+    Silently skips if ``binding.lob`` cannot be parsed or has no
+    ``~external`` / ``~on-build`` declarations.
+    """
+    binding_path = root / "binding.lob"
+    if not binding_path.exists():
+        return
+
+    try:
+        from .parser import parse_file
+        from .model import from_tree, BindingSection
+        bmod = from_tree(parse_file(binding_path))
+        binding_addr = module_address(bmod.title)
+    except Exception:
+        return
+
+    declarations: dict = {}
+    if bmod.post_text:
+        for section in bmod.post_text.sections:
+            if isinstance(section, BindingSection):
+                declarations = _parse_binding_lines(section.lines)
+                break
+
+    external_files: list[str] = list(declarations.get("external", []))
+    on_build = declarations.get("on-build")
+    if on_build:
+        external_files.append(on_build)
+
+    for filename in external_files:
+        addr = filename   # address is the filename relative to project root
+        if graph.node(addr) is None:
+            graph.add_node(Node(
+                address=addr,
+                label=filename,
+                kind=NodeKind.EXTERNAL,
+            ))
+        graph.add_edge(Edge(
+            source=binding_addr,
+            target=addr,
+            kind=EdgeKind.USES,
+        ))

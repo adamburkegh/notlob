@@ -4,25 +4,36 @@
   "title": "NameGraph",
   "description": "Serialised notlob name-graph produced by NameGraph.to_dict().",
   "type": "object",
-  "required": ["nodes", "edges"],
+  "required": [
+    "nodes",
+    "edges"
+  ],
   "additionalProperties": false,
   "properties": {
     "nodes": {
       "description": "All named nodes in the graph.",
       "type": "array",
-      "items": { "$ref": "#/definitions/Node" }
+      "items": {
+        "$ref": "#/definitions/Node"
+      }
     },
     "edges": {
       "description": "All directed edges in the graph.",
       "type": "array",
-      "items": { "$ref": "#/definitions/Edge" }
+      "items": {
+        "$ref": "#/definitions/Edge"
+      }
     }
   },
   "definitions": {
     "Node": {
       "description": "A named node: module, subheading, symbol, or property.",
       "type": "object",
-      "required": ["address", "label", "kind"],
+      "required": [
+        "address",
+        "label",
+        "kind"
+      ],
       "additionalProperties": false,
       "properties": {
         "address": {
@@ -36,7 +47,13 @@
         "kind": {
           "description": "What type of named thing this node represents.",
           "type": "string",
-          "enum": ["MODULE", "SUBHEADING", "SYMBOL", "PROPERTY"]
+          "enum": [
+            "MODULE",
+            "SUBHEADING",
+            "SYMBOL",
+            "PROPERTY",
+            "EXTERNAL"
+          ]
         },
         "content": {
           "description": "Source payload; present only when include_content=True.",
@@ -62,7 +79,11 @@
     "Edge": {
       "description": "A directed relationship between two nodes.",
       "type": "object",
-      "required": ["source", "target", "kind"],
+      "required": [
+        "source",
+        "target",
+        "kind"
+      ],
       "additionalProperties": false,
       "properties": {
         "source": {
@@ -76,7 +97,12 @@
         "kind": {
           "description": "Relationship type.",
           "type": "string",
-          "enum": ["CONTAINS", "DEFINES", "IMPORTS"]
+          "enum": [
+            "CONTAINS",
+            "DEFINES",
+            "IMPORTS",
+            "USES"
+          ]
         }
       }
     }

@@ -128,6 +128,10 @@ def main() -> None:
         "--output", "-o", metavar="DIR", default="dist",
         help="output directory (default: dist/)",
     )
+    build_p.add_argument(
+        "--skip-tests", action="store_true", default=False,
+        help="skip claim verification before building",
+    )
 
     weave_p = sub.add_parser(
         "weave",
@@ -243,6 +247,7 @@ def main() -> None:
         sys.exit(cmd_build(
             _opt_path(args.file, args.module_mode),
             output_dir=Path(args.output),
+            skip_tests=args.skip_tests,
         ))
     elif args.command == "weave":
         sys.exit(cmd_weave(

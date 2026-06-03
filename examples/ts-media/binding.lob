@@ -1,8 +1,23 @@
 #TS Media
 
 A media-attributes visualisation built with the TypeScript binding.
+Nine media forms are scored across five perceptual and social axes;
+k-means clustering and a force-directed layout reveal structural
+similarities.
+
+`index.html` is the HTML template: it provides the page structure,
+toolbar controls, CSS, and a `<!-- notlob:bundle -->` marker where the
+bundled JavaScript will be injected.
+
+`inject-script.ts` is the build hook.  After `notlob build` assembles
+the TypeScript source, the hook bundles it to an IIFE via esbuild and
+injects the result into `index.html`, writing `dist/index.html` — a
+self-contained file ready to open in a browser or share as a single
+page.
 
 ---
 
 #Binding
     ~language typescript
+    ~external index.html
+    ~on-build inject-script.ts

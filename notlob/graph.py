@@ -132,6 +132,7 @@ class NodeKind(Enum):
     SUBHEADING = auto()
     SYMBOL     = auto()    # symbols: code-level defined name
     PROPERTY   = auto()    # symbols: named ~property claim
+    EXTERNAL   = auto()    # external file declared with ~external in binding.lob
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,7 @@ class EdgeKind(Enum):
     CONTAINS = auto()   # module → subheading
     DEFINES  = auto()   # module/subheading → symbol
     IMPORTS  = auto()   # module → module
+    USES     = auto()   # binding module → external file
 
 
 @dataclass(frozen=True)

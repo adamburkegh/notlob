@@ -316,15 +316,27 @@ layer is organised language-first:
 
 ```
 notlob/bindings/
-    __init__.py          ← BindingKit dataclass + Extractor/Assembler aliases
+    __init__.py          ← BindingKit dataclass + shared result types
     python/
         __init__.py      ← assembles the Python kit; exposes `kit`
+        assemble.py      ← Module → executable Python with # <addr> markers
         symbols.py       ← extract_symbols for stage-2 name-graph
-        assemble.py      ← assembles a Module to executable Python
         runner.py        ← run_examples, run_properties, run_tests
-    haskell/             ← future
-        __init__.py
-        symbols.py
+        lint.py          ← lint_python via ruff; source-map translation
+        loader.py        ← ModuleCache for cross-file dep resolution
+    haskell/
+        __init__.py      ← Haskell kit; requires runghc or stack on PATH
+        assemble.py      ← Module → Haskell source with -- <addr> markers
+        symbols.py       ← extract_symbols (top-level type signatures)
+        runner.py        ← subprocess harness; CLAIM/PASS/FAIL protocol
+        lint.py          ← lint_haskell via hlint
+    typescript/
+        __init__.py      ← TypeScript kit; requires tsx on PATH or in node_modules
+        assemble.py      ← Module → TypeScript source with // <addr> markers
+        symbols.py       ← extract_symbols (function/const/class/interface/type/enum)
+        runner.py        ← tsx harness; CLAIM/PASS/FAIL protocol; lhs/rhs extraction
+        tokenizer.py     ← bracket-counting scanner for claim completion + === split
+        lint.py          ← stub; biome integration planned
 ```
 
 `BindingKit` is a dataclass that composes callables — one per tooling
@@ -339,6 +351,10 @@ class BindingKit:
     run_examples:    Callable[..., list]  # ~example claims
     run_properties:  Callable[..., list]  # ~property claims
     run_tests:       Callable[..., list]  # #Tests assertions
+    lint:            Callable[..., list] | None  # static analysis; None if unsupported
+    extension:       str                  # output file extension ("py", "hs", "ts")
+    comment_prefix:  str                  # location-comment prefix ("#", "--", "//")
+    build:           Callable[..., str] | None   # assembly for notlob build
 ```
 
 The declarations in a `#Binding` section (`~language python`,
@@ -387,15 +403,20 @@ is language-agnostic, the binding owns the implementation entirely.
   interpreted languages it exec's directly.
 - `notlob test` — run all claims (examples, properties, #Tests) and
   report results by address.  Runs the linter if the binding supports
-  it.  Exit 1 on any failure or lint diagnostic.
-- `notlob build` — assemble a module (with inlined deps) and write a
-  single source file to an output directory.  No execution.  The
-  primary entry point for browser-target languages.
-- `notlob weave` — render a `.lob` file as Markdown.
+  it.  Exit 1 on any failure or lint diagnostic.  `--only lint|examples|props|tests`
+  restricts which check types run.
+- `notlob build` — assemble a module (or all project modules) with
+  inlined deps and write artifacts to an output directory (default:
+  `dist/`).  After assembly, runs the `~on-build` hook if declared in
+  `binding.lob`.  The primary entry point for browser-target languages.
+- `notlob weave` — render a `.lob` file (or project) as Markdown.
 - `notlob graph` — export the package name-graph as JSON.
 - `notlob query` — navigate the name-graph from the command line
   (`children`, `resolve`, `search`, `imports`, `imported-by`,
   `content`).
+- `notlob docs` — write the language reference to `notlob-docs/`.
+- `notlob init` — initialise a new notlob project in the current directory.
+- `notlob new` — create a new `.lob` module in the current project.
 
 All file-targeting commands accept either a filesystem path or a module
 address via `-m` (resolved from CWD against the nearest `binding.lob`).
@@ -436,55 +457,84 @@ worth running before the claim runner is complete.
 
 ---
 
+## External files and build hooks
+
+Some projects need to coordinate with files that are part of the
+project but outside the `.lob` world — HTML templates, C extensions,
+static assets.  Two declarations in `binding.lob` handle this:
+
+**`~external <filename>`** — declares a file relative to the project
+root that `notlob build` should be aware of.  The file is not
+assembled, tested, or owned by notlob; it is passed to the build hook
+and appears as a `NodeKind.EXTERNAL` node in the name-graph (connected
+to the binding module via a `USES` edge, visible via `notlob query`).
+
+**`~on-build <script>`** — a hook script in the binding's own language
+(TypeScript for TypeScript projects, Python for Python projects).
+`notlob build` runs this script after assembling all artifacts, passing
+a JSON manifest as the path of a temporary file (first argument):
+
+```json
+{
+  "artifacts":    ["/abs/path/to/dist/module_name.ts"],
+  "externals":    ["/abs/path/to/index.html"],
+  "language":     "typescript",
+  "project_root": "/abs/path/to/project",
+  "output_dir":   "/abs/path/to/dist"
+}
+```
+
+The script owns the integration logic — injecting a bundle into an
+HTML template, compiling a C extension, whatever the project needs.
+notlob runs it and forwards its stdout/stderr to the terminal.
+
+The design goal is **visibility, not friction**.  When a project
+reaches outside the notlob abstraction, it should be obvious where and
+why.  `binding.lob` is the right place for this declaration: it is
+already the project's configuration document, and its prose body can
+explain the intent.  A developer or agent doing a cold read sees both
+the declaration and the explanation in one file.
+
+The hook is "slightly discouraged" by the requirement to write a script,
+but deliberately not more than that — determined developers will break
+abstractions regardless.  The seam should be explicit, not painful.
+
+`~external` and `~on-build` are only valid in `binding.lob`, never in
+individual `.lob` modules.  Module-level `#References` remains
+homogeneous: lob-module references and language package imports only.
+Mixing external file references into `#References` would risk the
+anti-pattern of thin `.lob` wrappers over collections of external
+source files.
+
+---
+
 ## Later Features
 
-**Cross-file composition. ** Each `.lob` module
-currently assembles and executes in isolation — one module cannot call
-a function defined in a sibling module. The name-graph already models
-this as stage 4, but the assembler and runner have no inter-module
-linking yet. The fix requires a package-level assembler that resolves
-cross-file symbol references and assembles modules in dependency order,
-injecting imported namespaces into dependent modules. The `#References`
-section will extend to allow `.lob` path imports alongside library
-imports, giving the tooling the information needed to build the
-dependency graph.
+**Property testing for TypeScript.** `run_properties` currently returns
+SKIP for all `~property` claims in TypeScript modules.  The planned
+integration is fast-check (`~property-testing fast-check` in
+`binding.lob`), following the same pattern as the Python/Hypothesis
+binding.
 
-**Linter integration.** `notlob test` assembles each module to Python
-but does not lint the result. A `notlob lint` command (or a
-`--lint` flag on `notlob test`) should run the assembled source through
-ruff and mypy. The key requirement is a *source map* from assembled
-source line numbers back to the originating `.lob` block, so that error
-messages cite the `.lob` file rather than the generated Python. The
-assembler must emit this map as a side product of assembly.
+**TypeScript linting.** `kit.lint` is `None` for the TypeScript binding.
+The planned tool is Biome — fast, zero-config, ruff-equivalent for
+TypeScript.  The source-map mechanism (translating `// <address>`
+location comments back to `.lob` sections) is already designed;
+`lint.py` in `notlob/bindings/typescript/` documents the implementation
+plan.
 
-**`notlob build`.** Assembles a module (with inlined dependencies)
-into a single source file:
+**TypeScript build output.** `notlob build` for TypeScript currently
+produces a `.ts` source file.  The natural next step is to invoke
+esbuild (a transitive dependency of tsx) to produce a bundled `.js`
+file directly, so the build artifact is browser-runnable without a
+separate bundling step.  The `~on-build` hook mechanism handles this
+today (see `examples/ts-media/inject-script.ts`); native bundling in
+`build_typescript` would make it the default.
 
-```
-notlob build -m roman/numerals/app --output dist/
-→ dist/roman_numerals_app.hs
-```
-
-Design decisions:
-
-- *Single file per invocation.* All lob-ref dependencies are inlined
-  into one self-contained artifact. The output filename is the module
-  address slug plus the language extension (e.g. `roman_numerals_app.hs`).
-  Directory structure is not preserved in the output; the slug encodes it.
-- *Claims are not emitted.* `~example`, `~property`, and `#Tests` content
-  is source-level only. The build artifact contains only code blocks —
-  the program, not the argument.
-- *Language-specific extension.* Each `BindingKit` declares its
-  `extension` (`"hs"`, `"py"`, `"ts"`). `cmd_build` uses it; no
-  language-specific branching in the command layer.
-- *Dep inlining is binding-determined.* Haskell inlines deps into a
-  single `module Foo where` file. Python currently writes the module's
-  own assembled source without inlining (Python deps are resolved at
-  runtime by the loader). TypeScript will inline, like Haskell.
-- *Primary motivation: browser-target languages.* `notlob run` assumes
-  the language has an invocable runtime. For TypeScript/JavaScript, the
-  "runtime" is a browser; `notlob build` is the correct entry point,
-  producing a `.ts` or `.js` file to serve from `dist/`.
+**fast-check property testing.** TypeScript `~property` claims are
+currently skipped.  The runner harness already supports the extension
+point; fast-check integration requires adding the import injection and
+harness generation for `fc.assert(fc.property(...))` blocks.
 
 **Cross-reference aliasing.** Cross-references use `##Name` syntax in
 prose, validated against the doc-node graph. A future extension would
@@ -496,10 +546,6 @@ programming languages.
 import a named `.lob` package defining a standard toolset —
 `import notlob/bindings/python-hypothesis` — making the binding itself a
 literate document inspectable in the same format.
-
-**Markdown weave.** `notlob weave` renders a `.lob` file or package to
-Markdown.  Inline refs become anchor links; claims render as labelled
-blocks; a package weave produces a linked set of `.md` files.
 
 **Typst weave.** A Typst backend for `notlob weave` producing PDF.
 Claims become typed environments (example, property/invariant);
@@ -513,10 +559,6 @@ grammar, not a reimplementation of one).  The primary motivation is
 editor tooling: syntax highlighting, language injection of Python into
 code blocks, and navigation queries.  The compiled C parser is
 generated by CI and committed; users never run `tree-sitter generate`.
-The Python bindings (`tree-sitter` package) would allow the runtime
-parser to be replaced with the Tree-sitter parser, removing the Lark
-dependency, but this is secondary — editor support is the immediate
-gain.
 
 ---
 

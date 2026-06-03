@@ -19,7 +19,10 @@ before any claim execution.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -33,6 +36,7 @@ from notlob.bindings.python.loader import ModuleCache
 from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (
+    _parse_binding_lines,
     address_from_path,
     build_package,
     find_project_root, module_lob_refs, resolve_module_path,
@@ -65,17 +69,13 @@ def _get_binding_kit(language: str | None):
 
 # ── Binding resolution ────────────────────────────────────────
 
-def _parse_binding_declarations(lines: list[str]) -> dict[str, str]:
-    """Extract ~sigil declarations from a #Binding section's lines."""
-    result: dict[str, str] = {}
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("~"):
-            parts = stripped[1:].split(None, 1)
-            key = parts[0]
-            value = parts[1].strip() if len(parts) > 1 else ""
-            result[key] = value
-    return result
+def _parse_binding_declarations(lines: list[str]) -> dict:
+    """Extract ~sigil declarations from a #Binding section's lines.
+
+    Delegates to :func:`notlob.project._parse_binding_lines` — kept
+    here as the public name used by the rest of this module.
+    """
+    return _parse_binding_lines(lines)
 
 
 def _find_binding(file_path: Path) -> dict[str, str]:
@@ -497,22 +497,22 @@ def _build_header(
     )
 
 
-def _build_one(path: Path, kit, output_dir: Path) -> int:
+def _build_one(path: Path, kit, output_dir: Path) -> Path | None:
     """Build a single module and write the artifact to *output_dir*.
 
-    Returns 0 on success, 1 on error.  Prints ``BUILD  <out_path>`` on
-    success, or an ERROR line on failure.
+    Returns the output path on success, None on error.
+    Prints ``BUILD  <out_path>`` on success, or an ERROR line on failure.
     """
     try:
         module = from_tree(parse_file(path))
     except Exception as exc:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
-        return 1
+        return None
 
     source = kit.build(module, path)
     if not source:
         print("ERROR  <assembly>  module contains no code", file=sys.stderr)
-        return 1
+        return None
 
     mod_addr = module_address(module.title)
     header   = _build_header(kit.comment_prefix, mod_addr, path.name)
@@ -521,34 +521,170 @@ def _build_one(path: Path, kit, output_dir: Path) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(header + "\n" + source, encoding="utf-8")
     print(f"BUILD  {out_path}")
-    return 0
+    return out_path
 
 
-def cmd_build(path: Path | None = None, output_dir: Path = Path("dist")) -> int:
+def _hook_runner(
+    language: str | None,
+    root:     Path,
+) -> list[str] | None:
+    """Return the command list for running a ~on-build hook script."""
+    if language == "typescript":
+        from notlob.bindings.typescript.runner import _tsx_cmd
+        return _tsx_cmd(root)
+    # Default: current Python interpreter
+    return [sys.executable]
+
+
+def _run_build_hook(
+    binding:      dict,
+    root:         Path | None,
+    artifacts:    list[Path],
+    output_dir:   Path,
+    entry_points: list[Path] | None = None,
+) -> None:
+    """Run the ``~on-build`` hook script if declared in *binding*.
+
+    The hook receives a JSON manifest written to a temporary file whose
+    path is passed as its first argument.  The manifest contains:
+
+    ``artifacts``
+        Absolute paths of all built output files.
+    ``entry_points``
+        Subset of *artifacts* whose source modules contain ``~run``
+        claims (i.e. program entry points, not library modules).
+        Hooks that need to identify the main artifact to bundle or
+        execute should prefer this list over ``artifacts``.
+    ``externals``
+        Absolute paths of files declared with ``~external``.
+    ``language``
+        The binding language string.
+    ``project_root``
+        Absolute path of the project root directory.
+    ``output_dir``
+        Absolute path of the output directory.
+
+    The hook's stdout and stderr are forwarded to the terminal.  A
+    non-zero exit code prints a warning but does not fail the build.
+    """
+    hook_name = binding.get("on-build")
+    if not hook_name or root is None:
+        return
+
+    script_path = root / hook_name
+    if not script_path.exists():
+        print(
+            f"WARN   <build>  ~on-build script not found: {script_path}",
+            file=sys.stderr,
+        )
+        return
+
+    externals = [
+        str((root / ext).resolve())
+        for ext in binding.get("external", [])
+    ]
+    ep_paths   = entry_points if entry_points is not None else artifacts
+    manifest = {
+        "artifacts":    [str(a.resolve()) for a in artifacts],
+        "entry_points": [str(e.resolve()) for e in ep_paths],
+        "externals":    externals,
+        "language":     binding.get("language"),
+        "project_root": str(root.resolve()),
+        "output_dir":   str(output_dir.resolve()),
+    }
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".json", mode="w", encoding="utf-8", delete=False,
+    ) as f:
+        json.dump(manifest, f, indent=2)
+        manifest_path = f.name
+
+    try:
+        cmd = _hook_runner(binding.get("language"), root)
+        if cmd is None:
+            print(
+                "WARN   <build>  no runner found for ~on-build script",
+                file=sys.stderr,
+            )
+            return
+        proc = subprocess.run(
+            cmd + [str(script_path), manifest_path],
+            stdin=subprocess.DEVNULL,
+        )
+        if proc.returncode != 0:
+            print(
+                f"WARN   <build>  ~on-build exited {proc.returncode}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"HOOK   {script_path.name}")
+    finally:
+        try:
+            os.unlink(manifest_path)
+        except OSError:
+            pass
+
+
+def cmd_build(
+    path:        Path | None = None,
+    output_dir:  Path        = Path("dist"),
+    skip_tests:  bool        = False,
+) -> int:
     """Assemble *path* (or all project modules) and write to *output_dir*.
+
+    By default, all claims are run before assembly — the build fails if
+    any claim fails or produces a lint diagnostic.  Pass
+    *skip_tests=True* (``--skip-tests``) to bypass this check.
 
     When *path* is omitted, discovers the project from CWD and builds
     every module.  Pass a specific *.lob* path to build a single module.
 
+    After assembly, if the project's ``binding.lob`` declares
+    ``~on-build <script>``, that script is invoked with a JSON manifest
+    describing the artifacts and any ``~external`` files.
+
     The output filename is ``<slug>.<ext>`` where *slug* is the module
     address with ``/`` replaced by ``_`` and *ext* is the language
-    extension from the binding kit (e.g. ``hs``, ``py``).
+    extension from the binding kit (e.g. ``hs``, ``py``, ``ts``).
 
-    Each binding's ``build`` callable owns the assembly strategy — e.g.
-    Haskell inlines dependencies; Python writes the module's own source.
+    ``~run`` claim bodies are included in build artifacts (unlike
+    ``notlob test``, which excludes them).  ``~run`` is the program
+    entry point and must be present for the artifact to do anything when
+    loaded.
     """
     if path is not None:
         binding  = _find_binding(path)
         language = binding.get("language")
+        root     = find_project_root(path)
         kit, _   = _get_binding_kit(language)
         if kit.build is None:
             print(
-                f"ERROR  <build>  no build support for language "
-                f"{language!r}",
+                f"ERROR  <build>  no build support for language {language!r}",
                 file=sys.stderr,
             )
             return 1
-        return _build_one(path, kit, output_dir)
+        if not skip_tests:
+            print("TEST   (running claims before build)")
+            rc = cmd_test(path)
+            if rc != 0:
+                print(
+                    "ERROR  <build>  claims failed — build aborted "
+                    "(use --skip-tests to override)",
+                    file=sys.stderr,
+                )
+                return 1
+        out_path = _build_one(path, kit, output_dir)
+        if out_path is None:
+            return 1
+        try:
+            module     = from_tree(parse_file(path))
+            is_entry   = bool(_collect_run_claims(module))
+        except Exception:
+            is_entry   = False
+        entry_points = [out_path] if is_entry else []
+        _run_build_hook(binding, root, [out_path], output_dir,
+                        entry_points=entry_points)
+        return 0
 
     root, binding = _require_root()
     if root is None:
@@ -557,17 +693,46 @@ def cmd_build(path: Path | None = None, output_dir: Path = Path("dist")) -> int:
     kit, _   = _get_binding_kit(language)
     if kit.build is None:
         print(
-            f"ERROR  <build>  no build support for language "
-            f"{language!r}",
+            f"ERROR  <build>  no build support for language {language!r}",
             file=sys.stderr,
         )
         return 1
+
+    if not skip_tests:
+        print("TEST   (running claims before build)")
+        rc = 0
+        for lob_path in sorted(root.glob("**/*.lob")):
+            if lob_path.name == "binding.lob":
+                continue
+            if cmd_test(lob_path) != 0:
+                rc = 1
+        if rc != 0:
+            print(
+                "ERROR  <build>  claims failed — build aborted "
+                "(use --skip-tests to override)",
+                file=sys.stderr,
+            )
+            return 1
+
+    artifacts:    list[Path] = []
+    entry_points: list[Path] = []
     rc = 0
     for lob_path in sorted(root.glob("**/*.lob")):
         if lob_path.name == "binding.lob":
             continue
-        if _build_one(lob_path, kit, output_dir) != 0:
+        out_path = _build_one(lob_path, kit, output_dir)
+        if out_path is not None:
+            artifacts.append(out_path)
+            try:
+                module = from_tree(parse_file(lob_path))
+                if _collect_run_claims(module):
+                    entry_points.append(out_path)
+            except Exception:
+                pass
+        else:
             rc = 1
+    _run_build_hook(binding, root, artifacts, output_dir,
+                    entry_points=entry_points)
     return rc
 
 

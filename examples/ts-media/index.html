@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Media Attributes Explorer</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#fff;color:#111}
+    @media(prefers-color-scheme:dark){body{background:#1a1a1a;color:#e8e8e8}}
+    .panel{background:var(--color-background-primary,#f8f8f8);border:0.5px solid #ddd;border-radius:8px;padding:12px;margin-bottom:14px}
+    @media(prefers-color-scheme:dark){.panel{background:#242424;border-color:#333}}
+    .panel-label{font-size:12px;font-weight:500;color:#666;margin-bottom:10px}
+    .radar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:5px}
+    .rcard{border:1.5px solid #ddd;border-radius:8px;padding:5px 3px 3px;background:#fff}
+    @media(prefers-color-scheme:dark){.rcard{background:#2a2a2a}}
+    .rcard-name{font-size:9.5px;font-weight:500;text-align:center;line-height:1.2;margin-bottom:1px}
+    .rcard-tag{font-size:8.5px;text-align:center;margin-bottom:1px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+    .toolbar label{font-size:12px;color:#666}
+    .axis-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:10px}
+    .adot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:middle}
+    .alabel{font-size:11px;color:#666}
+    .cluster-legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:10px}
+    .clabel{font-size:11px;color:#666;line-height:1.4}
+    .cdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:3px;vertical-align:middle}
+    svg text{font-family:system-ui,sans-serif}
+  </style>
+</head>
+<body>
+
+<h2 style="font-size:14px;font-weight:600;margin-bottom:12px">
+  Media attributes explorer — 9 media forms across 5 axes
+</h2>
+
+<div class="toolbar">
+  <label>k clusters</label>
+  <input type="range" min="2" max="5" value="3" id="kSlider" step="1" style="width:90px">
+  <span id="kVal" style="font-size:13px;font-weight:500;min-width:16px">3</span>
+  <label style="margin-left:12px">sort radars</label>
+  <select id="sortBy" onchange="renderRadars()">
+    <option value="name">name</option>
+    <option value="cluster">cluster</option>
+    <option value="0">durable→disposable</option>
+    <option value="1">low→high sensory</option>
+    <option value="2">static→moving</option>
+    <option value="3">personal→global</option>
+    <option value="4">read-only→interactive</option>
+  </select>
+</div>
+
+<div class="axis-legend" id="axisLegend"></div>
+
+<div class="panel">
+  <div class="panel-label">Media radars</div>
+  <div class="radar-grid" id="radarGrid"></div>
+</div>
+
+<div class="panel">
+  <div class="panel-label">Force-directed clusters</div>
+  <svg id="forceSvg" width="100%" viewBox="0 0 680 320" style="display:block"></svg>
+  <div class="cluster-legend" id="clusterLegend"></div>
+</div>
+
+<!-- notlob:bundle -->
+<script>/* placeholder replaced by notlob build hook */</script>
+<!-- /notlob:bundle -->
+
+</body>
+</html>

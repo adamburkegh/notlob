@@ -37,13 +37,39 @@ def build_typescript(module: Module, file_path: Path | None = None) -> str:
     """Assemble *module* with inlined deps into one TypeScript source string.
 
     Dependencies declared as lob-refs in ``#References`` are assembled
-    and prepended so the output is self-contained.  The result is
-    suitable for bundling or direct embedding in a ``<script>`` tag
-    (after transpilation).
+    and prepended so the output is self-contained.
+
+    Unlike ``assemble``, which is used for testing and excludes all
+    claims, ``build_typescript`` appends ``~run`` claim bodies at the
+    end of the assembled source.  ``~run`` is the program entry point —
+    it wires up event listeners, calls ``main()``, etc. — and must be
+    present in the build artifact for the program to do anything when
+    loaded by a browser or runtime.
     """
+    import textwrap
+    from notlob.model import Claim, Subheading
     from notlob.project import find_project_root
-    root = find_project_root(file_path) if file_path else None
-    return _build_module_source(module, root)
+
+    root       = find_project_root(file_path) if file_path else None
+    source     = _build_module_source(module, root)
+
+    run_blocks: list[str] = []
+
+    def _collect_run(body: list) -> None:
+        for item in body:
+            if isinstance(item, Claim) and item.sigil == '~run':
+                block = textwrap.dedent('\n'.join(item.lines)).strip()
+                if block:
+                    run_blocks.append(block)
+            elif isinstance(item, Subheading):
+                _collect_run(item.body)
+
+    _collect_run(module.body)
+
+    if run_blocks:
+        source = source + '\n\n' + '\n\n'.join(run_blocks)
+
+    return source
 
 
 #: The assembled TypeScript binding kit.
