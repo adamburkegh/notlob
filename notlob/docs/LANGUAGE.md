@@ -106,9 +106,7 @@ Run during `notlob test`. Not included in `notlob build` output.
 
 ### ~property
 
-A property-based test using the declared `~property-testing` library
-(default: Hypothesis). Receives `@given` decoration automatically;
-authors do not import Hypothesis directly.
+A property-based test using the declared `~property-testing` library. This depends on the binding. The Python binding includes Hypothesis. Receives `@given` decoration automatically; authors do not import the library directly.
 
 ```
 ~property
@@ -182,7 +180,7 @@ Available declarations:
 
 | Sigil                | Values                    |
 |----------------------|---------------------------|
-| `~language`          | `python`, `haskell`       |
+| `~language`          | `python`, `haskell`, `typescript`       |
 | `~property-testing`  | `hypothesis`              |
 | `~unit-testing`      | `pytest`                  |
 
