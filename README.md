@@ -13,7 +13,7 @@ Holding related concepts together with their examples and checkable formal prope
 
 ## Bindings
 
-Notlob currently uses well established language toolsets for the executable elements. Two bindings are provided, for Python and Haskell. A binding kit includes language, unit tests, and property tests.
+Notlob currently uses well established language toolsets for the executable elements. Three bindings are provided, for Python, Haskell and Typescript. A binding kit includes language, linter, unit tests and property tests.
 
 
 ## Example
