@@ -1053,6 +1053,16 @@ def cmd_init(
         # Write language reference
         cmd_docs()
 
+        # Print AGENTS.md inline so agents running mid-session get
+        # the instructions immediately — AGENTS.md is only auto-loaded
+        # by Claude Code at session start, not when first created.
+        agents_content = _render_agents(project_title)
+        bar = "-" * 52
+        print()
+        print(bar)
+        print(agents_content.rstrip())
+        print(bar)
+
     return 0
 
 
