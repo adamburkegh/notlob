@@ -103,6 +103,7 @@ def _run_harness(
     extra_packages: list[str] | None = None,
     timeout: int = 120,
     keep_path: Path | None = None,
+    program_args: list[str] | None = None,
 ) -> tuple[str, str, int]:
     """Write *source* to a temp .hs file and run it with runghc.
 
@@ -129,6 +130,8 @@ def _run_harness(
         cmd = _make_runghc_cmd(tmp_path, extra_packages)
         if cmd is None:
             return "", "no Haskell runner found (install runghc or stack)", 1
+        if program_args:
+            cmd = cmd + program_args
 
         try:
             proc = subprocess.run(

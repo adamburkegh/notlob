@@ -13,12 +13,14 @@ Usage::
 
 from pathlib import Path
 
+import textwrap
+
 from notlob.bindings import BindingKit, ClaimResult, Status
 from notlob.bindings.python.assemble import assemble
 from notlob.bindings.python.lint import lint_python
 from notlob.bindings.python.runner import run_examples, run_tests, run_properties
 from notlob.bindings.python.symbols import extract_symbols
-from notlob.model import Module
+from notlob.model import Claim, Module, Subheading
 
 
 def build_python(
@@ -28,9 +30,26 @@ def build_python(
     """Assemble *module* for the build command.
 
     Python deps are resolved at runtime by the loader, so the build
-    artifact contains only the module's own assembled source.
+    artifact contains only the module's own assembled source.  ~run
+    claim bodies are appended after the module code so the artifact
+    is directly executable.
     """
-    return assemble(module)
+    source = assemble(module)
+    run_parts: list[str] = []
+    for item in module.body:
+        if isinstance(item, Claim) and item.sigil == "~run":
+            run_parts.append(
+                textwrap.dedent("\n".join(item.lines)).strip()
+            )
+        elif isinstance(item, Subheading):
+            for sub in item.body:
+                if isinstance(sub, Claim) and sub.sigil == "~run":
+                    run_parts.append(
+                        textwrap.dedent("\n".join(sub.lines)).strip()
+                    )
+    if run_parts:
+        source = source + "\n\n" + "\n\n".join(run_parts)
+    return source
 
 
 #: The assembled Python binding kit.

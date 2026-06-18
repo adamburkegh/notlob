@@ -94,6 +94,10 @@ def main() -> None:
             "(overrides ~keep-generated-src in binding.lob)"
         ),
     )
+    run_p.add_argument(
+        "program_args", nargs=argparse.REMAINDER,
+        help="arguments forwarded to the program as sys.argv[1:]",
+    )
 
     test_p = sub.add_parser(
         "test",
@@ -258,6 +262,7 @@ def main() -> None:
         sys.exit(cmd_run(
             _resolve_path(args.file, args.module_mode),
             keep_generated_src=args.keep_generated_src,
+            args=args.program_args or None,
         ))
     elif args.command == "test":
         sys.exit(cmd_test(

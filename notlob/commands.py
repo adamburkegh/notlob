@@ -219,6 +219,7 @@ def _cmd_run_haskell(
     module,
     path: Path,
     keep_dir: Path | None = None,
+    args: list[str] | None = None,
 ) -> int:
     """Assemble a Haskell module (with inlined deps) and run with runghc.
 
@@ -247,7 +248,8 @@ def _cmd_run_haskell(
     else:
         keep_path = None
 
-    stdout, stderr, rc = _run_harness(source, keep_path=keep_path)
+    stdout, stderr, rc = _run_harness(source, keep_path=keep_path,
+                                       program_args=args or [])
     if stdout:
         print(stdout, end="")
     if rc != 0:
@@ -257,7 +259,11 @@ def _cmd_run_haskell(
     return 0
 
 
-def cmd_run(path: Path, keep_generated_src: str | None = None) -> int:
+def cmd_run(
+    path: Path,
+    keep_generated_src: str | None = None,
+    args: list[str] | None = None,
+) -> int:
     """Assemble and execute *path*; return an exit code."""
     try:
         module = from_tree(parse_file(path))
@@ -271,7 +277,7 @@ def cmd_run(path: Path, keep_generated_src: str | None = None) -> int:
 
     if language == "haskell":
         keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
-        return _cmd_run_haskell(module, path, keep_dir=keep_dir)
+        return _cmd_run_haskell(module, path, keep_dir=keep_dir, args=args)
 
     root = find_project_root(path)
 
@@ -283,21 +289,27 @@ def cmd_run(path: Path, keep_generated_src: str | None = None) -> int:
     py_kit = _py_kit
     cache = ModuleCache(root) if root else None
     ns: dict = {"__file__": str(path.resolve())}
+    old_argv = sys.argv
+    sys.argv = [str(path)] + list(args or [])
     try:
         if cache is not None:
             for dep_addr in module_lob_refs(module):
                 ns.update(cache.load(dep_addr))
         exec(py_kit.assemble(module), ns)
     except Exception as exc:
+        sys.argv = old_argv
         print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
         return 1
 
-    for claim in _collect_run_claims(module):
-        try:
-            exec(textwrap.dedent("\n".join(claim.lines)), ns)
-        except Exception as exc:
-            print(f"ERROR  <run>  {exc}", file=sys.stderr)
-            return 1
+    try:
+        for claim in _collect_run_claims(module):
+            try:
+                exec(textwrap.dedent("\n".join(claim.lines)), ns)
+            except Exception as exc:
+                print(f"ERROR  <run>  {exc}", file=sys.stderr)
+                return 1
+    finally:
+        sys.argv = old_argv
 
     return 0
 
