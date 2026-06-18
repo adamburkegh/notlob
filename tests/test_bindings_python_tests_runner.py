@@ -7,7 +7,9 @@ assertion in the #Tests post-text section and returns ClaimResults.
 from pathlib import Path
 
 from notlob import parse, parse_file, from_tree
-from notlob.bindings.python.runner import ClaimResult, Status, run_tests
+from notlob.bindings.python.runner import (
+    ClaimResult, Status, run_tests, _build_tests_source,
+)
 
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
@@ -163,3 +165,86 @@ class TestExampleFiles:
         assert "roman/numerals#Tests#encoding"   in addrs
         assert "roman/numerals#Tests#decoding"   in addrs
         assert "roman/numerals#Tests#round-trip" in addrs
+
+
+# ── Keep-dir: _tests.py contains assert statements ────────────
+
+class TestKeepDirTests:
+    def _src(self):
+        return "#T\n    x = 1\n---\n#Tests\n    x == 1\n"
+
+    def test_tests_py_contains_asserts(self, tmp_path):
+        module = from_tree(parse(self._src()))
+        run_tests(module, keep_dir=tmp_path)
+        content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
+        assert "assert x == 1" in content
+
+    def test_tests_py_contains_module_code(self, tmp_path):
+        module = from_tree(parse(self._src()))
+        run_tests(module, keep_dir=tmp_path)
+        content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
+        assert "x = 1" in content
+
+    def test_tests_py_bare_section_comment(self, tmp_path):
+        module = from_tree(parse(self._src()))
+        run_tests(module, keep_dir=tmp_path)
+        content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
+        assert "# --- t#Tests ---" in content
+
+    def test_tests_py_group_section_comment(self, tmp_path):
+        src = "#T\n    x = 1\n---\n#Tests\n##basics\n    x == 1\n"
+        module = from_tree(parse(src))
+        run_tests(module, keep_dir=tmp_path)
+        content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
+        assert "# --- t#Tests#basics ---" in content
+
+    def test_tests_py_is_executable(self, tmp_path):
+        module = from_tree(parse(self._src()))
+        run_tests(module, keep_dir=tmp_path)
+        kept = (tmp_path / "_tests.py").read_text(encoding="utf-8")
+        exec(compile(kept, "_tests.py", "exec"), {})
+
+    def test_no_keep_dir_no_file_written(self, tmp_path):
+        module = from_tree(parse(self._src()))
+        run_tests(module, keep_dir=None)
+        assert not list(tmp_path.iterdir())
+
+
+# ── _build_tests_source unit tests ───────────────────────────
+
+class TestBuildTestsSource:
+    def _module(self, source):
+        return from_tree(parse(source))
+
+    def _section(self, source):
+        from notlob.model import TestsSection
+        m = self._module(source)
+        return next(
+            s for s in m.post_text.sections if isinstance(s, TestsSection)
+        )
+
+    def test_bare_assertion(self):
+        src = "#T\n    x = 1\n---\n#Tests\n    x == 1\n"
+        m = self._module(src)
+        from notlob.bindings.python.assemble import assemble
+        result = _build_tests_source(assemble(m), self._section(src), "t")
+        assert "assert x == 1" in result
+
+    def test_grouped_assertion(self):
+        src = "#T\n    x = 1\n---\n#Tests\n##grp\n    x == 1\n"
+        m = self._module(src)
+        from notlob.bindings.python.assemble import assemble
+        result = _build_tests_source(assemble(m), self._section(src), "t")
+        assert "# --- t#Tests#grp ---" in result
+        assert "assert x == 1" in result
+
+    def test_bare_before_group(self):
+        src = (
+            "#T\n    x = 1\n    y = 2\n"
+            "---\n#Tests\n    x == 1\n##grp\n    y == 2\n"
+        )
+        m = self._module(src)
+        from notlob.bindings.python.assemble import assemble
+        result = _build_tests_source(assemble(m), self._section(src), "t")
+        assert "# --- t#Tests ---" in result
+        assert "# --- t#Tests#grp ---" in result

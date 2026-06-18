@@ -125,7 +125,8 @@ def run_examples(
     )
     mod_addr = module_address(module.title)
     source = assemble(module)
-    _write_kept_source(keep_dir, "_examples.py", source)
+    _write_kept_source(keep_dir, "_examples.py",
+                       _build_examples_source(source, module, mod_addr))
 
     try:
         _load_deps(module, ns, cache)
@@ -191,7 +192,8 @@ def run_tests(
     )
     mod_addr = module_address(module.title)
     source = assemble(module)
-    _write_kept_source(keep_dir, "_tests.py", source)
+    _write_kept_source(keep_dir, "_tests.py",
+                       _build_tests_source(source, tests_section, mod_addr))
 
     try:
         _load_deps(module, ns, cache)
@@ -307,6 +309,66 @@ def _write_kept_source(
         return
     keep_dir.mkdir(parents=True, exist_ok=True)
     (keep_dir / filename).write_text(source, encoding="utf-8")
+
+
+def _build_tests_source(
+    module_source: str,
+    tests_section: TestsSection,
+    mod_addr: str,
+) -> str:
+    """Build an executable source string: module code + #Tests assertions."""
+    parts = [module_source.rstrip("\n")]
+    tests_addr = f"{mod_addr}#Tests"
+    bare: list[str] = []
+
+    def _flush_bare() -> None:
+        if not bare:
+            return
+        parts.append(f"\n# --- {tests_addr} ---")
+        for assertion in _iter_assertions(list(bare)):
+            parts.append(f"assert {assertion}")
+        bare.clear()
+
+    for item in tests_section.items:
+        if isinstance(item, str):
+            bare.append(item)
+        else:
+            _flush_bare()
+            group_addr = f"{tests_addr}#{item.title}"
+            parts.append(f"\n# --- {group_addr} ---")
+            for assertion in _iter_assertions(item.lines):
+                parts.append(f"assert {assertion}")
+
+    _flush_bare()
+    return "\n".join(parts) + "\n"
+
+
+def _build_examples_source(
+    module_source: str,
+    module: Module,
+    mod_addr: str,
+) -> str:
+    """Build an executable source string: module code + ~example assertions."""
+    parts = [module_source.rstrip("\n")]
+
+    def _append_section(body: list, containing_addr: str) -> None:
+        example_n = 0
+        for item in body:
+            if not (isinstance(item, Claim) and item.sigil == "~example"):
+                continue
+            example_n += 1
+            addr = claim_address(containing_addr, "example", example_n)
+            parts.append(f"\n# --- {addr} ---")
+            for assertion in _iter_assertions(item.lines):
+                parts.append(f"assert {assertion}")
+
+    _append_section(module.body, mod_addr)
+    for item in module.body:
+        if isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            _append_section(item.body, sub_addr)
+
+    return "\n".join(parts) + "\n"
 
 
 # ── Dependency loading ────────────────────────────────────────

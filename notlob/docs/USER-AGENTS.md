@@ -29,7 +29,19 @@ notlob query children <address>   list child nodes
 - `*.lob` — modules (prose + code + claims)
 - `notlob-docs/` — generated reference docs (not checked in)
 
-## Style Guidance 
+## Source of Truth
+
+`.lob` files are the source of truth for this project. **Never create or edit `.py` files (or any other generated files) directly.**
+
+Generated artifacts are read-only diagnostics:
+
+- `dist/` — output of `notlob build`
+- `notlob-docs/` — output of `notlob docs`
+- `--keep-generated-src` output — assembled source with assertions, written on request for debugging
+
+When investigating a behaviour or debugging a test, read the `.lob` source first. Use `--keep-generated-src` only when you need to inspect the assembled executable form. Any change you want to make must be made in the corresponding `.lob` file.
+
+## Style Guidance
 
 Notlob source files should be written in a literate programming style. Each file is organised around a concept. An initial short essay should introduce the purpose. Executable code, executable examples and runnable properties should be interleaved with clear technical prose. Tests are not only encouraged but expected, and a linter runs by default.
 

@@ -10,7 +10,7 @@ import pytest
 
 from notlob import parse, parse_file, from_tree, claim_address
 from notlob.bindings.python.runner import (
-    ClaimResult, Status, run_examples,
+    ClaimResult, Status, run_examples, _build_examples_source,
 )
 
 
@@ -241,3 +241,83 @@ class TestExampleFiles:
         assert bad[0].status == Status.FAIL
         assert bad[0].left  == 'VIII'
         assert bad[0].right == 'IIX'
+
+
+# ── Keep-dir: _examples.py contains assert statements ─────────
+
+class TestKeepDirExamples:
+    def test_examples_py_contains_asserts(self, tmp_path):
+        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
+        module = from_tree(parse(src))
+        run_examples(module, keep_dir=tmp_path)
+        content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
+        assert "assert f() == 1" in content
+
+    def test_examples_py_contains_module_code(self, tmp_path):
+        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
+        module = from_tree(parse(src))
+        run_examples(module, keep_dir=tmp_path)
+        content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
+        assert "def f()" in content
+
+    def test_examples_py_section_comment(self, tmp_path):
+        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
+        module = from_tree(parse(src))
+        run_examples(module, keep_dir=tmp_path)
+        content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
+        assert "# --- t#example#1 ---" in content
+
+    def test_examples_py_subheading_address(self, tmp_path):
+        src = "#T\n##S\n    def f(): return 1\n~example\n    f() == 1\n"
+        module = from_tree(parse(src))
+        run_examples(module, keep_dir=tmp_path)
+        content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
+        assert "# --- t#S#example#1 ---" in content
+
+    def test_examples_py_is_executable(self, tmp_path):
+        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
+        module = from_tree(parse(src))
+        run_examples(module, keep_dir=tmp_path)
+        kept = (tmp_path / "_examples.py").read_text(encoding="utf-8")
+        exec(compile(kept, "_examples.py", "exec"), {})
+
+    def test_no_keep_dir_no_file_written(self, tmp_path):
+        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
+        module = from_tree(parse(src))
+        run_examples(module, keep_dir=None)
+        assert not list(tmp_path.iterdir())
+
+
+# ── _build_examples_source unit tests ─────────────────────────
+
+class TestBuildExamplesSource:
+    def _module(self, source):
+        return from_tree(parse(source))
+
+    def test_no_examples_returns_module_source(self):
+        src = "#T\n    x = 1\n"
+        m = self._module(src)
+        from notlob.bindings.python.assemble import assemble
+        module_src = assemble(m)
+        result = _build_examples_source(module_src, m, "t")
+        assert "x = 1" in result
+        assert "assert" not in result
+
+    def test_single_example(self):
+        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
+        m = self._module(src)
+        from notlob.bindings.python.assemble import assemble
+        result = _build_examples_source(assemble(m), m, "t")
+        assert "assert f() == 1" in result
+
+    def test_ordinal_in_comment(self):
+        src = (
+            "#T\n    def f(): return 1\n"
+            "~example\n    f() == 1\n"
+            "~example\n    f() == 1\n"
+        )
+        m = self._module(src)
+        from notlob.bindings.python.assemble import assemble
+        result = _build_examples_source(assemble(m), m, "t")
+        assert "# --- t#example#1 ---" in result
+        assert "# --- t#example#2 ---" in result

@@ -2,10 +2,10 @@
 name = "notlob"
 version = "0.3.1"
 requires-python = ">=3.11"
-dependencies = ["lark>=1.2"]
+dependencies = ["lark>=1.2", "pytest>=8", "hypothesis>=6", "ruff>=0.4"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "hypothesis>=6", "jsonschema>=4", "ruff>=0.4"]
+dev = ["jsonschema>=4"]
 
 [project.scripts]
 notlob = "notlob.cli:main"
