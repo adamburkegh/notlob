@@ -373,7 +373,15 @@ def check_imports(graph: NameGraph) -> list[Finding]:
             dep_symbols = [
                 n.label for n in
                 graph.children(dep.address, EdgeKind.DEFINES)
+                if n.kind == NodeKind.SYMBOL
             ]
+            for sub in graph.children(dep.address):
+                if sub.kind == NodeKind.SUBHEADING:
+                    dep_symbols.extend(
+                        n.label for n in
+                        graph.children(sub.address, EdgeKind.DEFINES)
+                        if n.kind == NodeKind.SYMBOL
+                    )
             if not dep_symbols:
                 continue
             used = any(
