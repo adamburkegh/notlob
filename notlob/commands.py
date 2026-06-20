@@ -428,6 +428,9 @@ def cmd_test(
             n_fail += f
             n_lint += l
 
+    if path is None:
+        _run_check_advisory(root, binding)
+
     parts = [f"{n_pass} passed"]
     if n_fail:
         parts.append(f"{n_fail} failed")
@@ -436,6 +439,21 @@ def cmd_test(
     print(f"\n{', '.join(parts)}")
 
     return 1 if (n_fail or n_lint) else 0
+
+
+def _run_check_advisory(root: Path, binding: dict) -> None:
+    """Run semantic checks and print findings (advisory only)."""
+    from notlob.check import run_checks
+
+    _, extract_symbols = _get_binding_kit(
+        binding.get("language") if binding else None,
+    )
+    graph = build_package(root, extract_symbols)
+    findings, _ = run_checks(graph)
+    for f in findings:
+        addrs = ", ".join(f.addresses)
+        print(f"CHECK  [{f.check}]  {f.message}")
+        print(f"       {addrs}")
 
 
 # ── Init / docs / new helpers ────────────────────────────────
@@ -726,6 +744,8 @@ def cmd_build(
             )
             return 1
 
+    _run_check_advisory(root, binding)
+
     artifacts:    list[Path] = []
     entry_points: list[Path] = []
     rc = 0
@@ -899,6 +919,36 @@ def cmd_query_imported_by(address: str) -> int:
         return 1
     results = list(graph.parents(address, EdgeKind.IMPORTS))
     print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+# ── Check command ─────────────────────────────────────────────
+
+def cmd_check(
+    only: set[str] | None = None,
+    verbose: bool = False,
+) -> int:
+    """Run semantic consistency checks on the project name graph.
+
+    Prints advisory findings — always returns 0.
+    """
+    from notlob.check import run_checks
+
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    findings, counts = run_checks(graph, enabled=only)
+    if verbose:
+        for name, n in counts.items():
+            print(f"CHECK  [{name}]  {n} finding(s)")
+    for f in findings:
+        addrs = ", ".join(f.addresses)
+        print(f"CHECK  [{f.check}]  {f.message}")
+        print(f"       {addrs}")
+    if findings:
+        print(f"\n{len(findings)} finding(s)")
+    elif not verbose:
+        print("CHECK  no findings")
     return 0
 
 

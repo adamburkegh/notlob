@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from notlob.commands import (
-    cmd_build, cmd_docs, cmd_graph, cmd_init, cmd_new,
+    cmd_build, cmd_check, cmd_docs, cmd_graph, cmd_init, cmd_new,
     cmd_run, cmd_test, cmd_weave,
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
@@ -160,6 +160,21 @@ def main() -> None:
         help="include source content (prose/code) on every node",
     )
 
+    check_p = sub.add_parser(
+        "check",
+        help="check naming consistency across the project",
+    )
+    check_p.add_argument(
+        "--only", nargs="+",
+        choices=["typos", "conventions", "titles"],
+        default=None, metavar="CHECK",
+        help="run only the listed checks (default: all)",
+    )
+    check_p.add_argument(
+        "--verbose", "-v", action="store_true", default=False,
+        help="show which checks ran and their counts",
+    )
+
     docs_p = sub.add_parser(
         "docs",
         help="write the language reference to notlob-docs/",
@@ -274,6 +289,11 @@ def main() -> None:
         sys.exit(cmd_graph(
             _opt_path(args.file, args.module_mode),
             include_content=args.content,
+        ))
+    elif args.command == "check":
+        sys.exit(cmd_check(
+            only=set(args.only) if args.only else None,
+            verbose=args.verbose,
         ))
     elif args.command == "docs":
         sys.exit(cmd_docs(
