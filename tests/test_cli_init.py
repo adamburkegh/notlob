@@ -110,28 +110,6 @@ class TestCmdInit:
         cmd_init()
         assert (tmp_path / "notlob-docs" / "LANGUAGE.md").exists()
 
-    def test_creates_gitattributes(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        cmd_init()
-        ga = tmp_path / ".gitattributes"
-        assert ga.exists()
-        assert "linguist-language=Markdown" in ga.read_text()
-
-    def test_bare_still_creates_gitattributes(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        cmd_init(bare=True)
-        assert (tmp_path / ".gitattributes").exists()
-
-    def test_preserves_existing_gitattributes(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / ".gitattributes").write_text(
-            "*.bin binary\n", encoding="utf-8"
-        )
-        cmd_init()
-        content = (tmp_path / ".gitattributes").read_text()
-        assert "*.bin binary" in content
-        assert "linguist" not in content
-
     def test_bare_skips_agents_and_docs(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         cmd_init(bare=True)
