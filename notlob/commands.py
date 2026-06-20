@@ -1042,6 +1042,14 @@ def cmd_init(
     )
     print(f"INIT   {starter_name}")
 
+    # Write .gitattributes for GitHub syntax highlighting
+    gitattr_path = cwd / ".gitattributes"
+    if not gitattr_path.exists():
+        gitattr_path.write_text(
+            "*.lob linguist-language=Markdown\n", encoding="utf-8"
+        )
+        print("INIT   .gitattributes")
+
     if not bare:
         # Write AGENTS.md
         agents_path = cwd / "AGENTS.md"
