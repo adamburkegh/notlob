@@ -571,6 +571,7 @@ def enrich(
 
     example_n = 0
     run_n = 0
+    prop_n = 0
     for item in module.body:
         if isinstance(item, CodeBlock):
             _add_symbols(graph, item, mod_addr, mod_addr, extractor)
@@ -582,11 +583,15 @@ def enrich(
                 run_n += 1
                 _add_run(graph, item, mod_addr, run_n)
             else:
-                _add_named_property(graph, item, mod_addr, extractor)
+                prop_n += 1
+                _add_property(
+                    graph, item, mod_addr, prop_n, extractor,
+                )
         elif isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
             sub_example_n = 0
             sub_run_n = 0
+            sub_prop_n = 0
             for sub_item in item.body:
                 if isinstance(sub_item, CodeBlock):
                     _add_symbols(
@@ -606,8 +611,10 @@ def enrich(
                             graph, sub_item, sub_addr, sub_run_n,
                         )
                     else:
-                        _add_named_property(
-                            graph, sub_item, sub_addr, extractor,
+                        sub_prop_n += 1
+                        _add_property(
+                            graph, sub_item, sub_addr, sub_prop_n,
+                            extractor,
                         )
 
 
@@ -633,27 +640,27 @@ def _add_symbols(
         ))
 
 
-def _add_named_property(
+def _add_property(
     graph:           NameGraph,
     claim:           Claim,
     containing_addr: str,
+    ordinal:         int,
     extractor:       Extractor,
 ) -> None:
-    """Register a named ~property claim and its non-_ symbols.
-
-    Unnamed ~property claims (no sigil parameter) are silently ignored
-    here; the runner addresses them by ordinal at execution time.
-    """
+    """Register a ~property claim (named or unnamed) and its symbols."""
     parts = claim.sigil.split(None, 1)
-    if len(parts) < 2:
-        return  # unnamed — no property node
+    if len(parts) > 1:
+        name = parts[1].strip()
+        prop_addr = property_address(containing_addr, name)
+        label = name
+    else:
+        prop_addr = claim_address(containing_addr, "property", ordinal)
+        label = f"property#{ordinal}"
 
-    name = parts[1].strip()
-    prop_addr = property_address(containing_addr, name)
     claim_src = textwrap.dedent("\n".join(claim.lines))
     graph.add_node(Node(
         address=prop_addr,
-        label=name,
+        label=label,
         kind=NodeKind.PROPERTY,
         content=_node_content(None, claim_src or None),
     ))
@@ -665,7 +672,7 @@ def _add_named_property(
 
     for info in extractor(claim.lines):
         if info.name == '_':
-            continue   # anonymous witness — not extracted
+            continue
         sym_addr = f"{prop_addr}#{info.name}"
         graph.add_node(Node(
             address=sym_addr,

@@ -48,6 +48,9 @@ A module exercising every structural element.
 ~property roundtrip
     def _(n): assert n == n
 
+~property
+    def _(x): assert x == x
+
 ~run
     print(helper())
 
@@ -185,6 +188,21 @@ class TestPropertiesInGraph:
         node = graph.node("comprehensive#roundtrip")
         assert node is not None
         assert node.kind == NodeKind.PROPERTY
+
+    def test_unnamed_property(self):
+        module = from_tree(parse(_COMPREHENSIVE))
+        graph = build(module)
+        enrich(graph, module, extract_symbols)
+        node = graph.node("comprehensive#property#2")
+        assert node is not None
+        assert node.kind == NodeKind.PROPERTY
+
+    def test_property_count(self):
+        module = from_tree(parse(_COMPREHENSIVE))
+        graph = build(module)
+        enrich(graph, module, extract_symbols)
+        props = list(graph.nodes(kind=NodeKind.PROPERTY))
+        assert len(props) == 2
 
 
 class TestSymbolsInGraph:

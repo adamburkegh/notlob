@@ -49,10 +49,11 @@ class TestNamedPropertyNodes:
         g = enriched("#T\n~property myp\n    @given()\n    def _(): pass\n")
         assert g.node("t#myp").label == "myp"
 
-    def test_unnamed_property_no_node(self):
+    def test_unnamed_property_gets_ordinal_node(self):
         g = enriched("#T\n~property\n    @given()\n    def _(): pass\n")
         props = list(g.nodes(NodeKind.PROPERTY))
-        assert props == []
+        assert len(props) == 1
+        assert props[0].address == "t#property#1"
 
     def test_property_in_subheading(self):
         src = "#T\n##S\n~property myp\n    @given()\n    def _(): pass\n"
