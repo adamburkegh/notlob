@@ -11,7 +11,7 @@ the DOM functions (`renderRadars`, `renderForce`, etc.) are not.
 ##Colours
 
 Cluster fill colours and per-tag accent colours.  The nine-slot
-`CLUSTER_COLORS` palette gives each k-means cluster a distinct hue
+#CLUSTER_COLORS palette gives each k-means cluster a distinct hue
 across the full k range (2–9).
 
     const CLUSTER_COLORS: readonly string[] = [

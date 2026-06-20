@@ -428,8 +428,9 @@ def cmd_test(
             n_fail += f
             n_lint += l
 
+    check_errors = False
     if path is None:
-        _run_check_advisory(root, binding)
+        check_errors = _run_check_advisory(root, binding)
 
     parts = [f"{n_pass} passed"]
     if n_fail:
@@ -438,12 +439,15 @@ def cmd_test(
         parts.append(f"{n_lint} lint")
     print(f"\n{', '.join(parts)}")
 
-    return 1 if (n_fail or n_lint) else 0
+    return 1 if (n_fail or n_lint or check_errors) else 0
 
 
-def _run_check_advisory(root: Path, binding: dict) -> None:
-    """Run semantic checks and print findings (advisory only)."""
-    from notlob.check import run_checks
+def _run_check_advisory(root: Path, binding: dict) -> bool:
+    """Run semantic checks and print findings.
+
+    Returns True if any error-severity findings were found.
+    """
+    from notlob.check import has_errors, run_checks
 
     _, extract_symbols = _get_binding_kit(
         binding.get("language") if binding else None,
@@ -451,9 +455,11 @@ def _run_check_advisory(root: Path, binding: dict) -> None:
     graph = build_package(root, extract_symbols)
     findings, _ = run_checks(graph)
     for f in findings:
+        prefix = "ERROR" if f.severity == "error" else "CHECK"
         addrs = ", ".join(f.addresses)
-        print(f"CHECK  [{f.check}]  {f.message}")
+        print(f"{prefix}  [{f.check}]  {f.message}")
         print(f"       {addrs}")
+    return has_errors(findings)
 
 
 # ── Init / docs / new helpers ────────────────────────────────
@@ -744,7 +750,12 @@ def cmd_build(
             )
             return 1
 
-    _run_check_advisory(root, binding)
+    if _run_check_advisory(root, binding):
+        print(
+            "ERROR  <check>  semantic check errors — build aborted",
+            file=sys.stderr,
+        )
+        return 1
 
     artifacts:    list[Path] = []
     entry_points: list[Path] = []
@@ -930,9 +941,9 @@ def cmd_check(
 ) -> int:
     """Run semantic consistency checks on the project name graph.
 
-    Prints advisory findings — always returns 0.
+    Returns 1 if any error-severity findings exist, 0 otherwise.
     """
-    from notlob.check import run_checks
+    from notlob.check import has_errors, run_checks
 
     graph = _require_graph()
     if graph is None:
@@ -942,14 +953,15 @@ def cmd_check(
         for name, n in counts.items():
             print(f"CHECK  [{name}]  {n} finding(s)")
     for f in findings:
+        prefix = "ERROR" if f.severity == "error" else "CHECK"
         addrs = ", ".join(f.addresses)
-        print(f"CHECK  [{f.check}]  {f.message}")
+        print(f"{prefix}  [{f.check}]  {f.message}")
         print(f"       {addrs}")
     if findings:
         print(f"\n{len(findings)} finding(s)")
     elif not verbose:
         print("CHECK  no findings")
-    return 0
+    return 1 if has_errors(findings) else 0
 
 
 def cmd_weave(

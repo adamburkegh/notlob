@@ -166,7 +166,7 @@ def main() -> None:
     )
     check_p.add_argument(
         "--only", nargs="+",
-        choices=["typos", "conventions", "titles"],
+        choices=["imports", "typos", "conventions", "titles", "references"],
         default=None, metavar="CHECK",
         help="run only the listed checks (default: all)",
     )

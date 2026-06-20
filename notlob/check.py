@@ -1,20 +1,22 @@
-"""notlob.check — deterministic semantic consistency checker.
+"""notlob.check — semantic consistency checker.
 
-Analyses the name graph for naming inconsistencies: near-duplicate
-symbols (typos), verb-prefix convention drift, and similar titles.
-Each check produces advisory Findings — no check causes a non-zero
-exit code.
+Analyses the name graph for naming inconsistencies and structural
+issues.  Findings have a severity:
+
+- ``advisory`` — informational, never fails a build.
+- ``error`` — fails ``notlob check`` and blocks the build.
 
 The architecture is extensible: future checks (embedding-based
-similarity, LLM judgment) register as new entries in _CHECKERS
-without changing the public interface.
+similarity, LLM judgment) register as new entries in the checker
+registry without changing the public interface.
 """
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
-from notlob.graph import NameGraph, NodeKind
+from notlob.graph import EdgeKind, NameGraph, NodeKind
 
 
 @dataclass(frozen=True)
@@ -23,13 +25,6 @@ class Finding:
     message: str
     addresses: tuple[str, ...]
     severity: str = "advisory"
-
-
-CHECKERS: dict[str, object] = {
-    "typos": None,
-    "conventions": None,
-    "titles": None,
-}
 
 
 def run_checks(
@@ -41,20 +36,27 @@ def run_checks(
     *counts* maps each check name to the number of findings it produced,
     including checks that found nothing (count 0).
     """
-    checkers = {
-        "typos": check_typos,
-        "conventions": check_conventions,
-        "titles": check_titles,
+    checkers: dict[str, object] = {
+        "imports": lambda: check_imports(graph),
+        "typos": lambda: check_typos(graph),
+        "conventions": lambda: check_conventions(graph),
+        "titles": lambda: check_titles(graph),
+        "references": lambda: check_references(graph),
     }
     if enabled is not None:
         checkers = {k: v for k, v in checkers.items() if k in enabled}
     findings: list[Finding] = []
     counts: dict[str, int] = {}
     for name, checker in checkers.items():
-        batch = checker(graph)
+        batch = checker()
         counts[name] = len(batch)
         findings.extend(batch)
     return findings, counts
+
+
+def has_errors(findings: list[Finding]) -> bool:
+    """Return True if any finding has error severity."""
+    return any(f.severity == "error" for f in findings)
 
 
 # ── Check: typos ─────────────────────────────────────────────
@@ -248,5 +250,115 @@ def check_titles(graph: NameGraph) -> list[Finding]:
                         ),
                         addresses=(addr_a, addr_b),
                     ))
+
+    return findings
+
+
+# ── Check: references ────────────────────────────────────────
+
+_MIN_REF_NAME_LENGTH = 4
+_REFABLE = re.compile(r'^[A-Z][A-Za-z0-9_]*$')
+
+
+def check_references(
+    graph: NameGraph,
+    root: Path | None = None,
+) -> list[Finding]:
+    """Flag symbols mentioned in prose but never #-referenced.
+
+    Only considers symbols whose names can be ``#``-referenced (start
+    with an uppercase letter).  Uses the prose content already stored
+    on graph nodes — ``#Label`` refs are serialised with their ``#``
+    prefix, so a bare mention (no ``#``) is distinguishable from a
+    formal cross-reference.
+
+    Applies the first-mention rule: a symbol only needs to be
+    ``#``-referenced once per module.
+    """
+    mod_symbols: dict[str, set[str]] = defaultdict(set)
+    for node in graph.nodes(kind=NodeKind.SYMBOL):
+        mod = node.address.split("#", 1)[0]
+        if (len(node.label) >= _MIN_REF_NAME_LENGTH
+                and _REFABLE.match(node.label)):
+            mod_symbols[mod].add(node.label)
+
+    findings: list[Finding] = []
+
+    for mod_node in graph.nodes(kind=NodeKind.MODULE):
+        symbols = mod_symbols.get(mod_node.address, set())
+        if not symbols:
+            continue
+
+        prose_parts: list[str] = []
+        if mod_node.content and mod_node.content.get("prose"):
+            prose_parts.append(mod_node.content["prose"])
+        for child in graph.children(mod_node.address):
+            if (child.kind == NodeKind.SUBHEADING
+                    and child.content
+                    and child.content.get("prose")):
+                prose_parts.append(child.content["prose"])
+        prose = " ".join(prose_parts)
+        if not prose:
+            continue
+
+        for sym in symbols:
+            ref_pat = re.compile(r"#" + re.escape(sym) + r"\b")
+            if ref_pat.search(prose):
+                continue
+            bare_pat = re.compile(r"(?<!#)\b" + re.escape(sym) + r"\b")
+            if bare_pat.search(prose):
+                findings.append(Finding(
+                    check="references",
+                    message=(
+                        f"'{sym}' appears in prose but is never "
+                        f"#-referenced"
+                    ),
+                    addresses=(f"{mod_node.address}#{sym}",),
+                ))
+
+    return findings
+
+
+# ── Check: imports ───────────────────────────────────────────
+
+def check_imports(graph: NameGraph) -> list[Finding]:
+    """Flag modules that import another module but use none of its symbols.
+
+    Findings have ``severity="error"`` — unused imports block the build.
+    """
+    findings: list[Finding] = []
+
+    for mod_node in graph.nodes(kind=NodeKind.MODULE):
+        code_parts: list[str] = []
+        if mod_node.content and mod_node.content.get("code"):
+            code_parts.append(mod_node.content["code"])
+        for child in graph.children(mod_node.address):
+            if (child.kind == NodeKind.SUBHEADING
+                    and child.content
+                    and child.content.get("code")):
+                code_parts.append(child.content["code"])
+        code = "\n".join(code_parts)
+
+        for dep in graph.children(mod_node.address, EdgeKind.IMPORTS):
+            dep_symbols = [
+                n.label for n in
+                graph.children(dep.address, EdgeKind.DEFINES)
+            ]
+            if not dep_symbols:
+                continue
+            used = any(
+                re.search(r"\b" + re.escape(sym) + r"\b", code)
+                for sym in dep_symbols
+            )
+            if not used:
+                findings.append(Finding(
+                    check="imports",
+                    message=(
+                        f"unused import: {mod_node.label} imports "
+                        f"{dep.label} but uses none of its symbols"
+                    ),
+                    addresses=(mod_node.address, dep.address),
+                    severity="error",
+                ))
 
     return findings

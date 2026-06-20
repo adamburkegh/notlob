@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from notlob.graph import Edge, EdgeKind, NameGraph, Node, NodeKind
 from notlob.check import (
-    Finding, run_checks,
-    check_typos, check_conventions, check_titles,
+    Finding, run_checks, has_errors,
+    check_imports, check_typos, check_conventions,
+    check_titles, check_references,
     _levenshtein,
 )
+from notlob import from_tree, parse
+from notlob.project import build_package
+from notlob.bindings.python.symbols import extract_symbols
 
 
 def _sym(module: str, name: str) -> tuple[Node, Edge]:
@@ -229,7 +233,7 @@ class TestRunChecks:
         findings, counts = run_checks(g)
         checks_run = {f.check for f in findings}
         assert "typos" in checks_run
-        assert set(counts) == {"typos", "conventions", "titles"}
+        assert set(counts) == {"imports", "typos", "conventions", "titles", "references"}
 
     def test_filter_by_name(self):
         g = self._graph_with_typo()
@@ -246,6 +250,169 @@ class TestRunChecks:
         g = NameGraph()
         g.add_node(_mod("m", "M"))
         _, counts = run_checks(g)
+        assert counts["imports"] == 0
         assert counts["typos"] == 0
         assert counts["conventions"] == 0
         assert counts["titles"] == 0
+        assert counts["references"] == 0
+
+
+# ── check_references ─────────────────────────────────────────
+
+class TestCheckReferences:
+    def _graph(self, lob_src):
+        """Build an enriched graph from a .lob source string."""
+        from notlob.graph import build, enrich
+        module = from_tree(parse(lob_src))
+        graph = build(module)
+        enrich(graph, module, extract_symbols)
+        return graph
+
+    def test_unreferenced_symbol_in_prose(self):
+        g = self._graph(
+            "#Test\n\n"
+            "The NUMERALS table maps values.\n\n"
+            "    NUMERALS = [(1000, 'M'), (900, 'CM')]\n"
+        )
+        findings = check_references(g)
+        assert len(findings) == 1
+        assert findings[0].check == "references"
+        assert "NUMERALS" in findings[0].message
+
+    def test_referenced_symbol_no_finding(self):
+        g = self._graph(
+            "#Test\n\n"
+            "The #NUMERALS table maps values.\n\n"
+            "    NUMERALS = [(1000, 'M'), (900, 'CM')]\n"
+        )
+        findings = check_references(g)
+        assert findings == []
+
+    def test_referenced_once_used_many_times(self):
+        g = self._graph(
+            "#Test\n\n"
+            "The #NUMERALS table maps values.\n\n"
+            "    NUMERALS = [(1000, 'M'), (900, 'CM')]\n\n"
+            "We look up NUMERALS for encoding.\n"
+            "Each entry in NUMERALS has a value.\n"
+        )
+        findings = check_references(g)
+        assert findings == []
+
+    def test_symbol_not_in_prose_no_finding(self):
+        g = self._graph(
+            "#Test\n\n"
+            "This module handles roman numeral conversion.\n\n"
+            "    NUMERALS = [(1000, 'M'), (900, 'CM')]\n"
+        )
+        findings = check_references(g)
+        assert findings == []
+
+    def test_lowercase_symbols_skipped(self):
+        g = self._graph(
+            "#Test\n\n"
+            "We use apply_discount to calculate prices.\n\n"
+            "    def apply_discount(rate, price):\n"
+            "        return rate * price\n"
+        )
+        findings = check_references(g)
+        assert findings == []
+
+    def test_short_names_skipped(self):
+        g = self._graph(
+            "#Test\n\n"
+            "Set Max to the value.\n\n"
+            "    Max = 42\n"
+        )
+        findings = check_references(g)
+        assert findings == []
+
+    def test_empty_graph_returns_empty(self):
+        assert check_references(NameGraph()) == []
+
+    def test_substring_not_matched(self):
+        g = self._graph(
+            "#Test\n\n"
+            "We use the Discounter class.\n\n"
+            "    class Discount:\n"
+            "        pass\n"
+        )
+        findings = check_references(g)
+        assert findings == []
+
+
+# ── check_imports ────────────────────────────────────────────
+
+class TestCheckImports:
+    def test_unused_import_flagged(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): return 1\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    x = 42\n"
+                    "---\n\n#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert len(findings) == 1
+        assert findings[0].severity == "error"
+        assert "unused import" in findings[0].message
+
+    def test_used_import_no_finding(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): return 1\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    x = helper()\n"
+                    "---\n\n#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert findings == []
+
+    def test_no_imports_no_finding(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    x = 42\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert findings == []
+
+    def test_import_with_no_symbols_skipped(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "notes.lob",
+                    "#Notes\n\nJust prose, no code.\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    x = 42\n"
+                    "---\n\n#References\n    #Notes\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert findings == []
+
+    def test_empty_graph(self):
+        assert check_imports(NameGraph()) == []
+
+    def _write(self, tmp_path, name, content):
+        (tmp_path / name).write_text(content, encoding="utf-8")
+
+
+# ── has_errors ───────────────────────────────────────────────
+
+class TestHasErrors:
+    def test_no_findings(self):
+        assert has_errors([]) is False
+
+    def test_advisory_only(self):
+        f = Finding("typos", "msg", ("a",), severity="advisory")
+        assert has_errors([f]) is False
+
+    def test_error_present(self):
+        f = Finding("imports", "msg", ("a",), severity="error")
+        assert has_errors([f]) is True
+
+    def test_mixed(self):
+        f1 = Finding("typos", "msg", ("a",), severity="advisory")
+        f2 = Finding("imports", "msg", ("b",), severity="error")
+        assert has_errors([f1, f2]) is True
