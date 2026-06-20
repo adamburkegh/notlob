@@ -16,10 +16,12 @@ single document. The format is the experiment.
 ```
 notlob/              the Python package
   bindings/          language binding kits (python/, haskell/)
+  check.py           semantic consistency checker (notlob check)
   docs/              bundled documentation
     LANGUAGE.md      user-facing language spec
     DESIGN.md        internal architecture and rationale
     USER-AGENTS.md   template emitted as AGENTS.md by notlob init
+editors/vim/         vim syntax highlighting for .lob files
 examples/            independent example notlob projects
   roman/             Python example project
   retail/            larger Python example project

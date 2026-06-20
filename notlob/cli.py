@@ -81,7 +81,7 @@ def _add_file_arg(p, required: bool = True) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="notlob",
-        description="Notlob literate-program runner.",
+        description="Notlob literate programming toolkit.",
     )
     sub = parser.add_subparsers(dest="command", metavar="command")
 
@@ -162,7 +162,7 @@ def main() -> None:
 
     check_p = sub.add_parser(
         "check",
-        help="check naming consistency across the project",
+        help="run semantic checks on the project name-graph",
     )
     check_p.add_argument(
         "--only", nargs="+",
@@ -185,7 +185,7 @@ def main() -> None:
     )
     docs_p.add_argument(
         "--full", action="store_true", default=False,
-        help="also write DESIGN.md (internal architecture and rationale)",
+        help="also write DESIGN.md and USER-AGENTS.md",
     )
 
     init_p = sub.add_parser(
@@ -198,7 +198,7 @@ def main() -> None:
     )
     init_p.add_argument(
         "--bare", action="store_true", default=False,
-        help="minimal scaffold only — no AGENTS.md or docs",
+        help="minimal scaffold only -- no AGENTS.md or docs",
     )
 
     new_p = sub.add_parser(
