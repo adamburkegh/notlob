@@ -7,6 +7,8 @@ queries, merge, and integration against the example files.
 from pathlib import Path
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from notlob import (
     parse, parse_file, from_tree, build,
@@ -36,6 +38,34 @@ class TestModuleAddress:
 
     def test_lowercase(self):
         assert module_address("HTTP Client") == "http/client"
+
+    @given(st.text(
+        alphabet=st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "),
+        min_size=1, max_size=40,
+    ))
+    def test_always_lowercase(self, title):
+        assert module_address(title) == module_address(title).lower()
+
+    @given(st.text(
+        alphabet=st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "),
+        min_size=1, max_size=40,
+    ))
+    def test_no_spaces_in_address(self, title):
+        assert " " not in module_address(title)
+
+    @given(st.text(
+        alphabet=st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "),
+        min_size=1, max_size=40,
+    ))
+    def test_deterministic(self, title):
+        assert module_address(title) == module_address(title)
+
+    @given(st.text(
+        alphabet=st.sampled_from("abcdefghijklmnopqrstuvwxyz/"),
+        min_size=1, max_size=40,
+    ))
+    def test_stable_on_own_output(self, addr):
+        assert module_address(addr) == addr
 
 
 class TestSubheadingAddress:

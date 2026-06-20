@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from hypothesis import given
+from hypothesis import strategies as st
+
 from notlob.graph import Edge, EdgeKind, NameGraph, Node, NodeKind
 from notlob.check import (
     Finding, run_checks, has_errors,
@@ -58,6 +61,26 @@ class TestLevenshtein:
 
     def test_classic_example(self):
         assert _levenshtein("kitten", "sitting") == 3
+
+    @given(st.text(max_size=30))
+    def test_identity(self, s):
+        assert _levenshtein(s, s) == 0
+
+    @given(st.text(max_size=30), st.text(max_size=30))
+    def test_symmetry(self, a, b):
+        assert _levenshtein(a, b) == _levenshtein(b, a)
+
+    @given(st.text(max_size=20), st.text(max_size=20), st.text(max_size=20))
+    def test_triangle_inequality(self, a, b, c):
+        assert _levenshtein(a, c) <= _levenshtein(a, b) + _levenshtein(b, c)
+
+    @given(st.text(max_size=30), st.text(max_size=30))
+    def test_upper_bound(self, a, b):
+        assert _levenshtein(a, b) <= max(len(a), len(b))
+
+    @given(st.text(min_size=1, max_size=30))
+    def test_empty_vs_nonempty(self, s):
+        assert _levenshtein("", s) == len(s)
 
 
 # ── check_typos ──────────────────────────────────────────────
