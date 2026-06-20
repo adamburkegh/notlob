@@ -27,7 +27,7 @@
   },
   "definitions": {
     "Node": {
-      "description": "A named node: module, subheading, symbol, or property.",
+      "description": "A named node: module, subheading, symbol, property, example, test, or external.",
       "type": "object",
       "required": [
         "address",
@@ -52,6 +52,9 @@
             "SUBHEADING",
             "SYMBOL",
             "PROPERTY",
+            "EXAMPLE",
+            "RUN",
+            "TEST",
             "EXTERNAL"
           ]
         },

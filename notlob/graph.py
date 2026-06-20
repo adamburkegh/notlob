@@ -65,7 +65,7 @@ from typing import Iterator
 from .bindings import Extractor
 from .model import (
     AppendixSection, Claim, CodeBlock, Module,
-    ProseBlock, Ref, Subheading,
+    ProseBlock, Ref, Subheading, TestsSection,
 )
 
 
@@ -132,6 +132,9 @@ class NodeKind(Enum):
     SUBHEADING = auto()
     SYMBOL     = auto()    # symbols: code-level defined name
     PROPERTY   = auto()    # symbols: named ~property claim
+    EXAMPLE    = auto()    # claims: ~example block
+    RUN        = auto()    # claims: ~run entry-point block
+    TEST       = auto()    # claims: #Tests group or bare assertions
     EXTERNAL   = auto()    # external file declared with ~external in binding.lob
 
 
@@ -440,6 +443,7 @@ def build(module: Module) -> NameGraph:
 
     Creates a node for the module and one for each subheading,
     with CONTAINS edges from the module to its subheadings.
+    Also creates TEST nodes for #Tests groups.
     Content (prose and module-level code) is attached to each node.
     """
     graph = NameGraph()
@@ -458,6 +462,8 @@ def build(module: Module) -> NameGraph:
     for item in module.body:
         if isinstance(item, Subheading):
             _add_subheading(graph, addr, item)
+
+    _add_tests(graph, module, addr)
 
     return graph
 
@@ -484,6 +490,61 @@ def _add_subheading(
     ))
 
 
+def _add_tests(
+    graph:  NameGraph,
+    module: Module,
+    mod_addr: str,
+) -> None:
+    """Register #Tests groups (and bare assertions) as TEST nodes."""
+    if module.post_text is None:
+        return
+    tests_section = next(
+        (s for s in module.post_text.sections
+         if isinstance(s, TestsSection)),
+        None,
+    )
+    if tests_section is None:
+        return
+
+    tests_addr = f"{mod_addr}#Tests"
+    has_bare = False
+    for item in tests_section.items:
+        if isinstance(item, str):
+            has_bare = True
+        else:
+            group_addr = f"{tests_addr}#{item.title}"
+            source = "\n".join(item.lines).strip()
+            graph.add_node(Node(
+                address=group_addr,
+                label=item.title,
+                kind=NodeKind.TEST,
+                content=_node_content(None, source or None),
+            ))
+            graph.add_edge(Edge(
+                source=mod_addr,
+                target=group_addr,
+                kind=EdgeKind.DEFINES,
+            ))
+
+    if has_bare:
+        bare_lines = [
+            item for item in tests_section.items
+            if isinstance(item, str)
+        ]
+        source = "\n".join(bare_lines).strip()
+        graph.add_node(Node(
+            address=tests_addr,
+            label="Tests",
+            kind=NodeKind.TEST,
+            content=_node_content(None, source or None),
+        ))
+        graph.add_edge(Edge(
+            source=mod_addr,
+            target=tests_addr,
+            kind=EdgeKind.DEFINES,
+        ))
+
+
 # ── Symbol enrichment ────────────────────────────────────────
 
 def enrich(
@@ -508,13 +569,24 @@ def enrich(
     """
     mod_addr = module_address(module.title)
 
+    example_n = 0
+    run_n = 0
     for item in module.body:
         if isinstance(item, CodeBlock):
             _add_symbols(graph, item, mod_addr, mod_addr, extractor)
         elif isinstance(item, Claim):
-            _add_named_property(graph, item, mod_addr, extractor)
+            if item.sigil == "~example":
+                example_n += 1
+                _add_example(graph, item, mod_addr, example_n)
+            elif item.sigil == "~run":
+                run_n += 1
+                _add_run(graph, item, mod_addr, run_n)
+            else:
+                _add_named_property(graph, item, mod_addr, extractor)
         elif isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
+            sub_example_n = 0
+            sub_run_n = 0
             for sub_item in item.body:
                 if isinstance(sub_item, CodeBlock):
                     _add_symbols(
@@ -523,9 +595,20 @@ def enrich(
                         extractor,
                     )
                 elif isinstance(sub_item, Claim):
-                    _add_named_property(
-                        graph, sub_item, sub_addr, extractor,
-                    )
+                    if sub_item.sigil == "~example":
+                        sub_example_n += 1
+                        _add_example(
+                            graph, sub_item, sub_addr, sub_example_n,
+                        )
+                    elif sub_item.sigil == "~run":
+                        sub_run_n += 1
+                        _add_run(
+                            graph, sub_item, sub_addr, sub_run_n,
+                        )
+                    else:
+                        _add_named_property(
+                            graph, sub_item, sub_addr, extractor,
+                        )
 
 
 def _add_symbols(
@@ -595,6 +678,50 @@ def _add_named_property(
             target=sym_addr,
             kind=EdgeKind.DEFINES,
         ))
+
+
+def _add_example(
+    graph:           NameGraph,
+    claim:           Claim,
+    containing_addr: str,
+    ordinal:         int,
+) -> None:
+    """Register a ~example claim as a node."""
+    addr = claim_address(containing_addr, "example", ordinal)
+    source = textwrap.dedent("\n".join(claim.lines)).strip()
+    graph.add_node(Node(
+        address=addr,
+        label=f"example#{ordinal}",
+        kind=NodeKind.EXAMPLE,
+        content=_node_content(None, source or None),
+    ))
+    graph.add_edge(Edge(
+        source=containing_addr,
+        target=addr,
+        kind=EdgeKind.DEFINES,
+    ))
+
+
+def _add_run(
+    graph:           NameGraph,
+    claim:           Claim,
+    containing_addr: str,
+    ordinal:         int,
+) -> None:
+    """Register a ~run claim as a node."""
+    addr = claim_address(containing_addr, "run", ordinal)
+    source = textwrap.dedent("\n".join(claim.lines)).strip()
+    graph.add_node(Node(
+        address=addr,
+        label=f"run#{ordinal}",
+        kind=NodeKind.RUN,
+        content=_node_content(None, source or None),
+    ))
+    graph.add_edge(Edge(
+        source=containing_addr,
+        target=addr,
+        kind=EdgeKind.DEFINES,
+    ))
 
 
 # ── Cross-reference validation ────────────────────────────────

@@ -943,11 +943,13 @@ def cmd_check(
 
     Returns 1 if any error-severity findings exist, 0 otherwise.
     """
-    from notlob.check import has_errors, run_checks
+    from notlob.check import coverage_summary, has_errors, run_checks
 
     graph = _require_graph()
     if graph is None:
         return 1
+    if verbose:
+        print(coverage_summary(graph))
     findings, counts = run_checks(graph, enabled=only)
     if verbose:
         for name, n in counts.items():

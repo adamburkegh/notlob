@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
+
 from notlob.graph import EdgeKind, NameGraph, NodeKind
 
 
@@ -57,6 +59,34 @@ def run_checks(
 def has_errors(findings: list[Finding]) -> bool:
     """Return True if any finding has error severity."""
     return any(f.severity == "error" for f in findings)
+
+
+def coverage_summary(graph: NameGraph) -> str:
+    """Return a one-line coverage summary for ``--verbose`` output."""
+    n_modules = sum(1 for _ in graph.nodes(kind=NodeKind.MODULE))
+    n_symbols = sum(1 for _ in graph.nodes(kind=NodeKind.SYMBOL))
+    n_props = sum(1 for _ in graph.nodes(kind=NodeKind.PROPERTY))
+    n_examples = sum(1 for _ in graph.nodes(kind=NodeKind.EXAMPLE))
+    n_tests = sum(1 for _ in graph.nodes(kind=NodeKind.TEST))
+
+    mods_with_examples: set[str] = set()
+    mods_with_tests: set[str] = set()
+    for node in graph.nodes(kind=NodeKind.EXAMPLE):
+        mods_with_examples.add(node.address.split("#")[0])
+    for node in graph.nodes(kind=NodeKind.TEST):
+        mods_with_tests.add(node.address.split("#")[0])
+
+    parts = [
+        f"{n_modules} module{'s' if n_modules != 1 else ''}",
+        f"{n_symbols} symbol{'s' if n_symbols != 1 else ''}",
+        f"{n_examples} example{'s' if n_examples != 1 else ''}",
+        f"{n_props} propert{'ies' if n_props != 1 else 'y'}",
+        f"{n_tests} test group{'s' if n_tests != 1 else ''}",
+        f"{len(mods_with_examples)}/{n_modules} with ~example",
+        f"{len(mods_with_tests)}/{n_modules} with #Tests",
+    ]
+
+    return f"CHECK  coverage: {', '.join(parts)}"
 
 
 # ── Check: typos ─────────────────────────────────────────────
