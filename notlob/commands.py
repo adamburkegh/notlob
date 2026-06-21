@@ -122,6 +122,37 @@ def _check_address(
 
 # ── Formatting ────────────────────────────────────────────────
 
+def _result_dict(r: ClaimResult) -> dict:
+    """Convert a ClaimResult to a JSON-serialisable dict."""
+    d: dict = {
+        "address": r.address,
+        "line": r.line,
+        "status": r.status.name,
+    }
+    if r.file_path:
+        d["file"] = Path(r.file_path).name
+    if r.source_line:
+        d["source_line"] = r.source_line
+    if r.status == Status.FAIL:
+        if r.left is not None:
+            d["left"] = repr(r.left)
+        if r.right is not None:
+            d["right"] = repr(r.right)
+    if r.error is not None:
+        d["error"] = str(r.error)
+    return d
+
+
+def _lint_dict(r: LintResult) -> dict:
+    """Convert a LintResult to a JSON-serialisable dict."""
+    return {
+        "address": r.address,
+        "code": r.code,
+        "message": r.message,
+        "col": r.col,
+    }
+
+
 def _print_result(r: ClaimResult) -> None:
     tag = r.status.name
     loc = ""
@@ -324,8 +355,9 @@ def _test_module(
     binding:            dict,
     keep_generated_src: str | None      = None,
     only:               set[str] | None = None,
+    json_out:           list | None     = None,
 ) -> tuple[int, int, int]:
-    """Test one module; print per-claim output.
+    """Test one module; print per-claim output (or collect into *json_out*).
 
     Returns *(n_pass, n_fail, n_lint)*.  Parse or document errors count
     as one failure and short-circuit claim execution.
@@ -366,8 +398,9 @@ def _test_module(
     lint_results: list[LintResult] = []
     if run_lint and kit.lint is not None:
         lint_results = kit.lint(module, root=root)
-        for r in lint_results:
-            _print_lint_result(r)
+        if json_out is None:
+            for r in lint_results:
+                _print_lint_result(r)
 
     # ── Claims ────────────────────────────────────────────────
     results = []
@@ -387,8 +420,14 @@ def _test_module(
         )
 
     non_skip = [r for r in results if r.status != Status.SKIP]
-    for r in results:
-        _print_result(r)
+    if json_out is not None:
+        for r in results:
+            json_out.append(_result_dict(r))
+        for r in lint_results:
+            json_out.append(_lint_dict(r))
+    else:
+        for r in results:
+            _print_result(r)
 
     n_fail = sum(1 for r in non_skip if r.status != Status.PASS)
     n_pass = len(non_skip) - n_fail
@@ -400,6 +439,7 @@ def cmd_test(
     path:               Path | None      = None,
     keep_generated_src: str | None       = None,
     only:               set[str] | None  = None,
+    json_mode:          bool             = False,
 ) -> int:
     """Run claims in *path* (or all project modules) and return an exit code.
 
@@ -411,11 +451,14 @@ def cmd_test(
     ``"tests"``.  Lint failures produce exit code 1 just like claim
     failures.
     """
+    json_out: list | None = [] if json_mode else None
+
     if path is not None:
         root    = find_project_root(path)
         binding = _find_binding(path)
         n_pass, n_fail, n_lint = _test_module(
             path, root, binding, keep_generated_src, only,
+            json_out=json_out,
         )
     else:
         root, binding = _require_root()
@@ -427,21 +470,51 @@ def cmd_test(
                 continue
             p, f, l = _test_module(
                 lob_path, root, binding, keep_generated_src, only,
+                json_out=json_out,
             )
             n_pass += p
             n_fail += f
             n_lint += l
 
     check_errors = False
+    check_findings: list[dict] = []
     if path is None:
-        check_errors = _run_check_advisory(root, binding)
+        if json_mode:
+            from notlob.check import has_errors, run_checks
+            graph = build_package(
+                root,
+                _get_binding_kit(
+                    binding.get("language") if binding else None,
+                )[1],
+            )
+            findings, _ = run_checks(graph)
+            check_findings = [
+                {"check": f.check, "message": f.message,
+                 "addresses": list(f.addresses),
+                 "severity": f.severity}
+                for f in findings
+            ]
+            check_errors = has_errors(findings)
+        else:
+            check_errors = _run_check_advisory(root, binding)
 
-    parts = [f"{n_pass} passed"]
-    if n_fail:
-        parts.append(f"{n_fail} failed")
-    if n_lint:
-        parts.append(f"{n_lint} lint")
-    print(f"\n{', '.join(parts)}")
+    if json_mode:
+        output = {
+            "passed": n_pass,
+            "failed": n_fail,
+            "lint": n_lint,
+            "results": json_out,
+        }
+        if check_findings:
+            output["check_findings"] = check_findings
+        print(json.dumps(output, indent=2))
+    else:
+        parts = [f"{n_pass} passed"]
+        if n_fail:
+            parts.append(f"{n_fail} failed")
+        if n_lint:
+            parts.append(f"{n_lint} lint")
+        print(f"\n{', '.join(parts)}")
 
     return 1 if (n_fail or n_lint or check_errors) else 0
 
@@ -948,6 +1021,7 @@ def cmd_query_imported_by(address: str) -> int:
 def cmd_check(
     only: set[str] | None = None,
     verbose: bool = False,
+    json_mode: bool = False,
 ) -> int:
     """Run semantic consistency checks on the project name graph.
 
@@ -958,21 +1032,34 @@ def cmd_check(
     graph = _require_graph()
     if graph is None:
         return 1
-    if verbose:
+    if verbose and not json_mode:
         print(coverage_summary(graph))
     findings, counts = run_checks(graph, enabled=only)
-    if verbose:
-        for name, n in counts.items():
-            print(f"CHECK  [{name}]  {n} finding(s)")
-    for f in findings:
-        prefix = "ERROR" if f.severity == "error" else "CHECK"
-        addrs = ", ".join(f.addresses)
-        print(f"{prefix}  [{f.check}]  {f.message}")
-        print(f"       {addrs}")
-    if findings:
-        print(f"\n{len(findings)} finding(s)")
-    elif not verbose:
-        print("CHECK  no findings")
+
+    if json_mode:
+        output = {
+            "findings": [
+                {"check": f.check, "message": f.message,
+                 "addresses": list(f.addresses),
+                 "severity": f.severity}
+                for f in findings
+            ],
+            "counts": counts,
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        if verbose:
+            for name, n in counts.items():
+                print(f"CHECK  [{name}]  {n} finding(s)")
+        for f in findings:
+            prefix = "ERROR" if f.severity == "error" else "CHECK"
+            addrs = ", ".join(f.addresses)
+            print(f"{prefix}  [{f.check}]  {f.message}")
+            print(f"       {addrs}")
+        if findings:
+            print(f"\n{len(findings)} finding(s)")
+        elif not verbose:
+            print("CHECK  no findings")
     return 1 if has_errors(findings) else 0
 
 

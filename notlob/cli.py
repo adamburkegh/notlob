@@ -122,6 +122,10 @@ def main() -> None:
             "(choices: lint, examples, props, tests; default: all)"
         ),
     )
+    test_p.add_argument(
+        "--json", dest="json_mode", action="store_true", default=False,
+        help="output results as JSON",
+    )
 
     build_p = sub.add_parser(
         "build",
@@ -173,6 +177,10 @@ def main() -> None:
     check_p.add_argument(
         "--verbose", "-v", action="store_true", default=False,
         help="show which checks ran and their counts",
+    )
+    check_p.add_argument(
+        "--json", dest="json_mode", action="store_true", default=False,
+        help="output findings as JSON",
     )
 
     docs_p = sub.add_parser(
@@ -284,6 +292,7 @@ def main() -> None:
             _opt_path(args.file, args.module_mode),
             keep_generated_src=args.keep_generated_src,
             only=set(args.only) if args.only else None,
+            json_mode=args.json_mode,
         ))
     elif args.command == "graph":
         sys.exit(cmd_graph(
@@ -294,6 +303,7 @@ def main() -> None:
         sys.exit(cmd_check(
             only=set(args.only) if args.only else None,
             verbose=args.verbose,
+            json_mode=args.json_mode,
         ))
     elif args.command == "docs":
         sys.exit(cmd_docs(
