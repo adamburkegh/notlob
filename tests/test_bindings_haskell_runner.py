@@ -111,21 +111,30 @@ class TestHsStringEscape:
 
 class TestIterAssertions:
     def test_single_line(self):
-        assert list(_iter_assertions(["    f x == 1"])) == ["f x == 1"]
+        result = list(_iter_assertions(["    f x == 1"]))
+        assert [e for e, _ in result] == ["f x == 1"]
 
     def test_blank_lines_skipped(self):
         lines = ["    f x == 1", "", "    g x == 2"]
-        assert list(_iter_assertions(lines)) == ["f x == 1", "g x == 2"]
+        result = list(_iter_assertions(lines))
+        assert [e for e, _ in result] == ["f x == 1", "g x == 2"]
 
     def test_empty_input(self):
         assert list(_iter_assertions([])) == []
 
     def test_strips_whitespace(self):
-        assert list(_iter_assertions(["        deep == True"])) == ["deep == True"]
+        result = list(_iter_assertions(["        deep == True"]))
+        assert [e for e, _ in result] == ["deep == True"]
 
     def test_multiple_lines(self):
         lines = ["    a == 1", "    b == 2", "    c == 3"]
-        assert list(_iter_assertions(lines)) == ["a == 1", "b == 2", "c == 3"]
+        result = list(_iter_assertions(lines))
+        assert [e for e, _ in result] == ["a == 1", "b == 2", "c == 3"]
+
+    def test_line_offsets(self):
+        lines = ["    a == 1", "", "    b == 2"]
+        result = list(_iter_assertions(lines))
+        assert result == [("a == 1", 0), ("b == 2", 2)]
 
 
 # ── _build_examples_harness ───────────────────────────────────
@@ -136,38 +145,38 @@ class TestBuildExamplesHarness:
         return _build_examples_harness(m, assertions)
 
     def test_starts_with_module_decl(self):
-        h = self._harness_for("f x = x", [("addr", "f 1 == 1")])
+        h = self._harness_for("f x = x", [("addr", "f 1 == 1", None)])
         assert h.startswith("module NotlobRunner where")
 
     def test_not_user_module_name(self):
         # Must NOT be "module TestModule where"
-        h = self._harness_for("f x = x", [("addr", "f 1 == 1")])
+        h = self._harness_for("f x = x", [("addr", "f 1 == 1", None)])
         assert "module TestModule where" not in h
 
     def test_helper_present(self):
-        h = self._harness_for("f x = x", [("addr", "f 1 == 1")])
+        h = self._harness_for("f x = x", [("addr", "f 1 == 1", None)])
         assert "_notlobCheck" in h
 
     def test_main_present(self):
-        h = self._harness_for("f x = x", [("addr", "f 1 == 1")])
+        h = self._harness_for("f x = x", [("addr", "f 1 == 1", None)])
         assert "main :: IO ()" in h
 
     def test_assertion_embedded(self):
-        h = self._harness_for("f x = x", [("addr", "f 1 == 1")])
+        h = self._harness_for("f x = x", [("addr", "f 1 == 1", None)])
         assert "f 1 == 1" in h
 
     def test_address_embedded(self):
-        h = self._harness_for("f x = x", [("test/mod#example#1", "f 1 == 1")])
+        h = self._harness_for("f x = x", [("test/mod#example#1", "f 1 == 1", None)])
         assert "test/mod#example#1" in h
 
     def test_user_code_embedded(self):
-        h = self._harness_for("answer = 42", [("addr", "answer == 42")])
+        h = self._harness_for("answer = 42", [("addr", "answer == 42", None)])
         assert "answer = 42" in h
 
     def test_quotes_in_expression_escaped(self):
         h = self._harness_for(
             'greet = "hello"',
-            [("addr", 'greet == "hello"')],
+            [("addr", 'greet == "hello"', None)],
         )
         # The escaped form should appear (for the display string arg)
         assert '\\"hello\\"' in h
@@ -180,7 +189,7 @@ class TestBuildExamplesHarness:
             body=[_code("f x = x")],
             refs=["    import Data.List (sort)"],
         )
-        h = _build_examples_harness(m, [("addr", "f 1 == 1")])
+        h = _build_examples_harness(m, [("addr", "f 1 == 1", None)])
         assert "import Data.List (sort)" in h
 
     def test_lob_refs_excluded(self):
@@ -189,14 +198,14 @@ class TestBuildExamplesHarness:
             body=[_code("f x = x")],
             refs=["    #Roman Numerals", "    import Data.Char"],
         )
-        h = _build_examples_harness(m, [("addr", "f 1 == 1")])
+        h = _build_examples_harness(m, [("addr", "f 1 == 1", None)])
         assert "#Roman Numerals" not in h
         assert "import Data.Char" in h
 
     def test_multiple_assertions_all_present(self):
         assertions = [
-            ("addr1", "f 1 == 2"),
-            ("addr2", "g 3 == 4"),
+            ("addr1", "f 1 == 2", None),
+            ("addr2", "g 3 == 4", None),
         ]
         h = self._harness_for("f x = x\ng x = x", assertions)
         assert "f 1 == 2" in h
@@ -207,7 +216,7 @@ class TestBuildExamplesHarness:
 
 class TestParseOutput:
     def _parse(self, stdout, assertions=None, stderr="", rc=0):
-        assertions = assertions or [("addr", "expr")]
+        assertions = assertions or [("addr", "expr", None)]
         return _parse_output(stdout, stderr, rc, assertions)
 
     def test_pass_result(self):
@@ -224,14 +233,14 @@ class TestParseOutput:
 
     def test_two_pass_results(self):
         stdout = "CLAIM\ta1\te1\nPASS\nCLAIM\ta2\te2\nPASS\n"
-        assertions = [("a1", "e1"), ("a2", "e2")]
+        assertions = [("a1", "e1", None), ("a2", "e2", None)]
         results = _parse_output(stdout, "", 0, assertions)
         assert len(results) == 2
         assert all(r.status == Status.PASS for r in results)
 
     def test_mixed_results(self):
         stdout = "CLAIM\ta1\te1\nPASS\nCLAIM\ta2\te2\nFAIL\n"
-        assertions = [("a1", "e1"), ("a2", "e2")]
+        assertions = [("a1", "e1", None), ("a2", "e2", None)]
         results = _parse_output(stdout, "", 0, assertions)
         assert results[0].status == Status.PASS
         assert results[1].status == Status.FAIL
@@ -240,7 +249,7 @@ class TestParseOutput:
         # CLAIM line with no following result = crash
         results = self._parse(
             "CLAIM\taddr\texpr\n",
-            assertions=[("addr", "expr")],
+            assertions=[("addr", "expr", None)],
             stderr="runtime error",
         )
         assert results[0].status == Status.ERROR
@@ -248,7 +257,7 @@ class TestParseOutput:
     def test_empty_stdout_with_failed_rc_gives_error(self):
         results = self._parse(
             "",
-            assertions=[("addr", "expr")],
+            assertions=[("addr", "expr", None)],
             stderr="parse error",
             rc=1,
         )
@@ -262,14 +271,14 @@ class TestParseOutput:
     def test_address_and_expr_extracted(self):
         results = self._parse(
             "CLAIM\troman/numerals#example#1\ttoRoman 1 == \"I\"\nPASS\n",
-            assertions=[("roman/numerals#example#1", 'toRoman 1 == "I"')],
+            assertions=[("roman/numerals#example#1", 'toRoman 1 == "I"', None)],
         )
         assert results[0].address == "roman/numerals#example#1"
         assert results[0].line == 'toRoman 1 == "I"'
 
     def test_error_line_in_output(self):
         stdout = "CLAIM\taddr\texpr\nERROR\tsomething went wrong\n"
-        results = _parse_output(stdout, "", 0, [("addr", "expr")])
+        results = _parse_output(stdout, "", 0, [("addr", "expr", None)])
         assert results[0].status == Status.ERROR
         assert "something went wrong" in str(results[0].error)
 

@@ -55,6 +55,8 @@ class ClaimResult:
     left:    Any              = None
     right:   Any              = None
     error:   Exception | None = None
+    source_line: int | None   = None
+    file_path: str | None     = None
 
 
 # ── Symbol info ───────────────────────────────────────────────

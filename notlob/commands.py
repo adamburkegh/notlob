@@ -124,7 +124,11 @@ def _check_address(
 
 def _print_result(r: ClaimResult) -> None:
     tag = r.status.name
-    print(f"{tag:5}  {r.address}  {r.line}")
+    loc = ""
+    if r.file_path and r.source_line:
+        rel = Path(r.file_path).name
+        loc = f"{rel}:{r.source_line}  "
+    print(f"{tag:5}  {loc}{r.address}  {r.line}")
     if r.status == Status.FAIL:
         if r.left is not None or r.right is not None:
             print(f"         left:  {r.left!r}")
@@ -833,6 +837,8 @@ def _node_dict(node, include_content: bool = False) -> dict:
     }
     if include_content and node.content is not None:
         d["content"] = node.content
+    if node.start_line is not None:
+        d["start_line"] = node.start_line
     return d
 
 

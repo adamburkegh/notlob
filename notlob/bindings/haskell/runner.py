@@ -155,11 +155,11 @@ def _run_harness(
 # ── Assertion helpers ─────────────────────────────────────────
 
 def _iter_assertions(lines: list[str]):
-    """Yield stripped non-blank lines as individual assertion strings."""
-    for raw in lines:
+    """Yield ``(expression, line_offset)`` for non-blank lines."""
+    for i, raw in enumerate(lines):
         stripped = raw.strip()
         if stripped:
-            yield stripped
+            yield stripped, i
 
 
 def _hs_string_escape(s: str) -> str:
@@ -244,12 +244,12 @@ def _hide_user_main(source: str) -> str:
 
 def _build_examples_harness(
     module: Module,
-    assertions: list[tuple[str, str]],
+    assertions: list[tuple[str, str, int | None]],
     dep_modules: list[Module] | None = None,
 ) -> str:
     """Build a runghc harness for a list of Boolean assertions.
 
-    *assertions* is an ordered list of ``(address, expression)`` pairs.
+    *assertions* is an ordered list of ``(address, expression, source_line)`` triples.
     The harness calls ``_notlobCheck`` for each assertion in order and
     prints CLAIM / PASS / FAIL lines.
 
@@ -275,7 +275,7 @@ def _build_examples_harness(
     parts.append(_CHECK_HELPER)
 
     main_lines = ["main :: IO ()", "main = do"]
-    for addr, expr in assertions:
+    for addr, expr, _sl in assertions:
         ea = _hs_string_escape(addr)
         ee = _hs_string_escape(expr)
         main_lines.append(
@@ -345,7 +345,8 @@ def _parse_output(
     stdout: str,
     stderr: str,
     returncode: int,
-    assertions: list[tuple[str, str]],
+    assertions: list[tuple[str, str, int | None]],
+    file_path: Path | None = None,
 ) -> list[ClaimResult]:
     """Parse harness stdout into ClaimResult objects.
 
@@ -366,9 +367,11 @@ def _parse_output(
     single ERROR result is returned for the first assertion (covering
     the compile-error case).
     """
+    fp = str(file_path) if file_path else None
     results: list[ClaimResult] = []
     lines = stdout.splitlines()
     i = 0
+    claim_n = 0
 
     while i < len(lines):
         raw = lines[i]
@@ -376,22 +379,28 @@ def _parse_output(
             parts = raw.split("\t", 2)
             addr = parts[1] if len(parts) > 1 else "?"
             expr = parts[2] if len(parts) > 2 else "<assertion>"
+            sl = (assertions[claim_n][2]
+                  if claim_n < len(assertions) else None)
+            claim_n += 1
             i += 1
             if i < len(lines):
                 result_line = lines[i]
                 if result_line == "PASS":
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.PASS,
+                        source_line=sl, file_path=fp,
                     ))
                 elif result_line == "FAIL":
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.FAIL,
+                        source_line=sl, file_path=fp,
                     ))
                 elif result_line.startswith("ERROR\t"):
                     msg = result_line[6:]
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.ERROR,
                         error=RuntimeError(msg),
+                        source_line=sl, file_path=fp,
                     ))
                 else:
                     results.append(ClaimResult(
@@ -399,23 +408,24 @@ def _parse_output(
                         error=RuntimeError(
                             f"unexpected runner output: {result_line!r}"
                         ),
+                        source_line=sl, file_path=fp,
                     ))
             else:
-                # CLAIM line with no following result — runtime crash
                 err_msg = stderr.strip() or "runtime error (no result)"
                 results.append(ClaimResult(
                     address=addr, line=expr, status=Status.ERROR,
                     error=RuntimeError(err_msg),
+                    source_line=sl, file_path=fp,
                 ))
         i += 1
 
-    # Compile error: process failed before printing any CLAIM line
     if not results and assertions:
         err_msg = stderr.strip() or "compile error"
-        addr, expr = assertions[0]
+        addr, expr, sl = assertions[0]
         results.append(ClaimResult(
             address=addr, line="<compile>", status=Status.ERROR,
             error=RuntimeError(err_msg),
+            source_line=sl, file_path=fp,
         ))
 
     return results
@@ -427,8 +437,11 @@ def _parse_property_output(
     returncode: int,
     addr: str,
     sigil: str,
+    source_line: int | None = None,
+    file_path: Path | None = None,
 ) -> ClaimResult:
     """Parse a single-property harness output into one ClaimResult."""
+    fp = str(file_path) if file_path else None
     lines = stdout.splitlines()
     result_line = None
     for i, raw in enumerate(lines):
@@ -441,15 +454,20 @@ def _parse_property_output(
         return ClaimResult(
             address=addr, line="<compile>",
             status=Status.ERROR, error=RuntimeError(err),
+            source_line=source_line, file_path=fp,
         )
 
     if result_line == "PASS":
-        return ClaimResult(address=addr, line=sigil, status=Status.PASS)
+        return ClaimResult(
+            address=addr, line=sigil, status=Status.PASS,
+            source_line=source_line, file_path=fp,
+        )
 
     fail_detail = result_line[5:] if result_line.startswith("FAIL\t") else result_line
     return ClaimResult(
         address=addr, line=sigil, status=Status.FAIL,
         error=RuntimeError(fail_detail),
+        source_line=source_line, file_path=fp,
     )
 
 
@@ -458,38 +476,52 @@ def _parse_property_output(
 def _collect_example_assertions(
     body: list,
     containing_addr: str,
-    assertions: list[tuple[str, str]],
+    assertions: list[tuple[str, str, int | None]],
 ) -> None:
-    """Append (address, expression) pairs from ~example claims in body."""
+    """Append (address, expression, source_line) from ~example claims."""
     example_n = 0
     for item in body:
         if not (isinstance(item, Claim) and item.sigil == "~example"):
             continue
         example_n += 1
         addr = claim_address(containing_addr, "example", example_n)
-        for expr in _iter_assertions(item.lines):
-            assertions.append((addr, expr))
+        base = (item.start_line + 1) if item.start_line else None
+        for expr, offset in _iter_assertions(item.lines):
+            sl = (base + offset) if base else None
+            assertions.append((addr, expr, sl))
 
 
 def _collect_tests_assertions(
     tests_section: TestsSection,
     tests_addr: str,
-    assertions: list[tuple[str, str]],
+    assertions: list[tuple[str, str, int | None]],
 ) -> None:
-    """Append (address, expression) pairs from a TestsSection."""
+    """Append (address, expression, source_line) from a TestsSection."""
+    line_offsets = tests_section.line_offsets or {}
     bare: list[str] = []
-    for item in tests_section.items:
+    bare_indices: list[int] = []
+    for idx, item in enumerate(tests_section.items):
         if isinstance(item, str):
             bare.append(item)
+            bare_indices.append(idx)
         else:
-            for expr in _iter_assertions(bare):
-                assertions.append((tests_addr, expr))
-            bare = []
+            if bare:
+                first_line = line_offsets.get(bare_indices[0])
+                for expr, offset in _iter_assertions(bare):
+                    sl = (first_line + offset) if first_line else None
+                    assertions.append((tests_addr, expr, sl))
+                bare = []
+                bare_indices = []
             group_addr = f"{tests_addr}#{item.title}"
-            for expr in _iter_assertions(item.lines):
-                assertions.append((group_addr, expr))
-    for expr in _iter_assertions(bare):
-        assertions.append((tests_addr, expr))
+            base = (item.start_line + 1) if item.start_line else None
+            for expr, offset in _iter_assertions(item.lines):
+                sl = (base + offset) if base else None
+                assertions.append((group_addr, expr, sl))
+    if bare:
+        first_line = line_offsets.get(bare_indices[0])
+        for expr, offset in _iter_assertions(bare):
+            sl = (first_line + offset) if first_line else None
+            assertions.append((tests_addr, expr, sl))
 
 
 # ── Public claim runners ──────────────────────────────────────
@@ -513,7 +545,7 @@ def run_examples(
     ``_examples.hs`` before execution.
     """
     mod_addr = module_address(module.title)
-    assertions: list[tuple[str, str]] = []
+    assertions: list[tuple[str, str, int | None]] = []
 
     _collect_example_assertions(module.body, mod_addr, assertions)
     for item in module.body:
@@ -528,7 +560,7 @@ def run_examples(
     harness     = _build_examples_harness(module, assertions, dep_modules)
     keep_path   = (keep_dir / "_examples.hs") if keep_dir else None
     stdout, stderr, rc = _run_harness(harness, keep_path=keep_path)
-    return _parse_output(stdout, stderr, rc, assertions)
+    return _parse_output(stdout, stderr, rc, assertions, file_path)
 
 
 def run_tests(
@@ -561,7 +593,7 @@ def run_tests(
 
     mod_addr   = module_address(module.title)
     tests_addr = f"{mod_addr}#Tests"
-    assertions: list[tuple[str, str]] = []
+    assertions: list[tuple[str, str, int | None]] = []
 
     _collect_tests_assertions(tests_section, tests_addr, assertions)
 
@@ -572,7 +604,7 @@ def run_tests(
     harness     = _build_examples_harness(module, assertions, dep_modules)
     keep_path   = (keep_dir / "_tests.hs") if keep_dir else None
     stdout, stderr, rc = _run_harness(harness, keep_path=keep_path)
-    return _parse_output(stdout, stderr, rc, assertions)
+    return _parse_output(stdout, stderr, rc, assertions, file_path)
 
 
 def run_properties(
@@ -621,15 +653,18 @@ def run_properties(
             else:
                 addr = claim_address(containing_addr, "property", prop_n)
 
+            sl = item.start_line
+
             if not use_qc:
                 results.append(ClaimResult(
                     address=addr,
                     line=item.sigil,
                     status=Status.SKIP,
+                    source_line=sl,
+                    file_path=str(file_path) if file_path else None,
                 ))
                 continue
 
-            # Find the property function name
             syms = extract_symbols(item.lines)
             if not syms:
                 results.append(ClaimResult(
@@ -640,6 +675,8 @@ def run_properties(
                         "no function found in ~property block; "
                         "define a top-level property function"
                     ),
+                    source_line=sl,
+                    file_path=str(file_path) if file_path else None,
                 ))
                 continue
 
@@ -657,7 +694,10 @@ def run_properties(
                 keep_path=keep_path,
             )
             results.append(
-                _parse_property_output(stdout, stderr, rc, addr, item.sigil)
+                _parse_property_output(
+                    stdout, stderr, rc, addr, item.sigil,
+                    source_line=sl, file_path=file_path,
+                )
             )
 
     _run_prop_in(module.body, mod_addr)

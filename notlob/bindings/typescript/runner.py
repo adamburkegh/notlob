@@ -197,25 +197,28 @@ def _build_module_source(module: Module, root: Path | None) -> str:
 
 # ── Assertion iteration ───────────────────────────────────────
 
-def _iter_assertions(lines: list[str]) -> Generator[str, None, None]:
-    """Yield complete assertion expressions from raw claim lines.
+def _iter_assertions(lines: list[str]) -> Generator[tuple[str, int], None, None]:
+    """Yield ``(expression, line_offset)`` from raw claim lines.
 
-    Multi-line expressions (unclosed brackets spanning several lines)
-    are joined before yielding so the runner sees one complete
-    expression per assertion.
+    *line_offset* is the 0-based index within *lines* where the
+    assertion starts.  Multi-line expressions (unclosed brackets
+    spanning several lines) are joined before yielding.
     """
     buffer: list[str] = []
-    for raw in lines:
+    start_offset = 0
+    for i, raw in enumerate(lines):
         stripped = raw.strip()
         if not stripped:
             continue
+        if not buffer:
+            start_offset = i
         buffer.append(stripped)
         joined = '\n'.join(buffer)
         if is_complete(joined):
-            yield joined
+            yield joined, start_offset
             buffer = []
     if buffer:
-        yield '\n'.join(buffer)   # incomplete — surfaces as ERROR at runtime
+        yield '\n'.join(buffer), start_offset
 
 
 # ── Harness generation ────────────────────────────────────────
@@ -257,26 +260,35 @@ def _build_harness(module_source: str, claim_calls: list[str]) -> str:
 # ── Output parsing ────────────────────────────────────────────
 
 def _parse_output(
-    stdout:       str,
-    stderr:       str,
+    stdout:        str,
+    stderr:        str,
     fallback_addr: str,
+    source_lines:  list[int | None] | None = None,
+    file_path:     Path | None = None,
 ) -> list[ClaimResult]:
     """Parse the CLAIM/PASS/FAIL/ERROR protocol from *stdout*."""
+    fp = str(file_path) if file_path else None
     results: list[ClaimResult] = []
     lines = stdout.splitlines()
     i = 0
+    claim_n = 0
     while i < len(lines):
         line = lines[i]
         if line.startswith('CLAIM\t'):
             parts = line.split('\t', 2)
             addr  = parts[1] if len(parts) > 1 else fallback_addr
             expr  = parts[2] if len(parts) > 2 else ''
+            sl = (source_lines[claim_n]
+                  if source_lines and claim_n < len(source_lines)
+                  else None)
+            claim_n += 1
             i += 1
             if i < len(lines):
                 res = lines[i]
                 if res == 'PASS':
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.PASS,
+                        source_line=sl, file_path=fp,
                     ))
                 elif res.startswith('FAIL\t'):
                     rparts = res.split('\t', 2)
@@ -285,20 +297,24 @@ def _parse_output(
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.FAIL,
                         left=left, right=right,
+                        source_line=sl, file_path=fp,
                     ))
                 elif res == 'FAIL':
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.FAIL,
+                        source_line=sl, file_path=fp,
                     ))
                 elif res.startswith('ERROR\t'):
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.ERROR,
                         error=Exception(res[6:]),
+                        source_line=sl, file_path=fp,
                     ))
                 else:
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.ERROR,
                         error=Exception(f'unexpected output: {res!r}'),
+                        source_line=sl, file_path=fp,
                     ))
         i += 1
     return results
@@ -312,13 +328,18 @@ def _dejson(s: str) -> Any:
         return s or None
 
 
-def _assembly_error(addr: str, stderr: str) -> list[ClaimResult]:
+def _assembly_error(
+    addr: str,
+    stderr: str,
+    file_path: Path | None = None,
+) -> list[ClaimResult]:
     msg = stderr.strip() or 'tsx exited with no output'
     return [ClaimResult(
         address=addr,
         line='<assembly>',
         status=Status.ERROR,
         error=Exception(msg),
+        file_path=str(file_path) if file_path else None,
     )]
 
 
@@ -328,6 +349,7 @@ def _collect_example_claims(
     body:            list,
     containing_addr: str,
     out:             list[str],
+    out_lines:       list[int | None] | None = None,
 ) -> None:
     """Append ``__runClaim(...)`` lines for ~example blocks in *body*."""
     example_n = 0
@@ -336,30 +358,56 @@ def _collect_example_claims(
             continue
         example_n += 1
         addr = claim_address(containing_addr, 'example', example_n)
-        for expr in _iter_assertions(item.lines):
+        base = (item.start_line + 1) if item.start_line else None
+        for expr, offset in _iter_assertions(item.lines):
             out.append(_claim_call(addr, expr))
+            if out_lines is not None:
+                out_lines.append(
+                    (base + offset) if base else None
+                )
 
 
 def _collect_tests_claims(
     tests_section: TestsSection,
     tests_addr:    str,
     out:           list[str],
+    out_lines:     list[int | None] | None = None,
 ) -> None:
     """Append ``__runClaim(...)`` lines for #Tests assertions."""
+    line_offsets = tests_section.line_offsets or {}
     bare: list[str] = []
-    for item in tests_section.items:
+    bare_indices: list[int] = []
+    for idx, item in enumerate(tests_section.items):
         if isinstance(item, str):
             bare.append(item)
+            bare_indices.append(idx)
         else:
-            # Flush bare assertions before the group
-            for expr in _iter_assertions(bare):
-                out.append(_claim_call(tests_addr, expr))
-            bare = []
+            if bare:
+                first_line = line_offsets.get(bare_indices[0])
+                for expr, offset in _iter_assertions(bare):
+                    out.append(_claim_call(tests_addr, expr))
+                    if out_lines is not None:
+                        out_lines.append(
+                            (first_line + offset) if first_line else None
+                        )
+                bare = []
+                bare_indices = []
             group_addr = f'{tests_addr}#{item.title}'
-            for expr in _iter_assertions(item.lines):
+            base = (item.start_line + 1) if item.start_line else None
+            for expr, offset in _iter_assertions(item.lines):
                 out.append(_claim_call(group_addr, expr))
-    for expr in _iter_assertions(bare):
-        out.append(_claim_call(tests_addr, expr))
+                if out_lines is not None:
+                    out_lines.append(
+                        (base + offset) if base else None
+                    )
+    if bare:
+        first_line = line_offsets.get(bare_indices[0])
+        for expr, offset in _iter_assertions(bare):
+            out.append(_claim_call(tests_addr, expr))
+            if out_lines is not None:
+                out_lines.append(
+                    (first_line + offset) if first_line else None
+                )
 
 
 # ── Keep-generated-src ────────────────────────────────────────
@@ -400,11 +448,12 @@ def run_examples(
     mod_source = _build_module_source(module, root)
 
     claim_calls: list[str] = []
-    _collect_example_claims(module.body, mod_addr, claim_calls)
+    src_lines: list[int | None] = []
+    _collect_example_claims(module.body, mod_addr, claim_calls, src_lines)
     for item in module.body:
         if isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
-            _collect_example_claims(item.body, sub_addr, claim_calls)
+            _collect_example_claims(item.body, sub_addr, claim_calls, src_lines)
 
     if not claim_calls:
         return []
@@ -413,9 +462,9 @@ def run_examples(
     keep_path = _write_kept_source(keep_dir, '_examples.ts', harness)
     stdout, stderr, rc = _run_harness(harness, cmd, keep_path)
 
-    results = _parse_output(stdout, stderr, mod_addr)
+    results = _parse_output(stdout, stderr, mod_addr, src_lines, file_path)
     if not results and rc != 0:
-        return _assembly_error(mod_addr, stderr)
+        return _assembly_error(mod_addr, stderr, file_path)
     return results
 
 
@@ -449,7 +498,9 @@ def run_tests(
 
     mod_source   = _build_module_source(module, root)
     claim_calls: list[str] = []
-    _collect_tests_claims(tests_section, f'{mod_addr}#Tests', claim_calls)
+    src_lines: list[int | None] = []
+    _collect_tests_claims(tests_section, f'{mod_addr}#Tests',
+                          claim_calls, src_lines)
 
     if not claim_calls:
         return []
@@ -458,9 +509,9 @@ def run_tests(
     keep_path = _write_kept_source(keep_dir, '_tests.ts', harness)
     stdout, stderr, rc = _run_harness(harness, cmd, keep_path)
 
-    results = _parse_output(stdout, stderr, mod_addr)
+    results = _parse_output(stdout, stderr, mod_addr, src_lines, file_path)
     if not results and rc != 0:
-        return _assembly_error(mod_addr, stderr)
+        return _assembly_error(mod_addr, stderr, file_path)
     return results
 
 
@@ -478,6 +529,8 @@ def run_properties(
     Fast-check integration is planned for a future iteration.
     """
     mod_addr = module_address(module.title)
+
+    fp = str(file_path) if file_path else None
 
     def _props_in(body: list, containing_addr: str) -> list[ClaimResult]:
         results = []
@@ -498,6 +551,8 @@ def run_properties(
                 address=addr,
                 line=item.sigil,
                 status=Status.SKIP,
+                source_line=item.start_line,
+                file_path=fp,
             ))
         return results
 

@@ -61,6 +61,10 @@
         "content": {
           "description": "Source payload; present only when include_content=True.",
           "$ref": "#/definitions/Content"
+        },
+        "start_line": {
+          "description": "1-based source line number where this node begins in its .lob file.",
+          "type": "integer"
         }
       }
     },

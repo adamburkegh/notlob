@@ -141,12 +141,12 @@ def run_examples(
 
     results: list[ClaimResult] = []
 
-    _run_section(module.body, mod_addr, ns, results)
+    _run_section(module.body, mod_addr, ns, results, file_path)
 
     for item in module.body:
         if isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
-            _run_section(item.body, sub_addr, ns, results)
+            _run_section(item.body, sub_addr, ns, results, file_path)
 
     return results
 
@@ -208,24 +208,45 @@ def run_tests(
 
     ns.update(_build_test_ns(binding))
 
+    fp = str(file_path) if file_path else None
+    line_offsets = tests_section.line_offsets or {}
     results: list[ClaimResult] = []
     tests_addr = f"{mod_addr}#Tests"
     bare: list[str] = []
+    bare_indices: list[int] = []
 
-    for item in tests_section.items:
+    for idx, item in enumerate(tests_section.items):
         if isinstance(item, str):
             bare.append(item)
+            bare_indices.append(idx)
         else:
             if bare:
-                for assertion in _iter_assertions(bare):
-                    results.append(_eval_line(tests_addr, assertion, ns))
+                first_line = line_offsets.get(bare_indices[0])
+                for assertion, offset in _iter_assertions(bare):
+                    sl = (first_line + offset) if first_line else None
+                    results.append(_eval_line(
+                        tests_addr, assertion, ns,
+                        source_line=sl, file_path=fp,
+                    ))
                 bare = []
+                bare_indices = []
             group_addr = f"{tests_addr}#{item.title}"
-            for assertion in _iter_assertions(item.lines):
-                results.append(_eval_line(group_addr, assertion, ns))
+            base = (item.start_line + 1) if item.start_line else None
+            for assertion, offset in _iter_assertions(item.lines):
+                sl = (base + offset) if base else None
+                results.append(_eval_line(
+                    group_addr, assertion, ns,
+                    source_line=sl, file_path=fp,
+                ))
 
-    for assertion in _iter_assertions(bare):
-        results.append(_eval_line(tests_addr, assertion, ns))
+    if bare:
+        first_line = line_offsets.get(bare_indices[0])
+        for assertion, offset in _iter_assertions(bare):
+            sl = (first_line + offset) if first_line else None
+            results.append(_eval_line(
+                tests_addr, assertion, ns,
+                source_line=sl, file_path=fp,
+            ))
 
     return results
 
@@ -284,6 +305,7 @@ def run_properties(
     _run_props_in(
         module.body, mod_addr, ns, results, inject_ns,
         mod_source=mod_source, keep_dir=keep_dir,
+        file_path=file_path,
     )
 
     for item in module.body:
@@ -292,6 +314,7 @@ def run_properties(
             _run_props_in(
                 item.body, sub_addr, ns, results, inject_ns,
                 mod_source=mod_source, keep_dir=keep_dir,
+                file_path=file_path,
             )
 
     return results
@@ -325,7 +348,7 @@ def _build_tests_source(
         if not bare:
             return
         parts.append(f"\n# --- {tests_addr} ---")
-        for assertion in _iter_assertions(list(bare)):
+        for assertion, _ in _iter_assertions(list(bare)):
             parts.append(f"assert {assertion}")
         bare.clear()
 
@@ -336,7 +359,7 @@ def _build_tests_source(
             _flush_bare()
             group_addr = f"{tests_addr}#{item.title}"
             parts.append(f"\n# --- {group_addr} ---")
-            for assertion in _iter_assertions(item.lines):
+            for assertion, _ in _iter_assertions(item.lines):
                 parts.append(f"assert {assertion}")
 
     _flush_bare()
@@ -359,7 +382,7 @@ def _build_examples_source(
             example_n += 1
             addr = claim_address(containing_addr, "example", example_n)
             parts.append(f"\n# --- {addr} ---")
-            for assertion in _iter_assertions(item.lines):
+            for assertion, _ in _iter_assertions(item.lines):
                 parts.append(f"assert {assertion}")
 
     _append_section(module.body, mod_addr)
@@ -396,54 +419,74 @@ def _run_section(
     containing_addr: str,
     ns:             dict,
     results:        list[ClaimResult],
+    file_path:      Path | None = None,
 ) -> None:
     """Evaluate ~example claims found directly in body."""
     example_n = 0
+    fp = str(file_path) if file_path else None
     for item in body:
         if not (isinstance(item, Claim) and item.sigil == "~example"):
             continue
         example_n += 1
         addr = claim_address(containing_addr, "example", example_n)
-        for assertion in _iter_assertions(item.lines):
-            results.append(_eval_line(addr, assertion, ns))
+        base = (item.start_line + 1) if item.start_line else None
+        for assertion, offset in _iter_assertions(item.lines):
+            sl = (base + offset) if base else None
+            results.append(_eval_line(
+                addr, assertion, ns, source_line=sl, file_path=fp,
+            ))
 
 
-def _eval_line(addr: str, line: str, ns: dict) -> ClaimResult:
+def _eval_line(
+    addr: str,
+    line: str,
+    ns: dict,
+    source_line: int | None = None,
+    file_path: str | None = None,
+) -> ClaimResult:
     """Evaluate one assertion line and return a ClaimResult."""
     try:
         exec(f"assert {line}", ns)
-        return ClaimResult(address=addr, line=line, status=Status.PASS)
+        return ClaimResult(
+            address=addr, line=line, status=Status.PASS,
+            source_line=source_line, file_path=file_path,
+        )
     except AssertionError:
         left, right = _extract_sides(line, ns)
         return ClaimResult(
             address=addr, line=line, status=Status.FAIL,
             left=left, right=right,
+            source_line=source_line, file_path=file_path,
         )
     except Exception as exc:
         return ClaimResult(
             address=addr, line=line,
             status=Status.ERROR, error=exc,
+            source_line=source_line, file_path=file_path,
         )
 
 
 def _iter_assertions(lines: list[str]):
-    """Yield complete assertion expressions from raw claim lines.
+    """Yield ``(expression, line_offset)`` from raw claim lines.
 
-    Multi-line expressions (unclosed parentheses/brackets spanning
-    several lines) are joined before yielding so the runner sees one
-    complete expression per assertion.
+    *line_offset* is the 0-based index within *lines* where the
+    assertion starts.  Multi-line expressions (unclosed parentheses
+    spanning several lines) are joined before yielding.
     """
     buffer: list[str] = []
-    for raw in lines:
+    start_offset = 0
+    for i, raw in enumerate(lines):
         stripped = raw.strip()
         if not stripped:
             continue
+        if not buffer:
+            start_offset = i
         buffer.append(stripped)
         if _is_complete("\n".join(buffer)):
-            yield "\n".join(buffer)
+            yield "\n".join(buffer), start_offset
             buffer = []
     if buffer:
-        yield "\n".join(buffer)   # incomplete — will surface as ERROR
+        yield "\n".join(buffer), start_offset
 
 
 def _is_complete(text: str) -> bool:
@@ -468,8 +511,10 @@ def _run_props_in(
     inject_ns:      dict,
     mod_source:     str = "",
     keep_dir:       Path | None = None,
+    file_path:      Path | None = None,
 ) -> None:
     """Evaluate ~property claims found directly in body."""
+    fp = str(file_path) if file_path else None
     prop_n = 0
     for item in body:
         if not (isinstance(item, Claim)
@@ -484,6 +529,8 @@ def _run_props_in(
         else:
             prop_name = f"property_{prop_n}"
             addr = claim_address(containing_addr, "property", prop_n)
+
+        sl = item.start_line
 
         prop_block = textwrap.dedent("\n".join(item.lines))
         if keep_dir is not None:
@@ -505,6 +552,7 @@ def _run_props_in(
                 line="<property-exec>",
                 status=Status.ERROR,
                 error=exc,
+                source_line=sl, file_path=fp,
             ))
             continue
 
@@ -515,6 +563,7 @@ def _run_props_in(
                 line=item.sigil,
                 status=Status.ERROR,
                 error=ValueError("no callable found in ~property block"),
+                source_line=sl, file_path=fp,
             ))
             continue
 
@@ -522,11 +571,13 @@ def _run_props_in(
             callable_()
             results.append(ClaimResult(
                 address=addr, line=item.sigil, status=Status.PASS,
+                source_line=sl, file_path=fp,
             ))
         except Exception as exc:
             results.append(ClaimResult(
                 address=addr, line=item.sigil,
                 status=Status.FAIL, error=exc,
+                source_line=sl, file_path=fp,
             ))
 
 

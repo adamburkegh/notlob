@@ -69,6 +69,7 @@ class CodeBlock:
     dedented line ends the block.
     """
     lines: list[str]
+    start_line: int | None = None
 
 
 @dataclass
@@ -76,6 +77,7 @@ class Claim:
     """A ~sigil followed by its indented body."""
     sigil: str        # e.g. "~example", "~property"
     lines: list[str]  # body lines; blank lines preserved
+    start_line: int | None = None
 
 
 @dataclass
@@ -86,6 +88,7 @@ class Subheading:
     """
     title: str
     body: list[Union[CodeBlock, Claim, ProseBlock]]
+    start_line: int | None = None
 
 
 # Union of all items that can appear at module body level.
@@ -99,6 +102,7 @@ class TestGroup:
     """A named ## group within the #Tests section."""
     title: str
     lines: list[str]  # assertion lines; blank lines preserved
+    start_line: int | None = None
 
 
 @dataclass
@@ -109,6 +113,7 @@ class TestsSection:
     (INDENT lines that appear outside any ## group).
     """
     items: list[Union[TestGroup, str]]
+    line_offsets: dict[int, int] | None = None
 
 
 @dataclass
@@ -149,6 +154,7 @@ class Module:
     title: str
     body: list[BodyItem]
     post_text: PostText | None = None
+    start_line: int | None = None
 
 
 # ── Tree → model ─────────────────────────────────────────────
@@ -159,14 +165,18 @@ def from_tree(tree: Tree) -> Module:
 
 
 def _module(node: Tree) -> Module:
-    title = str(node.children[0])
+    title_tok = node.children[0]
+    title = str(title_tok)
     body_items = _body(node.children[1])
     pt = (
         _post_text(node.children[2])
         if len(node.children) > 2
         else None
     )
-    return Module(title=title, body=body_items, post_text=pt)
+    return Module(
+        title=title, body=body_items, post_text=pt,
+        start_line=getattr(title_tok, "line", None),
+    )
 
 
 def _body(node: Tree) -> list[BodyItem]:
@@ -196,7 +206,8 @@ def _content(node: Tree) -> BodyItem:
 
 
 def _subheading(node: Tree) -> Subheading:
-    title = str(node.children[0])
+    title_tok = node.children[0]
+    title = str(title_tok)
     body: list[Union[CodeBlock, Claim, ProseBlock]] = []
     for child in node.children[1:]:
         if isinstance(child, Token):   # BLANK — skip
@@ -205,17 +216,26 @@ def _subheading(node: Tree) -> Subheading:
         # grammar guarantees no nested subheadings here
         assert isinstance(item, (CodeBlock, Claim, ProseBlock))
         body.append(item)
-    return Subheading(title=title, body=body)
+    return Subheading(
+        title=title, body=body,
+        start_line=getattr(title_tok, "line", None),
+    )
 
 
 def _code_block(node: Tree) -> CodeBlock:
-    return CodeBlock(lines=[str(c) for c in node.children])
+    first = node.children[0] if node.children else None
+    return CodeBlock(
+        lines=[str(c) for c in node.children],
+        start_line=getattr(first, "line", None),
+    )
 
 
 def _claim(node: Tree) -> Claim:
+    sigil_tok = node.children[0]
     return Claim(
-        sigil=str(node.children[0]),
+        sigil=str(sigil_tok),
         lines=[str(c) for c in node.children[1:]],
+        start_line=getattr(sigil_tok, "line", None),
     )
 
 
@@ -267,22 +287,33 @@ def _post_section(node: Tree) -> PostSection:
 
 def _tests_section(node: Tree) -> TestsSection:
     items: list[Union[TestGroup, str]] = []
+    line_offsets: dict[int, int] = {}
     for child in node.children[1:]:    # skip TESTS_HEAD
         if isinstance(child, Token):   # BLANK
             continue
         # child is a test_item Tree
         inner = child.children[0]
         if isinstance(inner, Token):   # bare INDENT assertion
+            ln = getattr(inner, "line", None)
+            if ln is not None:
+                line_offsets[len(items)] = ln
             items.append(str(inner))
         else:
             items.append(_test_group(inner))
-    return TestsSection(items=items)
+    return TestsSection(
+        items=items,
+        line_offsets=line_offsets or None,
+    )
 
 
 def _test_group(node: Tree) -> TestGroup:
-    title = str(node.children[0])
+    title_tok = node.children[0]
+    title = str(title_tok)
     lines = [str(c) for c in node.children[1:]]
-    return TestGroup(title=title, lines=lines)
+    return TestGroup(
+        title=title, lines=lines,
+        start_line=getattr(title_tok, "line", None),
+    )
 
 
 def _binding_section(node: Tree) -> BindingSection:

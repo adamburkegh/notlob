@@ -170,10 +170,11 @@ class TestToDict:
     def test_node_shape(self):
         d = _graph("#Roman Numerals\n").to_dict()
         node = next(n for n in d["nodes"] if n["kind"] == "MODULE")
-        assert set(node.keys()) == {"address", "label", "kind"}
+        assert {"address", "label", "kind"} <= set(node.keys())
         assert node["address"] == "roman/numerals"
         assert node["label"]   == "Roman Numerals"
         assert node["kind"]    == "MODULE"
+        assert node["start_line"] == 1
 
     def test_edge_shape(self):
         d = _graph("#T\n##Section\n    code\n").to_dict()

@@ -65,21 +65,29 @@ class TestClaimCall:
 
 class TestIterAssertions:
     def test_single_line(self):
-        assert list(_iter_assertions(['x === 1'])) == ['x === 1']
+        result = list(_iter_assertions(['x === 1']))
+        assert [e for e, _ in result] == ['x === 1']
 
     def test_blank_lines_skipped(self):
-        assert list(_iter_assertions(['', 'x === 1', ''])) == ['x === 1']
+        result = list(_iter_assertions(['', 'x === 1', '']))
+        assert [e for e, _ in result] == ['x === 1']
 
     def test_multiline_joined(self):
         lines = ['arr.every(', '  x => x > 0)']
         result = list(_iter_assertions(lines))
         assert len(result) == 1
-        assert 'arr.every(' in result[0]
-        assert 'x => x > 0)' in result[0]
+        assert 'arr.every(' in result[0][0]
+        assert 'x => x > 0)' in result[0][0]
 
     def test_two_assertions(self):
         lines = ['x === 1', 'y === 2']
-        assert list(_iter_assertions(lines)) == ['x === 1', 'y === 2']
+        result = list(_iter_assertions(lines))
+        assert [e for e, _ in result] == ['x === 1', 'y === 2']
+
+    def test_line_offsets(self):
+        lines = ['x === 1', '', 'y === 2']
+        result = list(_iter_assertions(lines))
+        assert result == [('x === 1', 0), ('y === 2', 2)]
 
 
 # ── Unit: _parse_output ───────────────────────────────────────

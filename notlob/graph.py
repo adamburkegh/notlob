@@ -157,6 +157,9 @@ class Node:
     content: dict | None = field(
         default=None, hash=False, compare=False,
     )
+    start_line: int | None = field(
+        default=None, hash=False, compare=False,
+    )
 
     def __repr__(self) -> str:
         return f"<{self.kind.name} {self.address!r}>"
@@ -351,6 +354,8 @@ class NameGraph:
             }
             if include_content and node.content is not None:
                 d["content"] = node.content
+            if node.start_line is not None:
+                d["start_line"] = node.start_line
             nodes.append(d)
         return {
             "nodes": nodes,
@@ -457,6 +462,7 @@ def build(module: Module) -> NameGraph:
             _prose_text(module.body),
             _code_text(module.body),
         ),
+        start_line=module.start_line,
     ))
 
     for item in module.body:
@@ -482,6 +488,7 @@ def _add_subheading(
             _prose_text(sub.body),
             _code_text(sub.body),
         ),
+        start_line=sub.start_line,
     ))
     graph.add_edge(Edge(
         source=module_addr,
@@ -519,6 +526,7 @@ def _add_tests(
                 label=item.title,
                 kind=NodeKind.TEST,
                 content=_node_content(None, source or None),
+                start_line=item.start_line,
             ))
             graph.add_edge(Edge(
                 source=mod_addr,
@@ -532,11 +540,20 @@ def _add_tests(
             if isinstance(item, str)
         ]
         source = "\n".join(bare_lines).strip()
+        bare_start = None
+        if tests_section.line_offsets:
+            first_bare_idx = next(
+                (i for i, item in enumerate(tests_section.items)
+                 if isinstance(item, str)), None,
+            )
+            if first_bare_idx is not None:
+                bare_start = tests_section.line_offsets.get(first_bare_idx)
         graph.add_node(Node(
             address=tests_addr,
             label="Tests",
             kind=NodeKind.TEST,
             content=_node_content(None, source or None),
+            start_line=bare_start,
         ))
         graph.add_edge(Edge(
             source=mod_addr,
@@ -632,6 +649,7 @@ def _add_symbols(
             label=info.name,
             kind=NodeKind.SYMBOL,
             content=_node_content(None, info.source),
+            start_line=block.start_line,
         ))
         graph.add_edge(Edge(
             source=containing_addr,
@@ -663,6 +681,7 @@ def _add_property(
         label=label,
         kind=NodeKind.PROPERTY,
         content=_node_content(None, claim_src or None),
+        start_line=claim.start_line,
     ))
     graph.add_edge(Edge(
         source=containing_addr,
@@ -679,6 +698,7 @@ def _add_property(
             label=info.name,
             kind=NodeKind.SYMBOL,
             content=_node_content(None, info.source),
+            start_line=claim.start_line,
         ))
         graph.add_edge(Edge(
             source=prop_addr,
@@ -701,6 +721,7 @@ def _add_example(
         label=f"example#{ordinal}",
         kind=NodeKind.EXAMPLE,
         content=_node_content(None, source or None),
+        start_line=claim.start_line,
     ))
     graph.add_edge(Edge(
         source=containing_addr,
@@ -723,6 +744,7 @@ def _add_run(
         label=f"run#{ordinal}",
         kind=NodeKind.RUN,
         content=_node_content(None, source or None),
+        start_line=claim.start_line,
     ))
     graph.add_edge(Edge(
         source=containing_addr,

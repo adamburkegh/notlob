@@ -90,7 +90,7 @@ def _classify(line: str) -> Token | None:
     return None                         # prose — sub-tokenise below
 
 
-def _tokenize_prose(line: str):
+def _tokenize_prose(line: str, lineno: int = 0):
     """Yield PROSE_TEXT, REF, and PROSE_NL tokens from one prose line.
 
     Splits the line on the REF pattern.  Each match becomes a REF
@@ -102,10 +102,10 @@ def _tokenize_prose(line: str):
         if not part:
             continue
         if _REF_PAT.fullmatch(part):
-            yield Token("REF", part)
+            yield Token("REF", part, line=lineno, column=1)
         else:
-            yield Token("PROSE_TEXT", part)
-    yield Token("PROSE_NL", "")
+            yield Token("PROSE_TEXT", part, line=lineno, column=1)
+    yield Token("PROSE_NL", "", line=lineno, column=1)
 
 
 class _LobLexer(Lexer):
@@ -115,12 +115,14 @@ class _LobLexer(Lexer):
         pass    # Lark passes its lexer config; we ignore it
 
     def lex(self, data: str):
-        for line in data.splitlines(keepends=True):
+        for lineno, line in enumerate(data.splitlines(keepends=True), 1):
             if line:
                 tok = _classify(line)
                 if tok is None:
-                    yield from _tokenize_prose(line.rstrip("\n"))
+                    yield from _tokenize_prose(line.rstrip("\n"), lineno)
                 else:
+                    tok.line = lineno
+                    tok.column = 1
                     yield tok
 
     def make_lexer_state(self, text):
@@ -131,7 +133,7 @@ _parser = Lark(
     _GRAMMAR,
     parser="lalr",
     lexer=_LobLexer,
-    propagate_positions=False,
+    propagate_positions=True,
 )
 
 
