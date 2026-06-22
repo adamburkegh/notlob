@@ -218,6 +218,8 @@ def main() -> None:
         help="module address, e.g. roman/numerals",
     )
 
+    sub.add_parser("mcp", help="start the MCP tool server (stdin/stdout)")
+
     query_p = sub.add_parser(
         "query", help="query the package name-graph"
     )
@@ -317,6 +319,9 @@ def main() -> None:
         ))
     elif args.command == "new":
         sys.exit(cmd_new(args.name))
+    elif args.command == "mcp":
+        from notlob.mcp_server import run_server
+        run_server()
     elif args.command == "query":
         op = getattr(args, "query_op", None)
         if op == "children":
