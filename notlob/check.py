@@ -354,20 +354,26 @@ def check_references(
 def check_imports(graph: NameGraph) -> list[Finding]:
     """Flag modules that import another module but use none of its symbols.
 
+    A symbol counts as "used" if it appears in code **or** prose — in a
+    literate project, referencing a concept in prose is a legitimate
+    reason to import its module.
+
     Findings have ``severity="error"`` — unused imports block the build.
     """
     findings: list[Finding] = []
 
     for mod_node in graph.nodes(kind=NodeKind.MODULE):
-        code_parts: list[str] = []
-        if mod_node.content and mod_node.content.get("code"):
-            code_parts.append(mod_node.content["code"])
+        text_parts: list[str] = []
+        if mod_node.content:
+            for key in ("code", "prose"):
+                if mod_node.content.get(key):
+                    text_parts.append(mod_node.content[key])
         for child in graph.children(mod_node.address):
-            if (child.kind == NodeKind.SUBHEADING
-                    and child.content
-                    and child.content.get("code")):
-                code_parts.append(child.content["code"])
-        code = "\n".join(code_parts)
+            if child.kind == NodeKind.SUBHEADING and child.content:
+                for key in ("code", "prose"):
+                    if child.content.get(key):
+                        text_parts.append(child.content[key])
+        code = "\n".join(text_parts)
 
         for dep in graph.children(mod_node.address, EdgeKind.IMPORTS):
             dep_symbols = [

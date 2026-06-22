@@ -414,6 +414,31 @@ class TestCheckImports:
         findings = check_imports(graph)
         assert findings == []
 
+    def test_symbol_used_in_run_block_not_flagged(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): pass\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n~run\n    helper()\n"
+                    "---\n\n#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert findings == []
+
+    def test_symbol_mentioned_in_prose_not_flagged(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): pass\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\nThis module delegates to helper.\n\n"
+                    "    x = 42\n"
+                    "---\n\n#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert findings == []
+
     def test_empty_graph(self):
         assert check_imports(NameGraph()) == []
 

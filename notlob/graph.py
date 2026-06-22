@@ -418,16 +418,19 @@ def _prose_text(body: list) -> str | None:
 
 
 def _code_text(body: list) -> str | None:
-    """Concatenate dedented CodeBlock text from direct *body* items.
+    """Concatenate dedented CodeBlock and ~run claim text from *body*.
 
     Multiple blocks are joined with a blank line between them.
     Subheadings in *body* are ignored — they carry their own content.
+    ``~run`` claims are included because they contain executable code
+    that may reference imported symbols.
     """
-    blocks = [
-        textwrap.dedent("\n".join(item.lines))
-        for item in body
-        if isinstance(item, CodeBlock)
-    ]
+    blocks: list[str] = []
+    for item in body:
+        if isinstance(item, CodeBlock):
+            blocks.append(textwrap.dedent("\n".join(item.lines)))
+        elif isinstance(item, Claim) and item.sigil == "~run":
+            blocks.append(textwrap.dedent("\n".join(item.lines)))
     return "\n\n".join(blocks) if blocks else None
 
 
