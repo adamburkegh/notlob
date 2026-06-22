@@ -647,6 +647,10 @@ def _run_build_hook(
                 file=sys.stderr,
             )
             return
+        # Flush before the subprocess so its output appears after all
+        # buffered Python print() calls — prevents misleading ordering
+        # when stdout is not a TTY (pipes, tool captures, CI).
+        sys.stdout.flush()
         proc = subprocess.run(
             cmd + [str(script_path), manifest_path],
             stdin=subprocess.DEVNULL,
