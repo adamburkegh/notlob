@@ -385,6 +385,72 @@ class NameGraph:
             indent=indent,
         )
 
+    def to_turtle(
+        self,
+        base: str = "https://notlob.dev/project/",
+        include_content: bool = False,
+    ) -> str:
+        """Serialise the graph as RDF in Turtle syntax.
+
+        *base* is the base URI for the project; node addresses become
+        URI fragments relative to it.  *include_content* attaches prose
+        and code literals when present.
+
+        No external dependency — Turtle is emitted as plain strings.
+        """
+        ns = "https://notlob.dev/ns#"
+        lines = [
+            f"@base <{base}> .",
+            f"@prefix notlob: <{ns}> .",
+            "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+            "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
+            "",
+        ]
+
+        def _uri(address: str) -> str:
+            return "<" + address.replace(" ", "%20") + ">"
+
+        def _lit(s: str) -> str:
+            escaped = (s.replace("\\", "\\\\")
+                        .replace('"', '\\"')
+                        .replace("\n", "\\n"))
+            return f'"{escaped}"'
+
+        def _long_lit(s: str) -> str:
+            escaped = s.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+            return f'"""{escaped}"""'
+
+        for node in self._nodes.values():
+            uri = _uri(node.address)
+            kind_class = f"notlob:{node.kind.name.capitalize()}"
+            lines.append(f"{uri} a {kind_class} ;")
+            lines.append(f"    rdfs:label {_lit(node.label)} ;")
+            lines.append(f"    notlob:address {_lit(node.address)} ;")
+            if node.start_line is not None:
+                lines.append(
+                    f"    notlob:startLine {node.start_line} ;"
+                )
+            if include_content and node.content:
+                if node.content.get("prose"):
+                    lines.append(
+                        f"    notlob:prose {_long_lit(node.content['prose'])} ;"
+                    )
+                if node.content.get("code"):
+                    lines.append(
+                        f"    notlob:code {_long_lit(node.content['code'])} ;"
+                    )
+            lines[-1] = lines[-1][:-2] + "."
+            lines.append("")
+
+        for edge in self._edges:
+            pred = f"notlob:{edge.kind.name.lower()}"
+            lines.append(
+                f"{_uri(edge.source)} {pred} {_uri(edge.target)} ."
+            )
+
+        lines.append("")
+        return "\n".join(lines)
+
     def __len__(self) -> int:
         return len(self._nodes)
 

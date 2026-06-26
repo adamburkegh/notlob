@@ -865,8 +865,9 @@ def cmd_build(
 def cmd_graph(
     path:            Path | None = None,
     include_content: bool        = False,
+    fmt:             str         = "json",
 ) -> int:
-    """Print the package name-graph as JSON to stdout.
+    """Print the package name-graph to stdout.
 
     When *path* is omitted, discovers the project from CWD and exports
     the full package graph.  Pass a specific *.lob* path to export that
@@ -875,7 +876,8 @@ def cmd_graph(
 
     The language binding (from ``binding.lob``) controls symbol
     extraction.  Pass *include_content=True* to attach prose/code to
-    every node.
+    every node.  *fmt* selects the output format: ``"json"`` (default)
+    or ``"turtle"`` (RDF Turtle).
     """
     if path is not None:
         root    = find_project_root(path)
@@ -900,7 +902,14 @@ def cmd_graph(
         graph = build(module)
         enrich(graph, module, extract_symbols)
 
-    print(graph.to_json(include_content=include_content))
+    if fmt == "turtle":
+        sys.stdout.buffer.write(
+            graph.to_turtle(include_content=include_content)
+            .encode("utf-8")
+        )
+        sys.stdout.buffer.write(b"\n")
+    else:
+        print(graph.to_json(include_content=include_content))
     return 0
 
 

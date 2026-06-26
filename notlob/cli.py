@@ -156,12 +156,17 @@ def main() -> None:
 
     graph_p = sub.add_parser(
         "graph",
-        help="export the package name-graph as JSON",
+        help="export the package name-graph (JSON or Turtle RDF)",
     )
     _add_file_arg(graph_p, required=False)
     graph_p.add_argument(
         "--content", action="store_true", default=False,
         help="include source content (prose/code) on every node",
+    )
+    graph_p.add_argument(
+        "--format", "-f", default="json",
+        choices=["json", "turtle"],
+        help="output format (default: json)",
     )
 
     check_p = sub.add_parser(
@@ -300,6 +305,7 @@ def main() -> None:
         sys.exit(cmd_graph(
             _opt_path(args.file, args.module_mode),
             include_content=args.content,
+            fmt=args.format,
         ))
     elif args.command == "check":
         sys.exit(cmd_check(
