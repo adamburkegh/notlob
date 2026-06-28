@@ -18,6 +18,7 @@ Usage::
 
 from __future__ import annotations
 
+import re
 import textwrap
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -153,3 +154,44 @@ def assemble_section(comment: str, blocks: list[str]) -> str:
     if rest:
         return head + "\n\n" + "\n\n".join(rest)
     return head
+
+
+def parse_source_map(
+    assembled_src: str,
+    comment_prefix: str = "#",
+) -> dict[int, str]:
+    """Map 1-based line numbers to section addresses.
+
+    Scans *assembled_src* for location comments of the form
+    ``<comment_prefix> <address>`` and returns a dict mapping each
+    executable line to its containing section address.
+
+    Lines before the first address marker are assigned to the first
+    address seen, so import-level diagnostics are attributed to
+    the module section.
+    """
+    pat = re.compile(
+        r'^' + re.escape(comment_prefix)
+        + r' ([a-z][a-z0-9/_-]*(?:#[^\n]*)?)$'
+    )
+    lines = assembled_src.splitlines()
+    result: dict[int, str] = {}
+    current: str | None = None
+    pending: list[int] = []
+
+    for lineno, line in enumerate(lines, 1):
+        m = pat.match(line)
+        if m:
+            addr = m.group(1)
+            if current is None:
+                for pending_lineno in pending:
+                    result[pending_lineno] = addr
+                pending = []
+            current = addr
+        else:
+            if current is not None:
+                result[lineno] = current
+            else:
+                pending.append(lineno)
+
+    return result

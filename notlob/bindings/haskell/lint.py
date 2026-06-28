@@ -25,7 +25,6 @@ where`` header) are assigned to the first section found once it appears.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -36,54 +35,10 @@ from notlob.graph import module_address
 from notlob.model import Module
 
 
-# Matches location-comment lines emitted by the assembler, e.g.:
-#   -- roman/numerals
-#   -- roman/numerals#Properties
-_ADDR_RE = re.compile(
-    r'^-- ([a-z][a-z0-9/_-]*(?:#[^\n]*)?)$'
-)
-
-
 def parse_source_map(assembled_src: str) -> dict[int, str]:
-    """Map 1-based line numbers to section addresses.
-
-    Lines that appear before the first address marker (e.g. the
-    ``module Foo where`` header) are stored in *pending* and assigned
-    to the first address seen.  This means module-header diagnostics
-    are attributed to the first code section rather than an unknown
-    address.
-
-    >>> src = "module F where\\n\\n-- my/mod\\nx = 1\\n"
-    >>> m = parse_source_map(src)
-    >>> m[4]
-    'my/mod'
-    >>> 1 in m   # module header assigned to first section
-    True
-    >>> m[1]
-    'my/mod'
-    """
-    lines   = assembled_src.splitlines()
-    result: dict[int, str] = {}
-    current: str | None     = None
-    pending: list[int]      = []
-
-    for lineno, line in enumerate(lines, 1):
-        m = _ADDR_RE.match(line)
-        if m:
-            addr = m.group(1)
-            if current is None:
-                for pending_lineno in pending:
-                    result[pending_lineno] = addr
-                pending = []
-            current = addr
-            # The comment line itself is not executable code; skip it.
-        else:
-            if current is not None:
-                result[lineno] = current
-            else:
-                pending.append(lineno)
-
-    return result
+    """Haskell source map: delegates to shared implementation."""
+    from notlob.bindings import parse_source_map as _shared
+    return _shared(assembled_src, comment_prefix="--")
 
 
 def lint_haskell(

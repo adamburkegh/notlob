@@ -33,7 +33,6 @@ ruff's reported line numbers before the source-map lookup.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -44,46 +43,7 @@ from notlob.graph import module_address
 from notlob.model import Module
 
 
-# Matches location-comment lines emitted by the assembler, e.g.:
-#   # roman/numerals
-#   # roman/numerals#Decoding
-_ADDR_RE = re.compile(
-    r'^# ([a-z][a-z0-9/_-]*(?:#[^\n]*)?)$'
-)
-
-
-def parse_source_map(assembled_src: str) -> dict[int, str]:
-    """Map 1-based line numbers to section addresses.
-
-    Lines that appear before the first address marker (the #References
-    import block, if present) are stored in *pending* and assigned to
-    the first address seen.  This means import-level errors (e.g. F401
-    unused import) are attributed to the module-level section rather
-    than to an unknown address.
-    """
-    lines   = assembled_src.splitlines()
-    result: dict[int, str] = {}
-    current: str | None     = None
-    pending: list[int]      = []
-
-    for lineno, line in enumerate(lines, 1):
-        m = _ADDR_RE.match(line)
-        if m:
-            addr = m.group(1)
-            if current is None:
-                # First section seen — back-fill pending pre-header lines.
-                for pending_lineno in pending:
-                    result[pending_lineno] = addr
-                pending = []
-            current = addr
-            # The comment line itself is not executable; skip it.
-        else:
-            if current is not None:
-                result[lineno] = current
-            else:
-                pending.append(lineno)
-
-    return result
+from notlob.bindings import parse_source_map
 
 
 def lint_python(
