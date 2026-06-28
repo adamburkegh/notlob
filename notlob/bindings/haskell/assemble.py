@@ -29,8 +29,9 @@ from __future__ import annotations
 import re
 import textwrap
 
+from notlob.bindings import assemble_section, collect_blocks
 from notlob.graph import module_address, subheading_address
-from notlob.model import CodeBlock, Module, ReferencesSection, Subheading
+from notlob.model import Module, ReferencesSection, Subheading
 
 
 # ── Module-name derivation ────────────────────────────────────
@@ -78,31 +79,6 @@ def _haskell_imports(lines: list[str]) -> list[str]:
     return result
 
 
-# ── Block collection ──────────────────────────────────────────
-
-def _collect_blocks(body: list) -> list[str]:
-    """Return dedented, stripped text for each CodeBlock in body."""
-    result = []
-    for item in body:
-        if isinstance(item, CodeBlock):
-            text = textwrap.dedent("\n".join(item.lines)).strip()
-            if text:
-                result.append(text)
-    return result
-
-
-def _section(comment: str, blocks: list[str]) -> str:
-    """Join a location comment and its code blocks.
-
-    The comment is glued to the first block (no blank line between
-    them); subsequent blocks within the same section are separated
-    by blank lines.
-    """
-    first, *rest = blocks
-    head = f"{comment}\n{first}"
-    if rest:
-        return head + "\n\n" + "\n\n".join(rest)
-    return head
 
 
 # ── Body decomposition ────────────────────────────────────────
@@ -133,16 +109,16 @@ def _assemble_body(
     code_chunks: list[str] = []
     mod_addr = module_address(module.title)
 
-    mod_blocks = _collect_blocks(module.body)
+    mod_blocks = collect_blocks(module.body)
     if mod_blocks:
-        code_chunks.append(_section(f"-- {mod_addr}", mod_blocks))
+        code_chunks.append(assemble_section(f"-- {mod_addr}", mod_blocks))
 
     for item in module.body:
         if isinstance(item, Subheading):
             sub_addr = subheading_address(mod_addr, item.title)
-            sub_blocks = _collect_blocks(item.body)
+            sub_blocks = collect_blocks(item.body)
             if sub_blocks:
-                code_chunks.append(_section(f"-- {sub_addr}", sub_blocks))
+                code_chunks.append(assemble_section(f"-- {sub_addr}", sub_blocks))
 
     return import_lines, code_chunks
 

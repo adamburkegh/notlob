@@ -18,11 +18,12 @@ Usage::
 
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Sequence
 
-from ..model import Module
+from ..model import CodeBlock, Module
 
 
 # ── Claim result types ────────────────────────────────────────
@@ -126,3 +127,29 @@ class LintResult:
     code:    str
     message: str
     col:     int = 1
+
+
+# ── Shared assembler utilities ───────────────────────────────
+
+def collect_blocks(body: list) -> list[str]:
+    """Return dedented, stripped text for each CodeBlock in *body*."""
+    result = []
+    for item in body:
+        if isinstance(item, CodeBlock):
+            text = textwrap.dedent("\n".join(item.lines)).strip()
+            if text:
+                result.append(text)
+    return result
+
+
+def assemble_section(comment: str, blocks: list[str]) -> str:
+    """Join a location comment and its code blocks.
+
+    The comment is glued to the first block (no blank line between
+    them); subsequent blocks are separated by blank lines.
+    """
+    first, *rest = blocks
+    head = f"{comment}\n{first}"
+    if rest:
+        return head + "\n\n" + "\n\n".join(rest)
+    return head
