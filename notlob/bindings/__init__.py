@@ -22,7 +22,7 @@ import re
 import textwrap
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Generator, Sequence
 
 from ..model import CodeBlock, Module
 
@@ -154,6 +154,44 @@ def assemble_section(comment: str, blocks: list[str]) -> str:
     if rest:
         return head + "\n\n" + "\n\n".join(rest)
     return head
+
+
+def iter_assertions(
+    lines: list[str],
+    is_complete: Callable[[str], bool] | None = None,
+) -> Generator[tuple[str, int], None, None]:
+    """Yield ``(expression, line_offset)`` from raw claim lines.
+
+    *line_offset* is the 0-based index within *lines* where the
+    assertion starts.
+
+    When *is_complete* is provided, multi-line expressions (unclosed
+    brackets spanning several lines) are buffered and joined before
+    yielding.  When ``None``, each non-blank line is a separate
+    assertion (suitable for languages without multi-line expressions).
+    """
+    if is_complete is None:
+        for i, raw in enumerate(lines):
+            stripped = raw.strip()
+            if stripped:
+                yield stripped, i
+        return
+
+    buffer: list[str] = []
+    start_offset = 0
+    for i, raw in enumerate(lines):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if not buffer:
+            start_offset = i
+        buffer.append(stripped)
+        joined = "\n".join(buffer)
+        if is_complete(joined):
+            yield joined, start_offset
+            buffer = []
+    if buffer:
+        yield "\n".join(buffer), start_offset
 
 
 def parse_source_map(

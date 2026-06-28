@@ -198,27 +198,9 @@ def _build_module_source(module: Module, root: Path | None) -> str:
 # ── Assertion iteration ───────────────────────────────────────
 
 def _iter_assertions(lines: list[str]) -> Generator[tuple[str, int], None, None]:
-    """Yield ``(expression, line_offset)`` from raw claim lines.
-
-    *line_offset* is the 0-based index within *lines* where the
-    assertion starts.  Multi-line expressions (unclosed brackets
-    spanning several lines) are joined before yielding.
-    """
-    buffer: list[str] = []
-    start_offset = 0
-    for i, raw in enumerate(lines):
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        if not buffer:
-            start_offset = i
-        buffer.append(stripped)
-        joined = '\n'.join(buffer)
-        if is_complete(joined):
-            yield joined, start_offset
-            buffer = []
-    if buffer:
-        yield '\n'.join(buffer), start_offset
+    """Yield ``(expression, line_offset)`` from raw claim lines."""
+    from notlob.bindings import iter_assertions
+    yield from iter_assertions(lines, is_complete=is_complete)
 
 
 # ── Harness generation ────────────────────────────────────────

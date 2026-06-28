@@ -156,10 +156,8 @@ def _run_harness(
 
 def _iter_assertions(lines: list[str]):
     """Yield ``(expression, line_offset)`` for non-blank lines."""
-    for i, raw in enumerate(lines):
-        stripped = raw.strip()
-        if stripped:
-            yield stripped, i
+    from notlob.bindings import iter_assertions
+    yield from iter_assertions(lines)
 
 
 def _hs_string_escape(s: str) -> str:

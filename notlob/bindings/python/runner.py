@@ -467,26 +467,9 @@ def _eval_line(
 
 
 def _iter_assertions(lines: list[str]):
-    """Yield ``(expression, line_offset)`` from raw claim lines.
-
-    *line_offset* is the 0-based index within *lines* where the
-    assertion starts.  Multi-line expressions (unclosed parentheses
-    spanning several lines) are joined before yielding.
-    """
-    buffer: list[str] = []
-    start_offset = 0
-    for i, raw in enumerate(lines):
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        if not buffer:
-            start_offset = i
-        buffer.append(stripped)
-        if _is_complete("\n".join(buffer)):
-            yield "\n".join(buffer), start_offset
-            buffer = []
-    if buffer:
-        yield "\n".join(buffer), start_offset
+    """Yield ``(expression, line_offset)`` from raw claim lines."""
+    from notlob.bindings import iter_assertions
+    yield from iter_assertions(lines, is_complete=_is_complete)
 
 
 def _is_complete(text: str) -> bool:
