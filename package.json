@@ -1,0 +1,9 @@
+{
+  "name": "notlob-dev",
+  "private": true,
+  "description": "Repo-root TypeScript dev toolchain for the notlob test suite (parallels notlobenv for Python). Not published.",
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  }
+}

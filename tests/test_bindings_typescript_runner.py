@@ -26,16 +26,43 @@ from notlob.bindings.typescript.runner import (
 
 
 # ── Skip guard ────────────────────────────────────────────────
+#
+# The repo-root node_modules holds the TypeScript toolchain (tsx, tsc),
+# paralleling notlobenv for Python.  Integration tests discover the
+# runner there by passing a root-bearing cache, so they run whenever
+# the toolchain is installed (``npm install`` at the repo root) rather
+# than requiring tsx on PATH.
 
-_HAS_TSX = _tsx_cmd(None) is not None
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_HAS_TSX = _tsx_cmd(_REPO_ROOT) is not None
 _RUNNER_SKIP = pytest.mark.skipif(
     not _HAS_TSX,
-    reason='tsx or ts-node not found',
+    reason='tsx not found (run `npm install` at the repo root)',
 )
+
+
+class _RootCache:
+    """Minimal cache stand-in exposing only ``.root`` for runner
+    toolchain discovery.  Synthetic test modules have no lob-ref deps,
+    so no module loading is needed."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+
+_TS_CACHE = _RootCache(_REPO_ROOT)
 
 
 def _module(text: str):
     return from_tree(parse(text))
+
+
+def _run_examples(mod):
+    return run_examples(mod, cache=_TS_CACHE)
+
+
+def _run_tests(mod):
+    return run_tests(mod, cache=_TS_CACHE)
 
 
 # ── Unit: _claim_call ─────────────────────────────────────────
@@ -138,7 +165,7 @@ class TestRunExamplesIntegration:
         mod = _module(
             '#T\n\n    const x = 1\n\n~example\n    x === 1\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert len(results) == 1
         assert results[0].status == Status.PASS
 
@@ -147,7 +174,7 @@ class TestRunExamplesIntegration:
         mod = _module(
             '#T\n\n    const x = 1\n\n~example\n    x === 2\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert results[0].status == Status.FAIL
         assert results[0].left == 1
         assert results[0].right == 2
@@ -158,7 +185,7 @@ class TestRunExamplesIntegration:
             '#T\n\n    const x = 1\n    const y = 2\n\n'
             '~example\n    x === 1\n    y === 2\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert len(results) == 2
         assert all(r.status == Status.PASS for r in results)
 
@@ -167,7 +194,7 @@ class TestRunExamplesIntegration:
         mod = _module(
             '#My Module\n\n    const x = 1\n\n~example\n    x === 1\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert results[0].address == 'my/module#example#1'
 
     @_RUNNER_SKIP
@@ -176,7 +203,7 @@ class TestRunExamplesIntegration:
             '#T\n\n    const xs = [1, 2, 3]\n\n'
             '~example\n    xs.every(x => x > 0)\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert results[0].status == Status.PASS
 
     @_RUNNER_SKIP
@@ -185,13 +212,13 @@ class TestRunExamplesIntegration:
             '#T\n\n    const xs: number[] = []\n\n'
             '~example\n    (xs as any).noSuchMethod() === 1\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert results[0].status == Status.ERROR
 
     @_RUNNER_SKIP
     def test_no_examples_returns_empty(self):
         mod = _module('#T\n\n    const x = 1\n')
-        assert run_examples(mod) == []
+        assert _run_examples(mod) == []
 
     @_RUNNER_SKIP
     def test_subheading_example(self):
@@ -199,7 +226,7 @@ class TestRunExamplesIntegration:
             '#T\n\n##Section\n\n    const x = 42\n\n'
             '~example\n    x === 42\n'
         )
-        results = run_examples(mod)
+        results = _run_examples(mod)
         assert results[0].status == Status.PASS
         assert '#Section#example#1' in results[0].address
 
@@ -212,7 +239,7 @@ class TestRunTestsIntegration:
         mod = _module(
             '#T\n\n    const x = 1\n\n---\n\n#Tests\n    x === 1\n'
         )
-        results = run_tests(mod)
+        results = _run_tests(mod)
         assert results[0].status == Status.PASS
 
     @_RUNNER_SKIP
@@ -221,11 +248,11 @@ class TestRunTestsIntegration:
             '#T\n\n    const x = 1\n\n---\n\n#Tests\n\n'
             '##my group\n    x === 1\n'
         )
-        results = run_tests(mod)
+        results = _run_tests(mod)
         assert results[0].status == Status.PASS
         assert '#Tests#my group' in results[0].address
 
     @_RUNNER_SKIP
     def test_no_tests_section(self):
         mod = _module('#T\n\n    const x = 1\n')
-        assert run_tests(mod) == []
+        assert _run_tests(mod) == []

@@ -105,21 +105,42 @@ function __safeStr(v: unknown): string {
 
 # ── Runner discovery ──────────────────────────────────────────
 
+def node_bin(name: str, root: Path | None) -> str | None:
+    """Resolve an npm-installed binary, cross-platform.
+
+    Checks project-local ``node_modules/.bin`` first, then PATH.
+
+    On Windows, npm creates a ``<name>.cmd`` wrapper that ``subprocess``
+    can execute; the extensionless file is a Unix shell script and fails
+    with ``WinError 193`` if invoked directly.  The ``.cmd``/``.exe``
+    variant is therefore preferred there.
+    """
+    exts = ('.cmd', '.exe', '.bat', '') if os.name == 'nt' else ('',)
+
+    if root is not None:
+        bin_dir = root / 'node_modules' / '.bin'
+        for ext in exts:
+            candidate = bin_dir / (name + ext)
+            if candidate.is_file():
+                return str(candidate)
+
+    for ext in exts:
+        found = shutil.which(name + ext)
+        if found:
+            return found
+    return None
+
+
 def _tsx_cmd(root: Path | None) -> list[str] | None:
     """Return the tsx command list, or None if no runner is available.
 
     Prefers project-local ``node_modules/.bin/tsx``; falls back to
     ``tsx`` then ``ts-node`` on PATH.
     """
-    if root is not None:
-        local_bin = root / 'node_modules' / '.bin'
-        found = shutil.which('tsx', path=str(local_bin))
-        if found:
-            return [found]
-    tsx = shutil.which('tsx')
+    tsx = node_bin('tsx', root)
     if tsx:
         return [tsx]
-    ts_node = shutil.which('ts-node')
+    ts_node = node_bin('ts-node', root)
     if ts_node:
         return [ts_node]
     return None
