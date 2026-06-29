@@ -32,18 +32,18 @@ ruff's reported line numbers before the source-map lookup.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-from notlob.bindings import LintResult
+from notlob.bindings import (
+    LintResult, LintToolUnavailable, parse_source_map,
+)
 from notlob.bindings.python.assemble import assemble
 from notlob.graph import module_address
 from notlob.model import Module
-
-
-from notlob.bindings import parse_source_map
 
 
 def lint_python(
@@ -58,8 +58,10 @@ def lint_python(
     so that source-map lookup addresses the right section in the main
     module.
 
-    Returns an empty list when ruff is not installed or the module
-    produces no assembler output.
+    Raises ``LintToolUnavailable`` when ruff cannot be found (ruff is a
+    core notlob dependency, so this should not happen in a correct
+    install).  Returns an empty list when the module produces no
+    assembler output (nothing to check, so the tool is not needed).
     """
     mod_source = assemble(module)
     if not mod_source:
@@ -125,8 +127,14 @@ def _run_ruff(
     looking up the section address in *source_map*.  *fallback* is the
     address used when the adjusted line is not in the map.
 
-    Returns an empty list if ruff is not installed or produces no JSON.
+    Raises ``LintToolUnavailable`` if ruff is not importable.  Returns an
+    empty list when ruff runs but produces no diagnostics.
     """
+    if importlib.util.find_spec("ruff") is None:
+        raise LintToolUnavailable(
+            "ruff not found. Install ruff (a core notlob dependency)."
+        )
+
     try:
         proc = subprocess.run(
             [
@@ -141,7 +149,9 @@ def _run_ruff(
             text=True,
         )
     except FileNotFoundError:
-        return []   # ruff module not importable — skip silently
+        raise LintToolUnavailable(
+            "ruff not found. Install ruff (a core notlob dependency)."
+        )
 
     try:
         diagnostics: list[dict] = json.loads(proc.stdout)

@@ -29,7 +29,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from notlob.bindings import LintResult
+from notlob.bindings import LintResult, LintToolUnavailable
 from notlob.bindings.haskell.assemble import assemble
 from notlob.graph import module_address
 from notlob.model import Module
@@ -51,8 +51,9 @@ def lint_haskell(
     currently used — hlint is a style checker that does not need
     cross-module name resolution.
 
-    Returns an empty list when hlint is not installed or the module
-    produces no assembler output.
+    Raises ``LintToolUnavailable`` when hlint cannot be found.  Returns
+    an empty list when the module produces no assembler output (nothing
+    to check, so the tool is not needed).
     """
     source = assemble(module)
     if not source:
@@ -98,11 +99,15 @@ def _run_hlint(
     *fallback* is the address used when the adjusted line number is not
     in *source_map* (should not normally occur for well-formed output).
 
-    Returns an empty list if hlint is not installed or produces no JSON.
+    Raises ``LintToolUnavailable`` if hlint is not installed.  Returns an
+    empty list when hlint runs but produces no diagnostics.
     """
     cmd = _hlint_cmd()
     if cmd is None:
-        return []
+        raise LintToolUnavailable(
+            "hlint not found. Install hlint (on PATH or via "
+            "`stack install hlint`)."
+        )
 
     try:
         proc = subprocess.run(

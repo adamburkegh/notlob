@@ -39,6 +39,18 @@ class Status(Enum):
     SKIP  = auto()   # claim type not supported by this binding
 
 
+class LintToolUnavailable(Exception):
+    """Raised when a binding declares a linter but its tool is absent.
+
+    A binding may legitimately have no linter (``BindingKit.lint`` is
+    ``None``) — that is not an error.  But when ``lint`` *is* set, the
+    underlying tool (ruff, hlint, tsc, ...) is part of the test
+    contract: if it cannot be found, ``notlob test`` fails loudly rather
+    than silently skipping type/style checks and reporting a false pass.
+    Mirrors how the claim runner errors when its runtime is missing.
+    """
+
+
 @dataclass(frozen=True)
 class ClaimResult:
     """The outcome of evaluating one assertion line.
