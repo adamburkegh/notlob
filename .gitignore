@@ -1,6 +1,9 @@
 # Project-specific
 notlobenv/
 
+# Node / TypeScript toolchain (repo-root dev tooling + example installs)
+node_modules/
+
 # LLM settings
 .claude/
 
