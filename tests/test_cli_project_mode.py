@@ -58,6 +58,30 @@ class TestCmdTestProjectMode:
         monkeypatch.chdir(root)
         assert cmd_test() == 0
 
+    def test_missing_lint_tool_fails(self, tmp_path, monkeypatch, capsys):
+        """A declared linter whose tool is missing fails the run.
+
+        It must never be silently skipped and reported as a pass — a
+        missing checker is a broken toolchain, like a missing runner.
+        """
+        import importlib.util as _il
+        import notlob.bindings.python.lint as lint_mod
+        real = _il.find_spec
+        monkeypatch.setattr(
+            lint_mod.importlib.util, "find_spec",
+            lambda name, *a, **k: (
+                None if name == "ruff" else real(name, *a, **k)
+            ),
+        )
+        root = _project(tmp_path)
+        _write(root, "alpha.lob", (
+            "#Alpha\n\n    def double(x): return x * 2\n\n"
+            "~example\n    double(3) == 6\n"
+        ))
+        monkeypatch.chdir(root)
+        assert cmd_test() == 1
+        assert "ruff not found" in capsys.readouterr().err
+
     def test_failure_in_one_module_returns_1(self, tmp_path, monkeypatch):
         root = _project(tmp_path)
         _write(root, "good.lob", (

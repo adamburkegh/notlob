@@ -82,9 +82,23 @@ class TestParseSourceMap:
 
 class TestLintPython:
     def test_empty_module_no_results(self):
-        """A module with no code blocks produces no lint results."""
+        """A module with no code blocks produces no lint results.
+
+        No source to check, so ruff is not invoked.
+        """
         mod = _module("#Empty\nJust prose.\n")
         assert lint_python(mod) == []
+
+    def test_missing_tool_raises(self, monkeypatch):
+        """A non-empty module with ruff absent raises, never returns []."""
+        from notlob.bindings import LintToolUnavailable
+        import notlob.bindings.python.lint as lint_mod
+        monkeypatch.setattr(
+            lint_mod.importlib.util, "find_spec", lambda name: None
+        )
+        src = "#M\n\n    x = 1\n"
+        with pytest.raises(LintToolUnavailable):
+            lint_python(_module(src))
 
     def test_clean_code_no_results(self):
         """Clean, valid Python code produces no lint results."""

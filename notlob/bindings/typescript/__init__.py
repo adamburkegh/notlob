@@ -17,14 +17,17 @@ return a single ERROR result rather than raising.
 
 Linting
 -------
-``kit.lint`` is ``None`` pending biome integration.  See ``lint.py``
-for implementation notes.
+``kit.lint`` runs ``tsc --noEmit`` for type-checking — the type errors
+``tsx`` skips at runtime.  Requires ``tsc`` (project-local
+``node_modules/.bin/tsc`` or on PATH); degrades to no findings when
+absent.  See ``lint.py``.
 """
 
 from pathlib import Path
 
 from notlob.bindings import BindingKit
 from notlob.bindings.typescript.assemble import assemble
+from notlob.bindings.typescript.lint import lint_typescript
 from notlob.bindings.typescript.runner import (
     _build_module_source,
     run_examples, run_properties, run_tests,
@@ -79,7 +82,7 @@ kit = BindingKit(
     run_examples=run_examples,
     run_properties=run_properties,
     run_tests=run_tests,
-    lint=None,          # biome integration: see lint.py
+    lint=lint_typescript,
     extension='ts',
     comment_prefix='//',
     build=build_typescript,

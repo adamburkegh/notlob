@@ -179,11 +179,24 @@ class TestFormatMessage:
 
 class TestLintHaskellUnit:
     def test_empty_module_returns_empty_list(self):
-        """A module with no code blocks produces no lint results."""
+        """A module with no code blocks produces no lint results.
+
+        No source to check, so the tool is not invoked — returns []
+        even without hlint installed.
+        """
         mod = _module("#Empty\nJust prose.\n")
-        # lint_haskell returns [] when assemble produces no output
         assert lint_haskell(mod) == []
 
+    def test_missing_tool_raises(self, monkeypatch):
+        """A non-empty module with hlint absent raises, never returns []."""
+        from notlob.bindings import LintToolUnavailable
+        import notlob.bindings.haskell.lint as hlint_mod
+        monkeypatch.setattr(hlint_mod, "_hlint_cmd", lambda: None)
+        src = "#M\n\n    f :: Int -> Int\n    f x = x\n"
+        with pytest.raises(LintToolUnavailable):
+            lint_haskell(_module(src))
+
+    @requires_hlint
     def test_returns_list(self):
         """lint_haskell always returns a list (possibly empty)."""
         src = (
@@ -194,6 +207,7 @@ class TestLintHaskellUnit:
         result = lint_haskell(_module(src))
         assert isinstance(result, list)
 
+    @requires_hlint
     def test_results_are_lint_result_instances(self):
         """When hlint produces results they are LintResult objects."""
         src = (

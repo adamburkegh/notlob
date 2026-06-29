@@ -30,7 +30,9 @@ from notlob import (
     build, enrich, from_tree, parse_file, validate_refs,
     Edge, EdgeKind, NodeKind,
 )
-from notlob.bindings import ClaimResult, LintResult, Status
+from notlob.bindings import (
+    ClaimResult, LintResult, LintToolUnavailable, Status,
+)
 from notlob.bindings.python import extract_symbols as _py_extract, kit as _py_kit
 from notlob.bindings.python.loader import ModuleCache
 from notlob.graph import module_address
@@ -397,7 +399,14 @@ def _test_module(
     # ── Lint ──────────────────────────────────────────────────
     lint_results: list[LintResult] = []
     if run_lint and kit.lint is not None:
-        lint_results = kit.lint(module, root=root)
+        try:
+            lint_results = kit.lint(module, root=root)
+        except LintToolUnavailable as exc:
+            # The binding declares a linter but its tool is missing.
+            # Fail loudly rather than silently skip — a missing checker
+            # must never be reported as a pass.
+            print(f"ERROR  <lint>  {exc}", file=sys.stderr)
+            return 0, 1, 0
         if json_out is None:
             for r in lint_results:
                 _print_lint_result(r)
