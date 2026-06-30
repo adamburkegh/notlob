@@ -244,6 +244,45 @@ class TestPostText:
         assert len(sections) == 2
 
 
+# ── BulletBlock ──────────────────────────────────────────────
+
+class TestBulletBlock:
+    def test_single_bullet_parsed(self):
+        src = "#T\n* item one\n"
+        items = meaningful(body(parse(src)))
+        assert len(items) == 1
+        assert items[0].data == "bullet_block"
+
+    def test_consecutive_bullets_one_block(self):
+        src = "#T\n* item one\n* item two\n* item three\n"
+        items = meaningful(body(parse(src)))
+        assert len(items) == 1
+        assert items[0].data == "bullet_block"
+        assert len(items[0].children) == 3
+
+    def test_blank_separates_bullet_blocks(self):
+        src = "#T\n* item one\n\n* item two\n"
+        items = meaningful(body(parse(src)))
+        assert len(items) == 2
+        assert all(i.data == "bullet_block" for i in items)
+
+    def test_indented_bullet_is_code_not_bullet(self):
+        src = "#T\n    * indented item\n"
+        items = meaningful(body(parse(src)))
+        assert items[0].data == "code_block"
+
+    def test_prose_and_bullets_separate_items(self):
+        src = "#T\nSome prose.\n\n* item\n"
+        items = meaningful(body(parse(src)))
+        assert items[0].data == "prose_block"
+        assert items[1].data == "bullet_block"
+
+    def test_lone_asterisk_is_bullet(self):
+        src = "#T\n*\n"
+        items = meaningful(body(parse(src)))
+        assert items[0].data == "bullet_block"
+
+
 # ── Integration: example files ───────────────────────────────
 
 EXAMPLES = Path(__file__).parent.parent / "examples"

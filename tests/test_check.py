@@ -9,7 +9,7 @@ from notlob.graph import Edge, EdgeKind, NameGraph, Node, NodeKind
 from notlob.check import (
     Finding, run_checks, has_errors,
     check_imports, check_typos, check_conventions,
-    check_titles, check_references,
+    check_titles, check_references, check_style,
     _levenshtein,
 )
 from notlob import from_tree, parse
@@ -256,7 +256,7 @@ class TestRunChecks:
         findings, counts = run_checks(g)
         checks_run = {f.check for f in findings}
         assert "typos" in checks_run
-        assert set(counts) == {"imports", "typos", "conventions", "titles", "references"}
+        assert set(counts) == {"imports", "typos", "conventions", "titles", "references", "style"}
 
     def test_filter_by_name(self):
         g = self._graph_with_typo()
@@ -464,3 +464,55 @@ class TestHasErrors:
         f1 = Finding("typos", "msg", ("a",), severity="advisory")
         f2 = Finding("imports", "msg", ("b",), severity="error")
         assert has_errors([f1, f2]) is True
+
+
+# ── check_style ───────────────────────────────────────────────
+
+class TestCheckStyle:
+    def _write(self, tmp_path, name, content):
+        (tmp_path / name).write_text(content, encoding="utf-8")
+
+    def _binding(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+
+    def test_single_bullet_block_no_finding(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n* item one\n* item two\n\n    x = 1\n")
+        graph = build_package(tmp_path, extract_symbols)
+        assert check_style(graph) == []
+
+    def test_two_bullet_blocks_triggers_advisory(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n* item one\n* item two\n\n* item three\n\n    x = 1\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_style(graph)
+        assert len(findings) == 1
+        assert findings[0].severity == "advisory"
+        assert findings[0].check == "style"
+        assert "2" in findings[0].message
+
+    def test_no_bullets_no_finding(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\nJust flowing prose here.\n\n    x = 1\n")
+        graph = build_package(tmp_path, extract_symbols)
+        assert check_style(graph) == []
+
+    def test_style_in_run_checks(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n* a\n\n* b\n\n* c\n\n    x = 1\n")
+        graph = build_package(tmp_path, extract_symbols)
+        _, counts = run_checks(graph)
+        assert "style" in counts
+
+    def test_advisory_not_error(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n* a\n\n* b\n\n    x = 1\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_style(graph)
+        assert not has_errors(findings)

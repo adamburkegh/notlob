@@ -64,7 +64,7 @@ from typing import Iterator
 
 from .bindings import Extractor
 from .model import (
-    AppendixSection, Claim, CodeBlock, Module,
+    AppendixSection, BulletBlock, Claim, CodeBlock, Module,
     ProseBlock, Ref, Subheading, TestsSection,
 )
 
@@ -464,9 +464,10 @@ class NameGraph:
 # ── Content helpers ──────────────────────────────────────────
 
 def _prose_text(body: list) -> str | None:
-    """Concatenate ProseBlock text from direct *body* items.
+    """Concatenate ProseBlock and BulletBlock text from direct *body* items.
 
     Inline refs are re-serialised with their sigil (``#Label``).
+    Bullet items are included as plain text so symbol search covers them.
     Subheadings in *body* are ignored — they carry their own content.
     """
     parts: list[str] = []
@@ -479,8 +480,15 @@ def _prose_text(body: list) -> str | None:
                     parts.append(
                         ("##" if span.sub else "#") + span.label
                     )
+        elif isinstance(item, BulletBlock):
+            parts.append("\n".join(item.items))
     text = "".join(parts).strip()
     return text or None
+
+
+def _bullet_block_count(body: list) -> int:
+    """Count BulletBlock items in *body* (subheadings excluded)."""
+    return sum(1 for item in body if isinstance(item, BulletBlock))
 
 
 def _code_text(body: list) -> str | None:
@@ -500,13 +508,19 @@ def _code_text(body: list) -> str | None:
     return "\n\n".join(blocks) if blocks else None
 
 
-def _node_content(prose: str | None, code: str | None) -> dict | None:
-    """Build a content dict from *prose* and *code*, or return None."""
-    d: dict[str, str] = {}
+def _node_content(
+    prose: str | None,
+    code: str | None,
+    bullet_block_count: int = 0,
+) -> dict | None:
+    """Build a content dict from *prose*, *code*, and bullet count."""
+    d: dict = {}
     if prose:
         d["prose"] = prose
     if code:
         d["code"] = code
+    if bullet_block_count:
+        d["bullet_block_count"] = bullet_block_count
     return d or None
 
 
@@ -530,6 +544,7 @@ def build(module: Module) -> NameGraph:
         content=_node_content(
             _prose_text(module.body),
             _code_text(module.body),
+            _bullet_block_count(module.body),
         ),
         start_line=module.start_line,
     ))
@@ -556,6 +571,7 @@ def _add_subheading(
         content=_node_content(
             _prose_text(sub.body),
             _code_text(sub.body),
+            _bullet_block_count(sub.body),
         ),
         start_line=sub.start_line,
     ))

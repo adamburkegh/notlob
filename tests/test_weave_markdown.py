@@ -326,3 +326,34 @@ class TestExampleFiles:
         )
         out = weave_markdown(m)
         assert out.endswith("\n")
+
+
+# ── BulletBlock rendering ─────────────────────────────────────
+
+def _weave(source: str) -> str:
+    return weave_markdown(from_tree(parse(source)))
+
+
+class TestBulletBlockWeave:
+    def test_single_item_renders_as_list(self):
+        out = _weave("#T\n* item one\n")
+        assert "* item one" in out
+
+    def test_multiple_items_each_on_own_line(self):
+        out = _weave("#T\n* alpha\n* beta\n* gamma\n")
+        assert "* alpha\n* beta\n* gamma" in out
+
+    def test_two_blocks_separated_in_output(self):
+        out = _weave("#T\n* first block\n\n* second block\n")
+        assert "* first block" in out
+        assert "* second block" in out
+        # the two blocks should not be adjacent lines
+        lines = out.splitlines()
+        first_idx = next(i for i, l in enumerate(lines) if "first block" in l)
+        second_idx = next(i for i, l in enumerate(lines) if "second block" in l)
+        assert second_idx > first_idx + 1
+
+    def test_bullet_in_subheading_rendered(self):
+        out = _weave("#T\n##Section\n* item\n")
+        assert "## Section" in out
+        assert "* item" in out

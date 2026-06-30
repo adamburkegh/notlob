@@ -44,6 +44,7 @@ def run_checks(
         "conventions": lambda: check_conventions(graph),
         "titles": lambda: check_titles(graph),
         "references": lambda: check_references(graph),
+        "style": lambda: check_style(graph),
     }
     if enabled is not None:
         checkers = {k: v for k, v in checkers.items() if k in enabled}
@@ -346,6 +347,30 @@ def check_references(
                     addresses=(f"{mod_node.address}#{sym}",),
                 ))
 
+    return findings
+
+
+# ── Check: style ─────────────────────────────────────────────
+
+def check_style(graph: NameGraph) -> list[Finding]:
+    """Flag modules or sections with excessive bullet-point use."""
+    findings: list[Finding] = []
+    for node in graph.nodes():
+        if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
+            continue
+        n = (node.content or {}).get("bullet_block_count", 0)
+        if n > 1:
+            findings.append(Finding(
+                check="style",
+                message=(
+                    f"Found {n} separate bullet point blocks. "
+                    "This suggests concepts need more articulation, "
+                    "or structure lacking from code or headings is "
+                    "being sought in prose."
+                ),
+                addresses=(node.address,),
+                severity="advisory",
+            ))
     return findings
 
 

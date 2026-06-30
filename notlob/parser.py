@@ -87,6 +87,8 @@ def _classify(line: str) -> Token | None:
         return Token("BLANK", stripped)
     if stripped[:1] in (" ", "\t"):     # line has leading whitespace
         return Token("INDENT", stripped)
+    if stripped.startswith("* ") or stripped == "*":
+        return Token("BULLET", stripped)
     return None                         # prose — sub-tokenise below
 
 

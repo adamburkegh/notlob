@@ -13,7 +13,7 @@ import pytest
 from notlob import parse, parse_file, from_tree
 from notlob import (
     Ref,
-    Module, Subheading, CodeBlock, Claim, ProseBlock,
+    Module, Subheading, CodeBlock, Claim, ProseBlock, BulletBlock,
     PostText, TestsSection, TestGroup,
     BindingSection, ReferencesSection,
 )
@@ -289,3 +289,43 @@ class TestExampleFiles:
         assert "python" in combined
         assert "hypothesis" in combined
         assert "pytest" in combined
+
+
+# ── BulletBlock ──────────────────────────────────────────────
+
+class TestBulletBlock:
+    def test_items_stripped_of_prefix(self):
+        m = model("#T\n* item one\n* item two\n")
+        assert len(m.body) == 1
+        block = m.body[0]
+        assert isinstance(block, BulletBlock)
+        assert block.items == ["item one", "item two"]
+
+    def test_lone_asterisk_item_is_empty_string(self):
+        m = model("#T\n*\n")
+        block = m.body[0]
+        assert isinstance(block, BulletBlock)
+        assert block.items == [""]
+
+    def test_blank_between_blocks_separates(self):
+        m = model("#T\n* a\n\n* b\n")
+        assert len(m.body) == 2
+        assert isinstance(m.body[0], BulletBlock)
+        assert isinstance(m.body[1], BulletBlock)
+
+    def test_bullet_and_prose_are_distinct_types(self):
+        m = model("#T\nSome prose.\n\n* item\n")
+        assert isinstance(m.body[0], ProseBlock)
+        assert isinstance(m.body[1], BulletBlock)
+
+    def test_start_line_set(self):
+        m = model("#T\n\n* item\n")
+        block = m.body[0]
+        assert isinstance(block, BulletBlock)
+        assert block.start_line is not None
+
+    def test_bullet_in_subheading(self):
+        m = model("#T\n##Section\n* item\n")
+        sub = m.body[0]
+        assert isinstance(sub, Subheading)
+        assert isinstance(sub.body[0], BulletBlock)

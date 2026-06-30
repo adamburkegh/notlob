@@ -81,18 +81,29 @@ class Claim:
 
 
 @dataclass
+class BulletBlock:
+    """A flush-left bullet list block.
+
+    Each item in *items* is the line text with the leading ``* ``
+    prefix stripped.  Indented bullet lines remain code (INDENT tokens).
+    """
+    items: list[str]
+    start_line: int | None = None
+
+
+@dataclass
 class Subheading:
     """A ## subheading with its subordinate content.
 
     Subheadings are flat — they do not nest.
     """
     title: str
-    body: list[Union[CodeBlock, Claim, ProseBlock]]
+    body: list[Union[CodeBlock, Claim, ProseBlock, "BulletBlock"]]
     start_line: int | None = None
 
 
 # Union of all items that can appear at module body level.
-BodyItem = Union[Subheading, CodeBlock, Claim, ProseBlock]
+BodyItem = Union[Subheading, CodeBlock, Claim, ProseBlock, BulletBlock]
 
 
 # ── Post-text section types ──────────────────────────────────
@@ -192,7 +203,7 @@ def _body(node: Tree) -> list[BodyItem]:
 def _content(node: Tree) -> BodyItem:
     """Convert a content node to its model object.
 
-    Expects one of: subheading, code_block, claim, prose_block.
+    Expects one of: subheading, code_block, claim, prose_block, bullet_block.
     """
     if node.data == "subheading":
         return _subheading(node)
@@ -202,19 +213,21 @@ def _content(node: Tree) -> BodyItem:
         return _claim(node)
     if node.data == "prose_block":
         return _prose_block(node)
+    if node.data == "bullet_block":
+        return _bullet_block(node)
     raise ValueError(f"Unexpected content node: {node.data!r}")
 
 
 def _subheading(node: Tree) -> Subheading:
     title_tok = node.children[0]
     title = str(title_tok)
-    body: list[Union[CodeBlock, Claim, ProseBlock]] = []
+    body: list[Union[CodeBlock, Claim, ProseBlock, BulletBlock]] = []
     for child in node.children[1:]:
         if isinstance(child, Token):   # BLANK — skip
             continue
         item = _content(child)
         # grammar guarantees no nested subheadings here
-        assert isinstance(item, (CodeBlock, Claim, ProseBlock))
+        assert isinstance(item, (CodeBlock, Claim, ProseBlock, BulletBlock))
         body.append(item)
     return Subheading(
         title=title, body=body,
@@ -261,6 +274,18 @@ def _prose_block(node: Tree) -> ProseBlock:
             else:                           # PROSE_TEXT
                 spans.append(str(tok))
     return ProseBlock(spans=spans)
+
+
+def _bullet_block(node: Tree) -> BulletBlock:
+    first = node.children[0] if node.children else None
+    items = [
+        str(tok)[2:] if str(tok).startswith("* ") else str(tok).lstrip("*")
+        for tok in node.children
+    ]
+    return BulletBlock(
+        items=items,
+        start_line=getattr(first, "line", None),
+    )
 
 
 def _post_text(node: Tree) -> PostText:

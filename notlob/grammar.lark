@@ -25,13 +25,14 @@ body_item: subheading
          | code_block
          | claim
          | prose_block
+         | bullet_block
          | BLANK
 
 // Subheadings are flat within a module — ## nesting is not permitted.
 // _sub_item mirrors body_item without the subheading alternative,
 // enforcing the flat constraint directly in the grammar.
 subheading: SUBHEAD _sub_item*
-_sub_item: code_block | claim | prose_block | BLANK
+_sub_item: code_block | claim | prose_block | bullet_block | BLANK
 
 // An indented block begins with an INDENT line and continues while
 // each subsequent line is INDENT or BLANK.  The block terminates at
@@ -49,6 +50,10 @@ claim: SIGIL _body_line+
 // prose_line.
 prose_block: prose_line+
 prose_line:  (PROSE_TEXT | REF)+ PROSE_NL
+
+// A bullet block is one or more consecutive BULLET lines.  Bullets
+// must be flush-left (* item); indented bullets remain code (INDENT).
+bullet_block: BULLET+
 
 _body_line: INDENT | BLANK
 
@@ -89,5 +94,5 @@ appendix_section:   APPENDIX_HEAD   body_item*
 //   REF        — inline cross-reference: #Label or ##Label
 //   PROSE_NL   — end-of-prose-line sentinel (emitted once per line)
 
-%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK PROSE_TEXT REF PROSE_NL
+%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK BULLET PROSE_TEXT REF PROSE_NL
 %declare SEPARATOR TESTS_HEAD BINDING_HEAD REFERENCES_HEAD APPENDIX_HEAD

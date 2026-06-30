@@ -27,6 +27,7 @@ from typing import Union
 from notlob.model import (
     AppendixSection,
     BindingSection,
+    BulletBlock,
     Claim,
     CodeBlock,
     Module,
@@ -66,6 +67,13 @@ def _prose(block: ProseBlock) -> str:
         else:
             parts.append(span)       # plain text or "\n" boundary span
     return "".join(parts)
+
+
+# ── Bullet rendering ─────────────────────────────────────────
+
+def _bullets(block: BulletBlock) -> str:
+    """Render a bullet block as a Markdown unordered list."""
+    return "\n".join(f"* {item}" for item in block.items)
 
 
 # ── Code rendering ────────────────────────────────────────────
@@ -126,12 +134,14 @@ def _subheading(sub: Subheading, language: str) -> str:
 # ── Body dispatch ─────────────────────────────────────────────
 
 def _body_item(
-    item: Union[Subheading, CodeBlock, Claim, ProseBlock],
+    item: Union[Subheading, CodeBlock, Claim, ProseBlock, BulletBlock],
     language: str,
 ) -> str | None:
     """Dispatch a body item to its renderer; return ``None`` to omit."""
     if isinstance(item, ProseBlock):
         return _prose(item)
+    if isinstance(item, BulletBlock):
+        return _bullets(item)
     if isinstance(item, CodeBlock):
         return _code(item, language)
     if isinstance(item, Claim):

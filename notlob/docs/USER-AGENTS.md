@@ -26,19 +26,11 @@ notlob query children <address>   list child nodes
 
 ## Project structure
 
-- `binding.lob` — project manifest (language, tooling)
-- `*.lob` — modules (prose + code + claims)
-- `notlob-docs/` — generated reference docs (not checked in)
+`binding.lob` is the project manifest (language, tooling). Source modules are `*.lob` files — each combines prose, code, and claims. `notlob-docs/` holds generated reference docs and is not checked in.
 
 ## Source of Truth
 
-`.lob` files are the source of truth for this project. **Never create or edit `.py` files (or any other generated files) directly.**
-
-Generated artifacts are read-only diagnostics:
-
-- `dist/` — output of `notlob build`
-- `notlob-docs/` — output of `notlob docs`
-- `--keep-generated-src` output — assembled source with assertions, written on request for debugging
+`.lob` files are the source of truth for this project. **Never create or edit generated files directly** — `dist/` is produced by `notlob build`, `notlob-docs/` by `notlob docs`, and assembled source written with `--keep-generated-src` is for debugging only.
 
 When investigating a behaviour or debugging a test, read the `.lob` source first. Use `--keep-generated-src` only when you need to inspect the assembled executable form. Any change you want to make must be made in the corresponding `.lob` file.
 
