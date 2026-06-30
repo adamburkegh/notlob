@@ -275,7 +275,8 @@ def _cmd_run_haskell(
     dep_modules = _load_dep_modules(module, path)
     source      = assemble_with_deps(module, dep_modules)
     if not source:
-        print("ERROR  <assembly>  module contains no code", file=sys.stderr)
+        print("ERROR  <run>  nothing to run — module contains no code blocks",
+              file=sys.stderr)
         return 1
 
     if keep_dir is not None:
@@ -633,8 +634,7 @@ def _build_one(path: Path, kit, output_dir: Path) -> Path | None:
 
     source = kit.build(module, path)
     if not source:
-        print("ERROR  <assembly>  module contains no code", file=sys.stderr)
-        return None
+        return None  # prose-only module — skip silently, not an error
 
     mod_addr = module_address(module.title)
     header   = _build_header(kit.comment_prefix, mod_addr, path.name)

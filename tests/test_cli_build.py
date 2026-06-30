@@ -8,12 +8,32 @@ every module.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from notlob import __version__
 from notlob.commands import cmd_build, _build_header
+
+
+def _hlint_available() -> bool:
+    if shutil.which("hlint"):
+        return True
+    if shutil.which("stack"):
+        try:
+            r = subprocess.run(
+                ["stack", "exec", "--", "hlint", "--version"],
+                capture_output=True, timeout=10,
+            )
+            return r.returncode == 0
+        except Exception:
+            pass
+    return False
+
+_HAS_HLINT = _hlint_available()
+_HS_SKIP   = pytest.mark.skipif(not _HAS_HLINT, reason="hlint not found")
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -169,6 +189,7 @@ class TestCmdBuildPython:
 
 # ── Haskell build ─────────────────────────────────────────────
 
+@_HS_SKIP
 class TestCmdBuildHaskell:
     def test_creates_hs_file(self, tmp_path):
         root = _hs_project(tmp_path)
