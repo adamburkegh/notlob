@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -143,6 +144,73 @@ class TestCmdInit:
         cmd_init()
         content = (project / "binding.lob").read_text()
         assert "My Cool Project" in content
+
+
+# ── cmd_init — TypeScript toolchain scaffolding ──────────────
+
+class TestCmdInitTypeScript:
+    def test_creates_package_json(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="typescript")
+        assert (tmp_path / "package.json").exists()
+
+    def test_package_json_declares_toolchain(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="typescript")
+        data = json.loads((tmp_path / "package.json").read_text())
+        deps = data["devDependencies"]
+        assert "tsx" in deps
+        assert "typescript" in deps
+
+    def test_package_json_name_from_dirname(self, tmp_path, monkeypatch):
+        project = tmp_path / "my-ts-app"
+        project.mkdir()
+        monkeypatch.chdir(project)
+        cmd_init(language="typescript")
+        data = json.loads((project / "package.json").read_text())
+        assert data["name"] == "my_ts_app"
+
+    def test_creates_tsconfig(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="typescript")
+        tsconfig = tmp_path / "tsconfig.json"
+        assert tsconfig.exists()
+        opts = json.loads(tsconfig.read_text())["compilerOptions"]
+        assert opts["target"] == "ES2020"
+        assert "DOM" in opts["lib"]
+
+    def test_python_creates_no_package_json(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="python")
+        assert not (tmp_path / "package.json").exists()
+        assert not (tmp_path / "tsconfig.json").exists()
+
+    def test_haskell_creates_no_package_json(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="haskell")
+        assert not (tmp_path / "package.json").exists()
+
+    def test_bare_still_scaffolds_toolchain(self, tmp_path, monkeypatch):
+        # The toolchain manifest is essential (not docs), so --bare keeps it.
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="typescript", bare=True)
+        assert (tmp_path / "package.json").exists()
+        assert (tmp_path / "tsconfig.json").exists()
+
+    def test_existing_package_json_preserved(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        existing = '{"name": "mine", "dependencies": {"left-pad": "1.0.0"}}'
+        (tmp_path / "package.json").write_text(existing, encoding="utf-8")
+        cmd_init(language="typescript")
+        # Untouched — notlob must not clobber an existing manifest.
+        assert (tmp_path / "package.json").read_text() == existing
+
+    def test_valid_json_output(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cmd_init(language="typescript")
+        # Both files parse as JSON (no hand-quoting errors).
+        json.loads((tmp_path / "package.json").read_text())
+        json.loads((tmp_path / "tsconfig.json").read_text())
 
 
 # ── cmd_new ───────────────────────────────────────────────────

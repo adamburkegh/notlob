@@ -598,6 +598,75 @@ def _render_agents(project_title: str) -> str:
     return template.format(project_title=project_title)
 
 
+def _render_package_json(project_slug: str) -> str:
+    """Return a minimal ``package.json`` declaring the TS toolchain.
+
+    notlob is distributed via pip and cannot ship npm packages the way
+    it brings ruff for Python, so a TypeScript project provides its own
+    toolchain — ``tsx`` to run claims, ``typescript`` (tsc) to
+    type-check.  ``notlob init`` generates this manifest so the language
+    is declared once (in binding.lob); the user materialises it with
+    ``npm install``, the npm analog of ``pip install``.
+    """
+    data = {
+        "name": project_slug,
+        "private": True,
+        "devDependencies": {
+            "tsx": "^4.0.0",
+            "typescript": "^5.4.0",
+        },
+    }
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _render_tsconfig() -> str:
+    """Return a ``tsconfig.json`` aligned with notlob's tsc linter flags.
+
+    Mirrors the options ``lint_typescript`` passes to ``tsc --noEmit``
+    so an editor / standalone ``tsc`` agrees with ``notlob test``.
+    """
+    data = {
+        "compilerOptions": {
+            "target": "ES2020",
+            "module": "ES2020",
+            "lib": ["ES2020", "DOM"],
+            "moduleResolution": "node",
+            "noEmit": True,
+            "skipLibCheck": True,
+            "strict": False,
+        },
+    }
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _scaffold_files(language: str, project_slug: str) -> list[tuple[str, str]]:
+    """Return ``(filename, content)`` toolchain-scaffolding pairs for
+    *language*, beyond binding.lob and the starter module.
+
+    notlob's own ecosystem (Python) needs none — ruff/pytest arrive with
+    the pip install.  External-toolchain languages declare their tools
+    through the language's native manifest, which notlob generates so the
+    language is stated once and the user just runs the package manager.
+    """
+    if language == "typescript":
+        return [
+            ("package.json", _render_package_json(project_slug)),
+            ("tsconfig.json", _render_tsconfig()),
+        ]
+    return []
+
+
+def _scaffold_hint(language: str) -> str | None:
+    """Return a post-init next-step hint for languages whose toolchain
+    installs separately, or ``None``."""
+    if language == "typescript":
+        return (
+            "Next: run `npm install` to fetch the TypeScript toolchain "
+            "(tsx, typescript)."
+        )
+    return None
+
+
 # ── Build ─────────────────────────────────────────────────────
 
 def _build_header(
@@ -1221,6 +1290,18 @@ def cmd_init(
     )
     print(f"INIT   {starter_name}")
 
+    # Write language toolchain scaffolding (e.g. package.json + tsconfig
+    # for TypeScript).  Essential, so written even with --bare.  Never
+    # clobber a file the user already has — e.g. adding notlob to an
+    # existing Node project.
+    for fname, content in _scaffold_files(language, starter_slug):
+        target = cwd / fname
+        if target.exists():
+            print(f"INIT   {fname} exists — leaving as-is")
+        else:
+            target.write_text(content, encoding="utf-8")
+            print(f"INIT   {fname}")
+
     if not bare:
         # Write AGENTS.md
         agents_path = cwd / "AGENTS.md"
@@ -1241,6 +1322,11 @@ def cmd_init(
         print(bar)
         print(agents_content.rstrip())
         print(bar)
+
+    hint = _scaffold_hint(language)
+    if hint:
+        print()
+        print(hint)
 
     return 0
 
