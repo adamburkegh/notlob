@@ -336,8 +336,13 @@ notlob/bindings/
         symbols.py       ← extract_symbols (function/const/class/interface/type/enum)
         runner.py        ← tsx harness; CLAIM/PASS/FAIL protocol; lhs/rhs extraction
         tokenizer.py     ← bracket-counting scanner for claim completion + === split
-        lint.py          ← stub; biome integration planned
+        lint.py          ← lint_typescript via `tsc --noEmit`; source-map translation
 ```
+
+Each binding directory carries a `BINDING.md` documenting its toolchain,
+linter, and supported claims — the binding is the unit that determines
+how a language is realized, so it documents itself there rather than in
+the language reference.
 
 `BindingKit` is a dataclass that composes callables — one per tooling
 concern — so the name-graph and claim runner can ask for exactly the
@@ -402,9 +407,12 @@ is language-agnostic, the binding owns the implementation entirely.
   languages (Haskell) this invokes the compiler and runtime; for
   interpreted languages it exec's directly.
 - `notlob test` — run all claims (examples, properties, #Tests) and
-  report results by address.  Runs the linter if the binding supports
-  it.  Exit 1 on any failure or lint diagnostic.  `--only lint|examples|props|tests`
-  restricts which check types run.
+  report results by address.  Runs the linter when the binding declares
+  one (`kit.lint is not None`); if it does but the tool is missing,
+  the run fails (`ERROR <lint>`) rather than silently skipping — a
+  missing checker is never reported as a pass.  Exit 1 on any failure or
+  lint diagnostic.  `--only lint|examples|props|tests` restricts which
+  check types run.
 - `notlob build` — assemble a module (or all project modules) with
   inlined deps and write artifacts to an output directory (default:
   `dist/`).  After assembly, runs the `~on-build` hook if declared in
@@ -510,18 +518,31 @@ source files.
 
 ## Later Features
 
+**`~test` — naming individual assertions.** The claim sigil vocabulary
+is closed (`~example`, `~run`, `~property`; see
+`notlob.parser._KNOWN_SIGILS`) and `~test` is explicitly reserved —
+the parser rejects it with a "reserved for future use" message rather
+than letting it silently misparse. Today, `#Tests` assertions are
+addressed only by their `##group` heading (e.g.
+`roman/numerals#Tests#encoding`); there's no way to name an individual
+assertion the way `def test_specific_thing():` names a pytest test. A
+`~test <name>` sigil, or an equivalent naming convention within
+`#Tests` groups, is the natural way to close that gap — but it isn't
+designed yet, and the reservation exists precisely so the parser
+refuses it until it is.
+
 **Property testing for TypeScript.** `run_properties` currently returns
 SKIP for all `~property` claims in TypeScript modules.  The planned
 integration is fast-check (`~property-testing fast-check` in
 `binding.lob`), following the same pattern as the Python/Hypothesis
 binding.
 
-**TypeScript linting.** `kit.lint` is `None` for the TypeScript binding.
-The planned tool is Biome — fast, zero-config, ruff-equivalent for
-TypeScript.  The source-map mechanism (translating `// <address>`
-location comments back to `.lob` sections) is already designed;
-`lint.py` in `notlob/bindings/typescript/` documents the implementation
-plan.
+**TypeScript style linting.** The TypeScript binding's linter is
+`tsc --noEmit` — type-checking, which catches the errors `tsx` skips at
+runtime (the highest-value check, since nothing else in the pipeline
+type-checks). A complementary *style* linter — Biome (fast, zero-config,
+ruff-equivalent) or ESLint — could run alongside `tsc` as a second
+layer; this is not yet implemented.
 
 **TypeScript build output.** `notlob build` for TypeScript currently
 produces a `.ts` source file.  The natural next step is to invoke
