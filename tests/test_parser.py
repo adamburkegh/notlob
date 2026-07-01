@@ -165,6 +165,35 @@ class TestClaim:
         assert len(indent_lines) == 3
 
 
+# ── Closed sigil vocabulary ────────────────────────────────────
+
+class TestUnknownSigils:
+    def test_reserved_test_sigil_raises(self):
+        src = "#T\n~test\n    x == 1\n"
+        with pytest.raises(ValueError, match="reserved"):
+            parse(src)
+
+    def test_unknown_sigil_raises(self):
+        src = "#T\n~foo\n    x == 1\n"
+        with pytest.raises(ValueError, match="unknown claim sigil"):
+            parse(src)
+
+    def test_typo_sigil_raises(self):
+        # A plausible-looking typo must not silently misparse.
+        src = "#T\n~propety\n    x == 1\n"
+        with pytest.raises(ValueError, match="unknown claim sigil"):
+            parse(src)
+
+    def test_known_sigils_still_parse(self):
+        for src in (
+            "#T\n~example\n    x == 1\n",
+            "#T\n~run\n    x = 1\n",
+            "#T\n~property\n    x > 0\n",
+            "#T\n~property named\n    x > 0\n",
+        ):
+            parse(src)   # must not raise
+
+
 # ── Subheadings ──────────────────────────────────────────────
 
 class TestSubheading:

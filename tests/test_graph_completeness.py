@@ -109,6 +109,14 @@ class TestAllBodySigilsRegistered:
             f"_COMPREHENSIVE source — add an example"
         )
 
+    def test_matches_parser_known_sigils(self):
+        """The parser's closed sigil vocabulary and the graph's sigil
+        registry must name exactly the same set — the parser rejects
+        anything outside it, so the graph can never see anything else.
+        """
+        from notlob.parser import _KNOWN_SIGILS
+        assert set(_KNOWN_SIGILS) == set(_SIGIL_KINDS)
+
 
 class TestRunInGraph:
     def test_run_node_present(self):

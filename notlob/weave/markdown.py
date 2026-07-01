@@ -104,7 +104,15 @@ _SIGIL_LABELS: dict[str, str] = {
 
 
 def _sigil_label(sigil: str) -> str:
-    """Return a bold Markdown label for *sigil*."""
+    """Return a bold Markdown label for *sigil*.
+
+    A named ``~property`` claim (e.g. ``~property commutativity``)
+    doesn't match the ``_SIGIL_LABELS`` keys exactly, so it falls
+    through to the generic capitalised form — e.g.
+    ``**Property commutativity:**``. The sigil vocabulary is closed at
+    parse time (see notlob.parser._KNOWN_SIGILS), so this fallback only
+    ever sees named properties, never a genuinely unrecognised sigil.
+    """
     if sigil in _SIGIL_LABELS:
         return _SIGIL_LABELS[sigil]
     name = sigil.lstrip("~")

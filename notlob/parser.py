@@ -50,6 +50,28 @@ _RESERVED_HEADS: dict[str, str] = {
     "#References": "REFERENCES_HEAD",
 }
 
+# Closed vocabulary of recognised claim sigils.  A `~word` line at
+# column 0 is only ever one of these — sigils are not an open
+# extension point.  Adding a new one requires updating this set *and*
+# wiring it into notlob.graph.enrich(); see
+# tests/test_graph_completeness.py, which cross-checks the two and
+# fails loudly if they drift apart.
+_KNOWN_SIGILS = ("~example", "~run", "~property")
+
+# Sigils that look plausible but are deliberately not (yet)
+# implemented.  Rejecting them explicitly, with a clear reason, is
+# better than letting them silently misparse as something else (the
+# previous behaviour: any unrecognised sigil was silently treated as
+# an unnamed ~property claim, producing a name-graph node that never
+# executes).
+_RESERVED_SIGILS: dict[str, str] = {
+    "~test": (
+        "'~test' is reserved for a future feature (naming individual "
+        "assertions within a #Tests group) and is not implemented. "
+        "Use the #Tests post-text section instead."
+    ),
+}
+
 # Matches ##Label or #Label in prose: capital letter start, optional
 # Title Case continuation (space + capital letter + word chars).
 # Lookbehind prevents matching # inside URLs or identifiers.
@@ -82,6 +104,14 @@ def _classify(line: str) -> Token | None:
     if stripped.startswith("#"):        # MOD_HEAD (## already handled above)
         return Token("MOD_HEAD", stripped[1:].strip())
     if stripped.startswith("~") and stripped[1:2].islower():
+        word = stripped.split(None, 1)[0]
+        if word in _RESERVED_SIGILS:
+            raise ValueError(_RESERVED_SIGILS[word])
+        if word not in _KNOWN_SIGILS:
+            raise ValueError(
+                f"unknown claim sigil {word!r} "
+                f"(known sigils: {', '.join(_KNOWN_SIGILS)})"
+            )
         return Token("SIGIL", stripped)
     if stripped == "":
         return Token("BLANK", stripped)

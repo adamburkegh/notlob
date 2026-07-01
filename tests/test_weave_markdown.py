@@ -124,9 +124,11 @@ class TestClaim:
         assert "~run" not in out
         assert "print" not in out
 
-    def test_unknown_sigil_capitalised(self):
-        out = md("#T\n~lemma\n    x == y\n")
-        assert "**Lemma:**" in out
+    def test_named_property_label(self):
+        # A named ~property doesn't match the _SIGIL_LABELS keys
+        # exactly, so it renders via the generic capitalised fallback.
+        out = md("#T\n~property commutativity\n    x + y == y + x\n")
+        assert "**Property commutativity:**" in out
 
     def test_claim_code_fenced(self):
         out = md("#T\n~example\n    f(1) == 2\n")

@@ -60,6 +60,12 @@ See the Claims section below.
 
 **Subheadings** — `##Name` at column 0, introducing a named section.
 
+**Bullet lists** — lines beginning with `* ` (or a bare `*`) at column 0.
+Consecutive bullet lines form one list. Only `*` is a bullet; an
+indented `*` line is code, not a bullet. Prefer prose for explanation:
+`notlob check` flags more than one bullet list in a single section as a
+style smell (see Linting and checks).
+
 ```
 #Fibonacci
 
@@ -92,6 +98,10 @@ Computes Fibonacci numbers recursively.
 Claims are verifiable statements attached to the module. Each begins
 with a `~sigil` line at column 0 and is followed by indented content.
 
+The sigil vocabulary is closed: `~example`, `~run`, and `~property` are
+the only recognised sigils. An unrecognised `~word` is a parse error,
+not a silent no-op.
+
 ### ~example
 
 One or more boolean expressions, each expected to be true.
@@ -106,7 +116,7 @@ Run during `notlob test`. Not included in `notlob build` output.
 
 ### ~property
 
-A property-based test using the declared `~property-testing` library. This depends on the binding. The Python binding includes Hypothesis. Receives `@given` decoration automatically; authors do not import the library directly.
+A property-based test using the declared `~property-testing` library. This depends on the binding. This example is from the Python binding, which includes Hypothesis. Receives `@given` decoration automatically; authors do not import the library directly.
 
 ```
 ~property
@@ -117,17 +127,6 @@ A property-based test using the declared `~property-testing` library. This depen
 
 Named properties (`~property commutativity`) create a navigable node
 in the name-graph.
-
-### ~test
-
-A pytest test function. Must be a `def test_*` function.
-
-```
-~test
-    def test_base_cases():
-        assert fib(0) == 0
-        assert fib(1) == 1
-```
 
 ### ~run
 
@@ -297,10 +296,57 @@ and 10% yield 72% of the original — not 70%.
 
 ---
 
+## Linting and checks
+
+Notlob enforces quality at two levels, both run automatically during
+`notlob test` (and `notlob build`).
+
+**Linting** — each language binding may define a linter. When it does,
+that linter is part of the test contract. 
+If a binding declares a linter but its tool is not
+installed, `notlob test` fails with an error rather than silently
+skipping the check — a missing checker is never reported as a pass. A
+binding may also declare no linter at all, which is fine.
+
+**Semantic checks** (`notlob check`) — analyse the name-graph for
+consistency. One is an error; the rest are advisory nudges:
+
+| Check         | Severity  | Flags                                            |
+|---------------|-----------|--------------------------------------------------|
+| `imports`     | error     | a module imports another but uses none of its symbols |
+| `typos`       | advisory  | near-duplicate symbol names (likely misspellings) |
+| `conventions` | advisory  | inconsistent verb prefixes for one concept (`get_` vs `fetch_`) |
+| `titles`      | advisory  | near-duplicate module / subheading titles         |
+| `references`  | advisory  | a symbol named in prose without a `#` cross-reference |
+| `style`       | advisory  | more than one bullet list in a section            |
+
+`notlob check -v` adds a coverage summary; `--only <names>` runs a
+subset. Advisory findings never fail the build; only error-severity
+findings (and a missing linter) do.
+
+---
+
+## Toolchains
+
+Each language binding needs its tools available; how they are provided
+differs by ecosystem.
+
+- **Python** — nothing extra. `ruff`, `pytest`, and `hypothesis` ship
+  with notlob's pip install.
+- **TypeScript** — `tsx` (runs claims) and `typescript`/`tsc`
+  (type-checks) come from npm. `notlob init --language typescript`
+  scaffolds `package.json` and `tsconfig.json`; run `npm install` to
+  fetch them (the npm analog of `pip install`).
+- **Haskell** — `runghc` and `hlint` must be on `PATH` (e.g. via Stack).
+
+---
+
 ## Commands
 
 ```
+notlob init [--language LANG]    scaffold a new project in the current dir
 notlob test [file]              run all claims (project or one file)
+notlob check [--only ...] [-v]  run semantic checks on the name-graph
 notlob build [file]             assemble to source artifacts in dist/
 notlob run <file>               execute a module
 notlob weave [file]             render as Markdown
