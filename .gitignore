@@ -228,3 +228,7 @@ __marimo__/
 
 
 
+
+# Editor swap files
+*.swp
+*.swo
