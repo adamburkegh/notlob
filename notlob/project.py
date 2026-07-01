@@ -144,6 +144,40 @@ def module_lob_refs(module: Module) -> list[str]:
     return []
 
 
+def transitive_lob_refs(module: Module, root: Path) -> list[str]:
+    """Return all transitive lob dependencies in topological order (deps first).
+
+    Performs a depth-first traversal of the dependency graph rooted at
+    *module*, following each module's own ``#References`` recursively.
+    The root module itself is excluded — callers assemble it separately.
+    Cycles are broken by tracking visited addresses; duplicate nodes are
+    emitted only once, in the order first encountered via DFS post-order.
+    """
+    visited: set[str] = set()
+    order: list[str] = []
+
+    from .parser import parse_file
+    from .model import from_tree as _from_tree
+
+    def _visit(addr: str) -> None:
+        if addr in visited:
+            return
+        visited.add(addr)
+        try:
+            dep_path = resolve_module_path(addr, root)
+            dep_mod  = _from_tree(parse_file(dep_path))
+            for child_addr in module_lob_refs(dep_mod):
+                _visit(child_addr)
+        except Exception:
+            pass
+        order.append(addr)
+
+    for addr in module_lob_refs(module):
+        _visit(addr)
+
+    return order
+
+
 def build_package(
     root:      Path,
     extractor: Callable | None = None,

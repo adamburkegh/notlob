@@ -188,18 +188,19 @@ def _run_harness(
 # ── Module source assembly ────────────────────────────────────
 
 def _build_module_source(module: Module, root: Path | None) -> str:
-    """Return assembled module source with dep sources prepended.
+    """Return assembled module source with all transitive dep sources prepended.
 
-    Dependencies declared as lob-refs in ``#References`` are assembled
-    and inlined before the module's own code, mirroring what the Python
-    runner achieves via ``ModuleCache``.
+    Follows the full dependency graph (not just direct references) so
+    that a module which imports A, where A imports B, gets B inlined
+    even if the root module does not directly reference B.  Deps are
+    emitted in topological order (deepest dependency first).
     """
     parts: list[str] = []
 
     if root is not None:
         from notlob import from_tree, parse_file
-        from notlob.project import module_lob_refs, resolve_module_path
-        for dep_addr in module_lob_refs(module):
+        from notlob.project import transitive_lob_refs, resolve_module_path
+        for dep_addr in transitive_lob_refs(module, root):
             try:
                 dep_path = resolve_module_path(dep_addr, root)
                 dep_mod  = from_tree(parse_file(dep_path))

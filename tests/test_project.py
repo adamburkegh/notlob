@@ -9,6 +9,7 @@ from notlob.project import (
     parse_lob_refs,
     parse_python_imports,
     resolve_module_path,
+    transitive_lob_refs,
 )
 
 
@@ -156,3 +157,72 @@ class TestParsePythonImports:
         lines = ["    from pathlib import Path"]
         result = parse_python_imports(lines)
         assert result[0].startswith("    ")
+
+
+# ── transitive_lob_refs ───────────────────────────────────────
+
+def _write(tmp_path: Path, name: str, content: str) -> None:
+    (tmp_path / name).write_text(content, encoding="utf-8")
+
+
+def _binding(tmp_path: Path) -> None:
+    _write(tmp_path, "binding.lob",
+           "#P\n\n---\n\n#Binding\n    ~language python\n")
+
+
+class TestTransitiveLobRefs:
+    def test_direct_dep_included(self, tmp_path):
+        _binding(tmp_path)
+        _write(tmp_path, "util.lob", "#Util\n\n    x = 1\n")
+        _write(tmp_path, "main.lob",
+               "#Main\n\n    y = 2\n---\n\n#References\n    #Util\n")
+        from notlob import from_tree, parse_file
+        mod = from_tree(parse_file(tmp_path / "main.lob"))
+        refs = transitive_lob_refs(mod, tmp_path)
+        assert "util" in refs
+
+    def test_transitive_dep_included(self, tmp_path):
+        _binding(tmp_path)
+        _write(tmp_path, "base.lob", "#Base\n\n    b = 0\n")
+        _write(tmp_path, "mid.lob",
+               "#Mid\n\n    m = 1\n---\n\n#References\n    #Base\n")
+        _write(tmp_path, "main.lob",
+               "#Main\n\n    z = 2\n---\n\n#References\n    #Mid\n")
+        from notlob import from_tree, parse_file
+        mod = from_tree(parse_file(tmp_path / "main.lob"))
+        refs = transitive_lob_refs(mod, tmp_path)
+        assert "base" in refs
+        assert "mid" in refs
+        assert refs.index("base") < refs.index("mid")
+
+    def test_root_module_not_in_result(self, tmp_path):
+        _binding(tmp_path)
+        _write(tmp_path, "util.lob", "#Util\n\n    x = 1\n")
+        _write(tmp_path, "main.lob",
+               "#Main\n\n    y = 2\n---\n\n#References\n    #Util\n")
+        from notlob import from_tree, parse_file
+        mod = from_tree(parse_file(tmp_path / "main.lob"))
+        refs = transitive_lob_refs(mod, tmp_path)
+        assert "main" not in refs
+
+    def test_no_deps_returns_empty(self, tmp_path):
+        _binding(tmp_path)
+        _write(tmp_path, "main.lob", "#Main\n\n    x = 1\n")
+        from notlob import from_tree, parse_file
+        mod = from_tree(parse_file(tmp_path / "main.lob"))
+        assert transitive_lob_refs(mod, tmp_path) == []
+
+    def test_diamond_dep_included_once(self, tmp_path):
+        # A imports B and C; B and C both import D.  D should appear once.
+        _binding(tmp_path)
+        _write(tmp_path, "d.lob", "#D\n\n    d = 0\n")
+        _write(tmp_path, "b.lob",
+               "#B\n\n    b = 1\n---\n\n#References\n    #D\n")
+        _write(tmp_path, "c.lob",
+               "#C\n\n    c = 2\n---\n\n#References\n    #D\n")
+        _write(tmp_path, "a.lob",
+               "#A\n\n    a = 3\n---\n\n#References\n    #B\n    #C\n")
+        from notlob import from_tree, parse_file
+        mod = from_tree(parse_file(tmp_path / "a.lob"))
+        refs = transitive_lob_refs(mod, tmp_path)
+        assert refs.count("d") == 1
