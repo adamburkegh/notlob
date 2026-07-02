@@ -266,10 +266,15 @@ for ecosystem access (Hypothesis for property testing, Pandas for data
 experiments). The plan is to support Haskell blocks when the type safety
 story needs proper exploration.
 
-**Parser:** Lark grammar (`notlob/grammar.lark`) for the `.lob` format.
-Headings, code blocks, claim sigils, post-text boundary, and reserved
-post-text sections all become first-class AST nodes. The grammar file is
-the canonical syntax specification; the parser produces a Lark `Tree`
+**Parser:** Lark grammar (`notlob/grammar.lark`) for the `.lob` format,
+using Lark's own native lexer — every structural line-type is a real
+terminal in the grammar file, disambiguated by explicit priority and
+line-start anchoring (see "The grammar is the specification" below for
+the mechanism and rationale). Headings, code blocks, claim
+sigils, post-text boundary, and reserved post-text sections all become
+first-class AST nodes. The grammar file is the canonical syntax
+specification; `notlob/parser.py` normalises raw token values (stripping
+markers/newlines) and checks reserved sigils, then hands a Lark `Tree`
 serialisable to JSON for use by tooling and LLM context. Parse tree
 access will also be exposed via MCP.
 
@@ -462,6 +467,53 @@ being wrong.
 modification; evaluate whether the linked structure produces less aberrant
 output than equivalent unstructured code. This is an early experiment
 worth running before the claim runner is complete.
+
+---
+
+## The grammar is the specification
+
+`grammar.lark` is the canonical, declarative definition of `.lob` syntax —
+not a thin shell over hand-written Python. Every structural line-type
+(`MOD_HEAD`, `SUBHEAD`, `SIGIL`, `INDENT`, `BLANK`, `BULLET`, `SEPARATOR`,
+the reserved post-text heads) is a native Lark terminal, matched by
+Lark's own contextual lexer directly against source text. `notlob/parser.py`
+is a thin adapter around that parse — normalising raw token values
+(stripping the newline/marker each line-terminal consumes) and checking
+`~test`'s reserved status — not a second parsing pass in disguise.
+
+**Disambiguation is explicit, not incidental.** Column-zero structural
+lines (`##Title`) and the identical text occurring inline mid-prose
+(`See ##Title.`) are lexically indistinguishable spans; which one applies
+depends on context, not shape. Lark's contextual lexer narrows candidate
+terminals by parser state, but at a body-item boundary both a fresh
+structural line and continuing prose are valid continuations, so more
+than one terminal can match the same text from the same state. The
+tie-break is terminal **priority** (the `.N` suffix in `grammar.lark`):
+every structural terminal outranks the generic `REF`/`PROSE_TEXT`
+terminals it can collide with. This is the same category of thing as
+lexer generators resolving ambiguous matches by "longest match, first
+rule wins," or a grammar's dangling-`else` convention — a standard,
+named disambiguation strategy sitting alongside the grammar, not folded
+invisibly into it.
+
+**The closed sigil vocabulary is enforced at the lexer, with one
+deliberate exception.** `SIGIL` enumerates every recognised word
+(`~example`, `~run`, `~property`, and the reserved `~test`) as an exact
+literal; `~` is excluded from prose only when it starts a genuine
+physical line and is followed by a lowercase letter (a real sigil
+candidate) — not blanket, since `~5` or `~Word` mid-sentence is ordinary
+prose. A `~word` outside that vocabulary fails to lex entirely, rather
+than silently misparsing as something else. "Reserved" (`~test`) and
+"unknown" (`~foo`) are different kinds of fact, though: `~test` is a
+real, known word (just not implemented yet) and is rejected with a
+specific message by a small semantic check in `parser.py`, run after
+parsing succeeds; a genuinely unrecognised word fails at the lexer with a
+generic message, since there's nothing more specific to say about a typo.
+
+Code blocks need nothing beyond flat per-line `INDENT`/`BLANK`
+terminals — notlob's indentation is flat/binary (a line either starts
+with whitespace or it doesn't), not a nested indent-stack problem, so no
+custom pre-pass is required there.
 
 ---
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from lark import Token, Tree
+from lark.exceptions import UnexpectedCharacters, UnexpectedToken
 
 from notlob import parse, parse_file
 
@@ -174,14 +175,19 @@ class TestUnknownSigils:
             parse(src)
 
     def test_unknown_sigil_raises(self):
+        # Not in the grammar's closed SIGIL vocabulary, so it fails at
+        # the lexer with a generic message -- there's nothing more
+        # specific to say about a word we've never heard of. Contrast
+        # with ~test above: a *known, reserved* word gets a specific
+        # semantic-layer message instead.
         src = "#T\n~foo\n    x == 1\n"
-        with pytest.raises(ValueError, match="unknown claim sigil"):
+        with pytest.raises((UnexpectedCharacters, UnexpectedToken)):
             parse(src)
 
     def test_typo_sigil_raises(self):
         # A plausible-looking typo must not silently misparse.
         src = "#T\n~propety\n    x == 1\n"
-        with pytest.raises(ValueError, match="unknown claim sigil"):
+        with pytest.raises((UnexpectedCharacters, UnexpectedToken)):
             parse(src)
 
     def test_known_sigils_still_parse(self):

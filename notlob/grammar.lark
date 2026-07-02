@@ -1,17 +1,31 @@
 // notlob.lark
 // Grammar for .lob literate source files.
 //
-// The format is fundamentally line-oriented: each source line is one
-// semantic unit.  The Notlob line lexer classifies every line into a
-// single typed token before Lark sees it, so this grammar contains no
-// regex — only structural rules over pre-classified tokens.
+// The format is line-oriented: each source line is one semantic unit.
+// Every structural line-type (MOD_HEAD, SUBHEAD, SIGIL, INDENT, BLANK,
+// BULLET, SEPARATOR, and the reserved post-text heads) is a native Lark
+// terminal, matched directly against the raw source text — there is no
+// separate Python line classifier feeding Lark a pre-typed token stream.
 //
-// Line-start invariant: `#` and `##` at column zero are always
-// structural (MOD_HEAD, SUBHEAD, or a reserved post-text head).
-// Inline refs (#Label, ##Label) only occur mid-prose, within a
-// prose_line.  This invariant is enforced by _classify() in parser.py
-// and means the grammar never needs to disambiguate heading syntax
-// from reference syntax — context already separates them.
+// Disambiguation mechanism
+// ------------------------
+// Column-zero structural lines (e.g. `##Title`) and the same text
+// occurring inline mid-prose (e.g. `See ##Title.`) are lexically
+// identical spans. Lark's contextual lexer narrows candidate terminals
+// by parser state, but at a body-item boundary, both a fresh structural
+// line AND continuing prose are valid continuations — so more than one
+// terminal can match the same text from the same state. The tie-break is
+// explicit terminal priority (the `.N` suffix): every structural terminal
+// outranks the generic REF/PROSE_TEXT terminals it can collide with.
+//
+// The closed sigil vocabulary is the one place priority isn't the whole
+// story: SIGIL enumerates every known word (including reserved ones like
+// `~test`) as an exact literal, and `~` is excluded from PROSE_TEXT only
+// at true line-start (a lookbehind, not "first char of any prose span" —
+// prose spans can also start mid-line, right after an inline ref).
+// Genuinely unknown sigils therefore fail to lex at all, rather than
+// silently becoming prose. "Reserved" vs. "unknown" is a separate,
+// semantic distinction handled after parsing (see notlob.parser).
 
 start: module
 
@@ -35,9 +49,7 @@ subheading: SUBHEAD _sub_item*
 _sub_item: code_block | claim | prose_block | bullet_block | BLANK
 
 // An indented block begins with an INDENT line and continues while
-// each subsequent line is INDENT or BLANK.  The block terminates at
-// the first non-blank, non-indented token (SUBHEAD, SIGIL, MOD_HEAD,
-// PROSE_TEXT, REF, or SEPARATOR).
+// each subsequent line is INDENT or BLANK.
 code_block: INDENT _body_line*
 
 // A claim sigil followed by its indented body (at least one line).
@@ -49,7 +61,7 @@ claim: SIGIL _body_line+
 // prose_block nodes because BLANK is a body_item, not part of a
 // prose_line.
 prose_block: prose_line+
-prose_line:  (PROSE_TEXT | REF)+ PROSE_NL
+prose_line:  (LINE_START_TEXT | PROSE_TEXT | REF)+ PROSE_NL
 
 // A bullet block is one or more consecutive BULLET lines.  Bullets
 // must be flush-left (* item); indented bullets remain code (INDENT).
@@ -74,25 +86,58 @@ binding_section:    BINDING_HEAD    (INDENT | BLANK)*
 references_section: REFERENCES_HEAD (INDENT | BLANK)*
 appendix_section:   APPENDIX_HEAD   body_item*
 
-// ── Terminal declarations ───────────────────────────────────
-// All terminals are produced by the Notlob line lexer; Lark does not
-// lex them directly.
+// ── Terminal definitions ────────────────────────────────────
 //
-// Structural line tokens (one per source line):
-//   MOD_HEAD   — #Title at column zero
-//   SUBHEAD    — ##Title at column zero
-//   SIGIL      — ~word at column zero
-//   INDENT     — any line whose first character is whitespace
-//   BLANK      — empty line
-//   SEPARATOR  — the literal --- line
+// Every terminal consumes through its own trailing newline (so the
+// lexer's cursor is always at a true physical line-start when trying
+// the next token) EXCEPT the prose sub-tokens (LINE_START_TEXT,
+// PROSE_TEXT, REF), which build up a multi-span prose_line ending in a
+// separate PROSE_NL sentinel.
 //
-// Post-text head tokens (one per source line):
-//   TESTS_HEAD, BINDING_HEAD, REFERENCES_HEAD, APPENDIX_HEAD
-//
-// Prose sub-tokens (multiple per source line, from _tokenize_prose):
-//   PROSE_TEXT — plain-text fragment within a prose line
-//   REF        — inline cross-reference: #Label or ##Label
-//   PROSE_NL   — end-of-prose-line sentinel (emitted once per line)
+// Priorities: structural line-types are priority 20 (post-text
+// reserved heads and SEPARATOR — must outrank both the generic MOD_HEAD
+// and REF/PROSE_TEXT) or priority 10 (MOD_HEAD, SUBHEAD, SIGIL — must
+// outrank REF/PROSE_TEXT but never compete with the post-text heads,
+// since those are distinguished by their own literal text). INDENT and
+// BULLET are priority 8 (must outrank PROSE_TEXT but nothing else
+// contends for leading whitespace or `*`). REF is priority 5. PROSE_TEXT
+// and LINE_START_TEXT are priority 1 — the generic fallback.
 
-%declare MOD_HEAD SUBHEAD SIGIL INDENT BLANK BULLET PROSE_TEXT REF PROSE_NL
-%declare SEPARATOR TESTS_HEAD BINDING_HEAD REFERENCES_HEAD APPENDIX_HEAD
+MOD_HEAD.10:  /#[^#][^\n]*\n/
+SUBHEAD.10:   /##[^\n]*\n/
+
+// Closed vocabulary: every recognised sigil, including the reserved
+// `~test` (syntactically legitimate here; rejected after parsing with a
+// specific message — see notlob.parser._RESERVED_SIGILS). A `~word` not
+// in this list simply fails to lex, since PROSE_TEXT/LINE_START_TEXT
+// exclude `~` at line-start; there is no silent fallback.
+SIGIL.10: "~example\n" | "~run\n" | "~test\n" | /~property\n|~property [^\n]*\n/
+
+SEPARATOR.20:        /---\n/
+TESTS_HEAD.20:       "#Tests\n"
+BINDING_HEAD.20:     "#Binding\n"
+REFERENCES_HEAD.20:  "#References\n"
+APPENDIX_HEAD.20:    /#Appendix:[^\n]*\n/
+
+INDENT.8: /[ \t][^\n]*\n/
+BLANK.8:  /\n/
+BULLET.8: /\*(?:[ \t][^\n]*)?\n/
+
+// Inline cross-reference: #Label or ##Label mid-prose. Lookbehind
+// prevents matching # inside URLs or identifiers.
+REF.5: /(?<![\w\/])##?[A-Z][A-Za-z0-9_]*(?:[ ][A-Z][A-Za-z0-9_]*)*/
+
+// First prose span of a genuine physical line (lookbehind anchors to
+// true line-start, not "first char of any prose token"). Excludes `~`
+// only when followed by a lowercase letter (a genuine sigil candidate —
+// closed-vocabulary enforcement; `~Word` or `~5` is not sigil-shaped and
+// stays prose) and `#` only when it's actually ref/head-shaped — a bare
+// `#5` or `#hashtag` stays prose too.
+LINE_START_TEXT.1: /(?<=\n)(?:[^#~\n]|#(?!#?[A-Z])|~(?![a-z]))(?:[^#\n]|#(?!#?[A-Z]))*/
+
+// Any other prose span (mid-line — e.g. immediately after an inline
+// REF ends). `~` is fully ordinary here; `#` still yields only when
+// ref-shaped, so REF gets a chance to match.
+PROSE_TEXT.1: /(?<!\n)(?:[^#\n]|#(?!#?[A-Z]))+/
+
+PROSE_NL: "\n"
