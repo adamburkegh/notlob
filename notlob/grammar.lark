@@ -102,26 +102,37 @@ appendix_section:   APPENDIX_HEAD   body_item*
 // BULLET are priority 8 (must outrank PROSE_TEXT but nothing else
 // contends for leading whitespace or `*`). REF is priority 5. PROSE_TEXT
 // and LINE_START_TEXT are priority 1 — the generic fallback.
+//
+// LINE_CHAR / REST_OF_LINE are helper terminals, not structural tokens
+// in their own right — they're referenced from other terminal
+// definitions below (Lark inlines them at compile time) purely to avoid
+// repeating "any character but newline, zero or more times" six times.
+// Because neither is ever referenced from a grammar *rule*, the lexer
+// never treats them as independently matchable tokens, so this carries
+// no priority or ambiguity implications of its own.
 
-MOD_HEAD.10:  /#[^#][^\n]*\n/
-SUBHEAD.10:   /##[^\n]*\n/
+LINE_CHAR: /[^\n]/
+REST_OF_LINE: LINE_CHAR*
+
+MOD_HEAD.10: "#" /[^#\n]/ REST_OF_LINE "\n"
+SUBHEAD.10:  "##" REST_OF_LINE "\n"
 
 // Closed vocabulary: every recognised sigil, including the reserved
 // `~test` (syntactically legitimate here; rejected after parsing with a
 // specific message — see notlob.parser._RESERVED_SIGILS). A `~word` not
 // in this list simply fails to lex, since PROSE_TEXT/LINE_START_TEXT
 // exclude `~` at line-start; there is no silent fallback.
-SIGIL.10: "~example\n" | "~run\n" | "~test\n" | /~property\n|~property [^\n]*\n/
+SIGIL.10: "~example\n" | "~run\n" | "~test\n" | "~property\n" | "~property " REST_OF_LINE "\n"
 
-SEPARATOR.20:        /---\n/
+SEPARATOR.20:        "---\n"
 TESTS_HEAD.20:       "#Tests\n"
 BINDING_HEAD.20:     "#Binding\n"
 REFERENCES_HEAD.20:  "#References\n"
-APPENDIX_HEAD.20:    /#Appendix:[^\n]*\n/
+APPENDIX_HEAD.20:    "#Appendix:" REST_OF_LINE "\n"
 
-INDENT.8: /[ \t][^\n]*\n/
-BLANK.8:  /\n/
-BULLET.8: /\*(?:[ \t][^\n]*)?\n/
+INDENT.8: /[ \t]/ REST_OF_LINE "\n"
+BLANK.8:  "\n"
+BULLET.8: "*" (/[ \t]/ REST_OF_LINE)? "\n"
 
 // Inline cross-reference: #Label or ##Label mid-prose. Lookbehind
 // prevents matching # inside URLs or identifiers.
