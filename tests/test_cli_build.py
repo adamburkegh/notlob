@@ -186,6 +186,81 @@ class TestCmdBuildPython:
         first_line = (out / "greeter.py").read_text().splitlines()[0]
         assert first_line.startswith("# ")
 
+    def test_dep_inlined(self, tmp_path):
+        """A Python module that references another lob module gets it
+        inlined -- regression test for the build artifact previously
+        omitting cross-module dependency code entirely (NameError at
+        execution time, since notlob test/run resolve #References via
+        ModuleCache at runtime, but a build artifact has no loader)."""
+        root = _py_project(tmp_path)
+        _write(root, "roman/numerals.lob", (
+            "#Roman Numerals\n\n"
+            "    def to_roman(n):\n"
+            "        return 'I' * n\n"
+        ))
+        lob = _write(root, "roman/numerals/app.lob", (
+            "#Roman Numerals App\n\n"
+            "    RESULT = to_roman(3)\n\n"
+            "---\n\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "roman_numerals_app.py").read_text()
+        assert "def to_roman" in source
+        assert "RESULT" in source
+
+    def test_dep_inlined_artifact_is_executable(self, tmp_path):
+        """The build artifact must actually run standalone, not just
+        contain the dependency's source as text -- assembling without
+        error was never the failure mode; execution was."""
+        root = _py_project(tmp_path)
+        _write(root, "roman/numerals.lob", (
+            "#Roman Numerals\n\n"
+            "    def to_roman(n):\n"
+            "        return 'I' * n\n"
+        ))
+        lob = _write(root, "roman/numerals/app.lob", (
+            "#Roman Numerals App\n\n"
+            "    RESULT = to_roman(3)\n\n"
+            "---\n\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "roman_numerals_app.py").read_text()
+        ns: dict = {}
+        exec(source, ns)  # must not raise NameError for to_roman
+        assert ns["RESULT"] == "III"
+
+    def test_dep_run_claim_not_inlined(self, tmp_path):
+        """Only the target module's own ~run fires -- a dependency's
+        ~run claim must not be pulled into the artifact."""
+        root = _py_project(tmp_path)
+        _write(root, "roman/numerals.lob", (
+            "#Roman Numerals\n\n"
+            "    def to_roman(n):\n"
+            "        return 'I' * n\n\n"
+            "~run\n"
+            "    print('should not appear')\n"
+        ))
+        lob = _write(root, "roman/numerals/app.lob", (
+            "#Roman Numerals App\n\n"
+            "    RESULT = to_roman(3)\n\n"
+            "~run\n"
+            "    print('app ran')\n\n"
+            "---\n\n"
+            "#References\n"
+            "    #Roman Numerals\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "roman_numerals_app.py").read_text()
+        assert "print('app ran')" in source
+        assert "print('should not appear')" not in source
+
 
 # ── Haskell build ─────────────────────────────────────────────
 

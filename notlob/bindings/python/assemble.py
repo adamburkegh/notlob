@@ -63,3 +63,26 @@ def assemble(module: Module) -> str:
     return "\n\n".join(chunks)
 
 
+def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
+    """Assemble *module* with *dep_modules* inlined before it.
+
+    Used by ``build_python`` so a build artifact is genuinely
+    standalone-executable: ``notlob test``/``notlob run`` resolve
+    cross-module ``#References`` at execution time via ``ModuleCache``,
+    but a build artifact has no loader around it, so dependency source
+    has to be inlined directly instead. Dependencies are assembled with
+    the same ``assemble()`` used for the target module, so each one's
+    own ``#References`` language imports come along for free — no
+    separate import-merging step is needed. Mirrors
+    ``notlob.bindings.haskell.assemble.assemble_with_deps``.
+
+    Returns an empty string if neither the module nor any dependency
+    contains code.
+    """
+    chunks = [text for dep in dep_modules if (text := assemble(dep))]
+    own = assemble(module)
+    if own:
+        chunks.append(own)
+    return "\n\n".join(chunks)
+
+

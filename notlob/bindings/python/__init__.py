@@ -16,9 +16,11 @@ from pathlib import Path
 import textwrap
 
 from notlob.bindings import BindingKit, ClaimResult, Status
-from notlob.bindings.python.assemble import assemble
+from notlob.bindings.python.assemble import assemble, assemble_with_deps
 from notlob.bindings.python.lint import lint_python
-from notlob.bindings.python.runner import run_examples, run_tests, run_properties
+from notlob.bindings.python.runner import (
+    _load_dep_modules, run_examples, run_tests, run_properties,
+)
 from notlob.bindings.python.symbols import extract_symbols
 from notlob.model import Claim, Module, Subheading
 
@@ -27,14 +29,17 @@ def build_python(
     module: Module,
     file_path: Path | None = None,
 ) -> str:
-    """Assemble *module* for the build command.
+    """Assemble *module* with inlined deps for the build command.
 
-    Python deps are resolved at runtime by the loader, so the build
-    artifact contains only the module's own assembled source.  ~run
-    claim bodies are appended after the module code so the artifact
-    is directly executable.
+    Loads lob-ref dependencies from the project tree rooted at
+    *file_path*, inlines their code before the module's own code (see
+    ``assemble_with_deps``), and returns a single self-contained Python
+    source string. ``~run`` claim bodies are appended after the
+    module's own code so the artifact is directly executable — only
+    the target module's ``~run`` claims fire, never a dependency's.
     """
-    source = assemble(module)
+    dep_modules = _load_dep_modules(module, file_path)
+    source = assemble_with_deps(module, dep_modules)
     run_parts: list[str] = []
     for item in module.body:
         if isinstance(item, Claim) and item.sigil == "~run":

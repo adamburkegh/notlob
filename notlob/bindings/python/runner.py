@@ -50,7 +50,7 @@ from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
-from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
+from notlob.model import Claim, Module, Subheading, TestsSection
 from notlob.bindings.python.assemble import assemble
 from notlob.project import module_lob_refs
 
@@ -410,6 +410,53 @@ def _load_deps(
         return
     for dep_addr in module_lob_refs(module):
         ns.update(cache.load(dep_addr))
+
+
+def _load_dep_modules(
+    module: Module,
+    file_path: Path | None,
+) -> list[Module]:
+    """Return the lob-ref dependency modules of *module* in declaration order.
+
+    Used by ``build_python`` to inline dependency code into a build
+    artifact (unlike ``_load_deps``, which merges already-exec'd
+    *namespaces* via a ``ModuleCache`` for ``notlob test``/``notlob run``
+    — a build artifact has no loader around it at execution time, so its
+    dependencies' source has to be inlined instead). Mirrors
+    ``notlob.bindings.haskell.runner._load_dep_modules`` exactly.
+
+    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
+    section to its ``.lob`` file under the project root, parses it, and
+    returns the resulting Module objects. Dependencies that cannot be
+    found or parsed are silently skipped — the resulting NameError at
+    execution time surfaces the missing symbol, same as a real import
+    error would.
+
+    Returns an empty list when *file_path* is ``None`` (no project
+    context available) or when no project root is found.
+    """
+    if file_path is None:
+        return []
+
+    from notlob.project import (           # noqa: PLC0415
+        find_project_root, resolve_module_path,
+    )
+    from notlob.parser import parse_file   # noqa: PLC0415
+    from notlob.model import from_tree     # noqa: PLC0415
+
+    root = find_project_root(file_path)
+    if root is None:
+        return []
+
+    result: list[Module] = []
+    for dep_addr in module_lob_refs(module):
+        try:
+            dep_path = resolve_module_path(dep_addr, root)
+            result.append(from_tree(parse_file(dep_path)))
+        except Exception:
+            pass  # missing dep — will surface as a NameError at exec time
+
+    return result
 
 
 # ── Internals ─────────────────────────────────────────────────
