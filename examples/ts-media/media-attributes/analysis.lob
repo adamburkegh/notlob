@@ -1,7 +1,7 @@
 #Media-Attributes Analysis
 
 Core data types, sample dataset, and analysis algorithms for exploring
-how media forms differ across eight perceptual and social dimensions.
+how media forms differ across five perceptual and social dimensions.
 The functions here are pure — no browser APIs — so they can be fully
 tested and reused by any rendering layer.
 
@@ -19,7 +19,7 @@ tested and reused by any rendering layer.
 
 ##Axes
 
-Eight dimensions capture the independent ways that media forms differ.
+Five dimensions capture the independent ways that media forms differ.
 Each axis runs from a low to a high pole; values are integers on a
 1–10 scale.
 

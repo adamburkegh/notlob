@@ -31,7 +31,7 @@ distinct hue across the full k range (2–9).
 
 ##Radar Geometry
 
-Each radar chart plots a media item's eight attribute values as a
+Each radar chart plots a media item's five attribute values as a
 polygon.  The `radarPoints` function returns the polygon vertices as
 `[x, y]` pairs given a centre, radius, and value array.  At value 0
 every point sits exactly at the centre; at value 10 it sits on the
