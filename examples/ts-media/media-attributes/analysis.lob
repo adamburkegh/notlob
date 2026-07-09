@@ -19,7 +19,7 @@ tested and reused by any rendering layer.
 
 ##Axes
 
-Five dimensions capture the independent ways that media forms differ.
+The #AXES capture the independent ways media forms differ.
 Each axis runs from a low to a high pole; values are integers on a
 1–10 scale.
 
@@ -128,6 +128,29 @@ Same-cluster pairs attract more tightly; cross-cluster pairs are pushed
 further apart.  `runForce` runs the simulation and returns the final
 node positions.
 
+Each tick begins by multiplying velocities by #DAMPING — aggressive
+enough to damp oscillation within a few hundred ticks, gentle enough
+that nodes still travel across the canvas rather than freezing near
+their starting positions.  A centering gravity of #GRAVITY per unit
+of distance from the viewport midpoint prevents unbounded drift without
+dominating the cluster forces.  The spring stiffness #STIFFNESS sits
+at the stable side of the convergence/oscillation tradeoff for this
+canvas size and iteration count; higher values converge faster but ring.
+Target rest distances are #SAME_BASE + normD × #SAME_SCALE px for
+same-cluster pairs and #CROSS_BASE + normD × #CROSS_SCALE px for
+cross-cluster pairs, growing with normalised Euclidean distance so
+that perceptually-similar items sit visually closer even within a
+cluster.
+
+    const DAMPING     = 0.55;  // velocity decay per tick
+    const GRAVITY     = 0.002; // centering pull per px from midpoint
+    const STIFFNESS   = 0.045; // spring force constant
+
+    const SAME_BASE   = 30;    // tightest target px for same-cluster pairs
+    const SAME_SCALE  = 55;    // px range added by normalised distance
+    const CROSS_BASE  = 80;    // loosest target px for cross-cluster pairs
+    const CROSS_SCALE = 90;    // px range added by normalised distance
+
     interface ForceNode {
       readonly mediaIndex: number;
       x: number; y: number;
@@ -156,10 +179,10 @@ node positions.
       H: number,
     ): void {
       const maxD = Math.max(...pairs.map(p => p.dist), 1);
-      nodes.forEach(n => { n.vx *= 0.55; n.vy *= 0.55; });
+      nodes.forEach(n => { n.vx *= DAMPING; n.vy *= DAMPING; });
       nodes.forEach(n => {
-        n.vx += (W / 2 - n.x) * 0.002;
-        n.vy += (H / 2 - n.y) * 0.002;
+        n.vx += (W / 2 - n.x) * GRAVITY;
+        n.vy += (H / 2 - n.y) * GRAVITY;
       });
       pairs.forEach(({ a, b, dist: d }) => {
         const na = nodes[a], nb = nodes[b];
@@ -167,8 +190,8 @@ node positions.
         const dd = Math.sqrt(dx * dx + dy * dy) || 1;
         const same   = assignments[a] === assignments[b];
         const normD  = d / maxD;
-        const target = same ? 30 + normD * 55 : 80 + normD * 90;
-        const force  = (dd - target) * 0.045;
+        const target = same ? SAME_BASE + normD * SAME_SCALE : CROSS_BASE + normD * CROSS_SCALE;
+        const force  = (dd - target) * STIFFNESS;
         const fx = dx / dd * force, fy = dy / dd * force;
         na.vx += fx; na.vy += fy;
         nb.vx -= fx; nb.vy -= fy;

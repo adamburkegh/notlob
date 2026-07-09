@@ -439,6 +439,21 @@ class TestCheckImports:
         findings = check_imports(graph)
         assert findings == []
 
+    def test_hash_ref_in_prose_not_flagged(self, tmp_path):
+        # #Name notation in prose is explicit module usage — should satisfy
+        # the unused import checker even when no symbol names appear in text.
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "game_map.lob",
+                    "#Game Map\n\n    class GameMap: pass\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\nThis module uses the #Game Map module.\n\n"
+                    "    x = 42\n"
+                    "---\n\n#References\n    #Game Map\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert findings == []
+
     def test_empty_graph(self):
         assert check_imports(NameGraph()) == []
 
