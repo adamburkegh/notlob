@@ -10,6 +10,11 @@ field, which still read `0.3.1` at that commit. The tag is already
 public, so it hasn't been rewritten; this file starts clean from the
 version where the file and the tag are back in sync.
 
+## [Unreleased]
+
+### Added
+- `notlob --version`.
+
 ## [0.5.0] - 2026-07-09
 
 ### Added
@@ -19,7 +24,9 @@ version where the file and the tag are back in sync.
 - RDF export of the name-graph.
 - JSON output for `test`/`check`.
 - `scripts/gen_grammar_latex.py`, generating a formatted EBNF/backnaur
-  LaTeX rendering of `grammar.lark`.
+  LaTeX rendering of the grammar, from a hand-maintained model intended
+  to mirror `grammar.lark` — not parsed from it directly, so the two
+  can drift; see the script's own docstring for the known gap.
 
 ### Changed
 - Rewrote `.lob` line-classification from a hand-written Python line

@@ -17,6 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from notlob import __version__
 from notlob.commands import (
     cmd_build, cmd_check, cmd_docs, cmd_graph, cmd_init, cmd_new,
     cmd_run, cmd_test, cmd_weave,
@@ -82,6 +83,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="notlob",
         description="Notlob literate programming toolkit.",
+    )
+    parser.add_argument(
+        "--version", action="version",
+        version=f"%(prog)s {__version__}",
     )
     sub = parser.add_subparsers(dest="command", metavar="command")
 
