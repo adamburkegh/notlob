@@ -570,6 +570,12 @@ source files.
 
 ## Later Features
 
+**`notlob --version`.** Not currently supported — the top-level CLI
+parser (`notlob/cli.py`) has no `--version` flag wired up (`notlob
+--version` fails with "unrecognized arguments"). `notlob.__version__`
+already exists (read via `importlib.metadata` from the installed
+package), so this is just a missing `argparse` flag, not new plumbing.
+
 **`~test` — naming individual assertions.** The claim sigil vocabulary
 is closed (`~example`, `~run`, `~property`; see
 `notlob.parser._KNOWN_SIGILS`) and `~test` is explicitly reserved —
