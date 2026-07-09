@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from notlob.bindings.typescript.tokenizer import find_split, is_complete
 

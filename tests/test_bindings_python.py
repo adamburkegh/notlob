@@ -5,8 +5,6 @@ CodeBlock.lines) to a list of SymbolInfo objects.  Each carries the
 top-level defined name and its dedented source text.
 """
 
-import pytest
-from notlob.bindings import SymbolInfo
 from notlob.bindings.python import extract_symbols
 
 

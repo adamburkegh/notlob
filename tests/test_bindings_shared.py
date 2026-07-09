@@ -72,7 +72,8 @@ class TestIterAssertions:
         assert list(iter_assertions([])) == []
 
     def test_multiline_mode_joins(self):
-        always_complete = lambda text: True
+        def always_complete(text):
+            return True
         lines = ["    a", "    b"]
         result = list(iter_assertions(lines, is_complete=always_complete))
         assert [e for e, _ in result] == ["a", "b"]
@@ -89,7 +90,8 @@ class TestIterAssertions:
         assert result[1] == ("g()", 2)
 
     def test_multiline_mode_yields_incomplete_at_end(self):
-        never_complete = lambda text: False
+        def never_complete(text):
+            return False
         lines = ["    orphan"]
         result = list(iter_assertions(lines, is_complete=never_complete))
         assert result == [("orphan", 0)]

@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from notlob.commands import cmd_graph, cmd_test, cmd_weave
 

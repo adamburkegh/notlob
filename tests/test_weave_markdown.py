@@ -11,7 +11,6 @@ GitHub-flavoured Markdown string.  These tests verify:
 
 from pathlib import Path
 
-import pytest
 
 from notlob import parse, from_tree, parse_file
 from notlob.weave import weave_markdown
@@ -351,8 +350,8 @@ class TestBulletBlockWeave:
         assert "* second block" in out
         # the two blocks should not be adjacent lines
         lines = out.splitlines()
-        first_idx = next(i for i, l in enumerate(lines) if "first block" in l)
-        second_idx = next(i for i, l in enumerate(lines) if "second block" in l)
+        first_idx = next(i for i, line in enumerate(lines) if "first block" in line)
+        second_idx = next(i for i, line in enumerate(lines) if "second block" in line)
         assert second_idx > first_idx + 1
 
     def test_bullet_in_subheading_rendered(self):

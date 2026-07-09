@@ -7,14 +7,12 @@ RefErrors for each #Label or ##Label that cannot be resolved.
 
 from pathlib import Path
 
-import pytest
 
 from notlob import (
     parse, parse_file, from_tree,
     build, enrich, validate_refs,
     Edge, EdgeKind,
-    Ref, RefError, NodeKind,
-    module_address,
+    Ref, RefError,
 )
 from notlob.bindings.python import extract_symbols
 

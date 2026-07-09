@@ -10,10 +10,10 @@ from __future__ import annotations
 from notlob import from_tree, parse
 from notlob.graph import (
     NodeKind, build, enrich, claim_address,
-    module_address, subheading_address,
+    subheading_address,
 )
 from notlob.bindings.python.symbols import extract_symbols
-from notlob.model import Claim, Subheading, TestsSection, TestGroup
+from notlob.model import Claim, Subheading
 
 # ── Registry of body sigils ──────────────────────────────────
 #

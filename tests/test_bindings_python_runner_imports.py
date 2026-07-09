@@ -7,7 +7,6 @@ evaluating claims.
 
 from pathlib import Path
 
-import pytest
 
 from notlob import from_tree, parse
 from notlob.bindings.python.loader import ModuleCache

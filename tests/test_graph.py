@@ -6,13 +6,12 @@ queries, merge, and integration against the example files.
 
 from pathlib import Path
 
-import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from notlob import (
     parse, parse_file, from_tree, build,
-    NameGraph, Node, NodeKind, Edge, EdgeKind,
+    NameGraph, NodeKind, Edge, EdgeKind,
     module_address, subheading_address,
 )
 

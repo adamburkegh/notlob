@@ -6,7 +6,6 @@ run_examples() assembles a module, executes it, then evaluates each
 
 from pathlib import Path
 
-import pytest
 
 from notlob import parse, parse_file, from_tree, claim_address
 from notlob.bindings.python.runner import (

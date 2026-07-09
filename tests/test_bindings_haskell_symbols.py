@@ -11,8 +11,6 @@ source format).  The extractor dedents before processing, so the
 column-0 invariant is established inside the function.
 """
 
-import pytest
-from notlob.bindings import SymbolInfo
 from notlob.bindings.haskell import extract_symbols
 
 

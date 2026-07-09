@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from notlob.commands import cmd_docs, cmd_init, cmd_new, _address_to_title
 

@@ -4,7 +4,6 @@ assemble() collects code blocks from a Module in document order,
 prepends #References imports, and inserts source-location comments.
 """
 
-import pytest
 
 from notlob import parse, from_tree
 from notlob.bindings.python.assemble import assemble
