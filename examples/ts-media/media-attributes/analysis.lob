@@ -241,10 +241,17 @@ cluster.
     dist([3, 4], [0, 0]) === dist([0, 0], [3, 4])
 
 ##clustering
-    kmeans(MEDIA, 1).every(a => a === 0)
     kmeans(MEDIA, 3).length === MEDIA.length
     kmeans(MEDIA, 3).every(a => a >= 0 && a < 3)
     kmeans(MEDIA, 9).every(a => a >= 0 && a < 9)
+
+k = 1 is the degenerate case described in ##Clustering above: every
+item must land in cluster 0 regardless of centroid initialisation, so
+it's worth pinning on its own rather than blending into the general
+range checks.
+
+~test single_cluster_is_deterministic
+    kmeans(MEDIA, 1).every(a => a === 0)
 
 ##pairs
     buildPairs(MEDIA).length === (MEDIA.length * (MEDIA.length - 1)) / 2

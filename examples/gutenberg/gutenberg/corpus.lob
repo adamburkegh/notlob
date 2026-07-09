@@ -79,16 +79,28 @@ lines avoids inflating characters who speak in long monologues.
 ##word frequencies
     word_frequencies("hello world") == Counter({"hello": 1, "world": 1})
     word_frequencies("THE THE") == Counter({"the": 2})
-    word_frequencies("123 !!! ...") == Counter()
     sum(word_frequencies("one two three").values()) == 3
+
+Text with no letters at all shouldn't produce spurious entries — the
+regex finds nothing, so the Counter comes back empty rather than
+counting punctuation or digits as words.
+
+~test punctuation_only_yields_empty_counter
+    word_frequencies("123 !!! ...") == Counter()
 
 ##speaking parts
     (parse_speakers("HAMLET.\nTo be or not to be.")
      == Counter({"HAMLET": 1}))
     (parse_speakers("KING CLAUDIUS.\nHAMLET.\n")
      == Counter({"KING CLAUDIUS": 1, "HAMLET": 1}))
-    parse_speakers("hamlet.\n") == Counter()
     parse_speakers("Not a speaker line") == Counter()
+
+Speaker lines are recognised by the ALL CAPS convention; a lower-case
+"hamlet." is the same word but must not match, since caps-checking is
+the whole basis of the parse.
+
+~test lowercase_name_is_not_a_speaker_line
+    parse_speakers("hamlet.\n") == Counter()
 
 #References
     from pathlib import Path

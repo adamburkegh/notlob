@@ -62,6 +62,11 @@ toRoman never returns an empty string for a positive integer.
     toRoman 900  == "CM"
 
 ##compound
-    toRoman 1994 == "MCMXCIV"
     toRoman 2024 == "MMXXIV"
     toRoman 3999 == "MMMCMXCIX"
+
+The 1994 case stacks all three subtractive forms at once (CM, XC, IV),
+so it's worth naming on its own.
+
+~test mcmxciv
+    toRoman 1994 == "MCMXCIV"

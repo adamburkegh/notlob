@@ -60,7 +60,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import textwrap
 from pathlib import Path
 from typing import Any, Generator
 
@@ -68,7 +67,9 @@ from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
-from notlob.model import Claim, Module, Subheading, TestGroup, TestsSection
+from notlob.model import (
+    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
+)
 from notlob.bindings.typescript.assemble import assemble
 from notlob.bindings.typescript.tokenizer import find_split, is_complete
 
@@ -377,7 +378,13 @@ def _collect_tests_claims(
     out:           list[str],
     out_lines:     list[int | None] | None = None,
 ) -> None:
-    """Append ``__runClaim(...)`` lines for #Tests assertions."""
+    """Append ``__runClaim(...)`` lines for #Tests assertions.
+
+    Prose commentary (interspersed with assertions, at either level)
+    is not evaluated. ``~test <name>`` blocks get their own address
+    (``group_addr#name``), matching the Python binding's addressing --
+    see notlob.graph.property_address.
+    """
     line_offsets = tests_section.line_offsets or {}
     bare: list[str] = []
     bare_indices: list[int] = []
@@ -385,7 +392,7 @@ def _collect_tests_claims(
         if isinstance(item, str):
             bare.append(item)
             bare_indices.append(idx)
-        else:
+        elif isinstance(item, TestGroup):
             if bare:
                 first_line = line_offsets.get(bare_indices[0])
                 for expr, offset in _iter_assertions(bare):
@@ -397,13 +404,8 @@ def _collect_tests_claims(
                 bare = []
                 bare_indices = []
             group_addr = f'{tests_addr}#{item.title}'
-            base = (item.start_line + 1) if item.start_line else None
-            for expr, offset in _iter_assertions(item.lines):
-                out.append(_claim_call(group_addr, expr))
-                if out_lines is not None:
-                    out_lines.append(
-                        (base + offset) if base else None
-                    )
+            _collect_group_claims(item, group_addr, out, out_lines)
+        # ProseBlock: commentary, not evaluated.
     if bare:
         first_line = line_offsets.get(bare_indices[0])
         for expr, offset in _iter_assertions(bare):
@@ -412,6 +414,53 @@ def _collect_tests_claims(
                 out_lines.append(
                     (first_line + offset) if first_line else None
                 )
+
+
+def _collect_group_claims(
+    group:      TestGroup,
+    group_addr: str,
+    out:        list[str],
+    out_lines:  list[int | None] | None,
+) -> None:
+    """Append ``__runClaim(...)`` lines for one TestGroup.
+
+    Bare lines share group_addr; each NamedTest gets its own address
+    (group_addr#name), with all its assertion lines sharing that one
+    address.  ProseBlock items are commentary, not evaluated.
+    """
+    group_offsets = group.line_offsets or {}
+    group_bare: list[str] = []
+    group_bare_indices: list[int] = []
+
+    def _flush_bare() -> None:
+        if not group_bare:
+            return
+        first_line = group_offsets.get(group_bare_indices[0])
+        base = first_line or (
+            (group.start_line + 1) if group.start_line else None
+        )
+        for expr, offset in _iter_assertions(group_bare):
+            out.append(_claim_call(group_addr, expr))
+            if out_lines is not None:
+                out_lines.append((base + offset) if base else None)
+        group_bare.clear()
+        group_bare_indices.clear()
+
+    for gidx, gitem in enumerate(group.items):
+        if isinstance(gitem, str):
+            group_bare.append(gitem)
+            group_bare_indices.append(gidx)
+        elif isinstance(gitem, NamedTest):
+            _flush_bare()
+            addr = property_address(group_addr, gitem.name)
+            base = (gitem.start_line + 1) if gitem.start_line else None
+            for expr, offset in _iter_assertions(gitem.lines):
+                out.append(_claim_call(addr, expr))
+                if out_lines is not None:
+                    out_lines.append((base + offset) if base else None)
+        # ProseBlock: commentary, not evaluated.
+
+    _flush_bare()
 
 
 # ── Keep-generated-src ────────────────────────────────────────

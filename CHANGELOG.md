@@ -14,6 +14,13 @@ version where the file and the tag are back in sync.
 
 ### Added
 - `notlob --version`.
+- `~test <name>` sigil for naming individual assertions within a
+  `#Tests` `##group`, addressed the same way as a named `~property`
+  claim (one address per block, not a per-line ordinal). Fully
+  supported by all three bindings (Python, Haskell, TypeScript).
+- Prose commentary is now legal inside `#Tests`, both directly under
+  the section head and within a `##group`, freely interleaved with
+  assertions and `~test` blocks.
 
 ## [0.5.0] - 2026-07-09
 

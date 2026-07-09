@@ -127,7 +127,25 @@ runner addresses them by ordinal within their containing doc-node.
 
 **Test names are navigational.** In a large test appendix, `##` heading
 groups provide navigation. Unnamed tests are anonymous witnesses —
-epistemically humble, just facts.
+epistemically humble, just facts. Individual assertions can also be
+named with `~test <name>`, mirroring `~property` naming: the whole
+block gets one address (`property_address(group_addr, name)`), shared
+by every assertion line within it rather than a per-line ordinal — the
+same addressing rule `~example`/`~property` already use. Unlike
+`~property`, `~test` has no bare (nameless) form; naming is the entire
+reason to reach for it over a plain assertion line.
+
+`~test` is its own grammar terminal (`TEST_SIGIL`), reachable only from
+a `named_test` production nested inside a `#Tests` `##group` — illegal
+everywhere else by construction, not by a semantic check in
+`parser.py`. Bare assertions, `~test <name>` blocks, and prose
+commentary can be freely interleaved within one group, in any order,
+any number of times: `#Tests` groups gained prose support specifically
+so a literate-programming document isn't forced to go silent right
+where it most wants to explain itself. Prose doubles as the grammar's
+separator between adjacent bare/named blocks, too — two
+structurally-identical body lines in a row would otherwise greedily
+merge into a single block.
 
 **References as bibliography.** Imports at the end acknowledge what the
 argument depends on, after the argument has been made. Code blocks in the
@@ -474,12 +492,12 @@ worth running before the claim runner is complete.
 
 `grammar.lark` is the canonical, declarative definition of `.lob` syntax —
 not a thin shell over hand-written Python. Every structural line-type
-(`MOD_HEAD`, `SUBHEAD`, `SIGIL`, `INDENT`, `BLANK`, `BULLET`, `SEPARATOR`,
-the reserved post-text heads) is a native Lark terminal, matched by
-Lark's own contextual lexer directly against source text. `notlob/parser.py`
-is a thin adapter around that parse — normalising raw token values
-(stripping the newline/marker each line-terminal consumes) and checking
-`~test`'s reserved status — not a second parsing pass in disguise.
+(`MOD_HEAD`, `SUBHEAD`, `SIGIL`, `TEST_SIGIL`, `INDENT`, `BLANK`,
+`BULLET`, `SEPARATOR`, the reserved post-text heads) is a native Lark
+terminal, matched by Lark's own contextual lexer directly against
+source text. `notlob/parser.py` is a thin adapter around that parse —
+normalising raw token values (stripping the newline/marker each
+line-terminal consumes) — not a second parsing pass in disguise.
 
 **Disambiguation is explicit, not incidental.** Column-zero structural
 lines (`##Title`) and the identical text occurring inline mid-prose
@@ -496,19 +514,22 @@ rule wins," or a grammar's dangling-`else` convention — a standard,
 named disambiguation strategy sitting alongside the grammar, not folded
 invisibly into it.
 
-**The closed sigil vocabulary is enforced at the lexer, with one
-deliberate exception.** `SIGIL` enumerates every recognised word
-(`~example`, `~run`, `~property`, and the reserved `~test`) as an exact
-literal; `~` is excluded from prose only when it starts a genuine
+**The closed sigil vocabulary is enforced at the lexer, in two
+terminals with different reach.** `SIGIL` enumerates the claim-body
+words (`~example`, `~run`, `~property`, optionally named) as exact
+literals; `~` is excluded from prose only when it starts a genuine
 physical line and is followed by a lowercase letter (a real sigil
 candidate) — not blanket, since `~5` or `~Word` mid-sentence is ordinary
-prose. A `~word` outside that vocabulary fails to lex entirely, rather
-than silently misparsing as something else. "Reserved" (`~test`) and
-"unknown" (`~foo`) are different kinds of fact, though: `~test` is a
-real, known word (just not implemented yet) and is rejected with a
-specific message by a small semantic check in `parser.py`, run after
-parsing succeeds; a genuinely unrecognised word fails at the lexer with a
-generic message, since there's nothing more specific to say about a typo.
+prose. `TEST_SIGIL` (`~test <name>`) is a separate terminal with a
+narrower grammar reach: it only appears in the `named_test` production,
+which only occurs inside a `#Tests` `##group` — so `~test` outside that
+context isn't a special "reserved word" rejected by a semantic check,
+it is simply not a valid token for `SIGIL`'s position, and fails to lex
+there exactly like any other unrecognised `~word`. A `~word` outside
+the closed vocabulary (in either terminal, wherever it is legal) fails
+to lex entirely, rather than silently misparsing as something else —
+there's nothing more specific to say about a typo than a generic lex
+error.
 
 Code blocks need nothing beyond flat per-line `INDENT`/`BLANK`
 terminals — notlob's indentation is flat/binary (a line either starts
@@ -569,19 +590,6 @@ source files.
 ---
 
 ## Later Features
-
-**`~test` — naming individual assertions.** The claim sigil vocabulary
-is closed (`~example`, `~run`, `~property`; see
-`notlob.parser._KNOWN_SIGILS`) and `~test` is explicitly reserved —
-the parser rejects it with a "reserved for future use" message rather
-than letting it silently misparse. Today, `#Tests` assertions are
-addressed only by their `##group` heading (e.g.
-`roman/numerals#Tests#encoding`); there's no way to name an individual
-assertion the way `def test_specific_thing():` names a pytest test. A
-`~test <name>` sigil, or an equivalent naming convention within
-`#Tests` groups, is the natural way to close that gap — but it isn't
-designed yet, and the reservation exists precisely so the parser
-refuses it until it is.
 
 **Property testing for TypeScript.** `run_properties` currently returns
 SKIP for all `~property` claims in TypeScript modules.  The planned

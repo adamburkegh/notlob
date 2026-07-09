@@ -10,26 +10,17 @@ hand-written Python line classifier. See ``grammar.lark``'s header comment
 for how heading/sigil/prose disambiguation is resolved via terminal
 priority and line-start anchoring.
 
-Two things the grammar can't fully own are handled here, in a thin layer
+One thing the grammar can't fully own is handled here, in a thin layer
 around the raw parse:
 
-1. **Token normalisation.** Every line-oriented terminal in the grammar
-   consumes through its own trailing newline (so the lexer's cursor is
-   always at true line-start for the next token). Downstream consumers
-   (``model.py``, ``weave/markdown.py``) expect the *stripped* content —
-   e.g. a ``SUBHEAD`` token's value is the title text alone, not
-   ``"##Title\\n"``. ``_normalize`` rewrites each raw token's value to
-   match, once, right after parsing, so nothing downstream needs to know
-   the grammar changed.
-
-2. **Reserved sigils.** The grammar's ``SIGIL`` terminal treats ``~test``
-   as a syntactically legitimate token (it's a real, known word — just
-   not implemented yet), rather than silently misparsing it or failing to
-   lex it at all. Whether it's *allowed* is a semantic question, not a
-   lexical one, so it's checked here, after parsing, with a specific
-   message. A genuinely unrecognised sigil (``~foo``) isn't in the
-   grammar's literal set at all and fails during lexing instead, with a
-   generic message — there's nothing more specific to say about a typo.
+**Token normalisation.** Every line-oriented terminal in the grammar
+consumes through its own trailing newline (so the lexer's cursor is
+always at true line-start for the next token). Downstream consumers
+(``model.py``, ``weave/markdown.py``) expect the *stripped* content —
+e.g. a ``SUBHEAD`` token's value is the title text alone, not
+``"##Title\\n"``. ``_normalize`` rewrites each raw token's value to
+match, once, right after parsing, so nothing downstream needs to know
+the grammar changed.
 
 Usage::
 
@@ -69,9 +60,9 @@ _STRIP_PREFIX: dict[str, int] = {
 }
 
 _LINE_TOKEN_TYPES = {
-    "MOD_HEAD", "SUBHEAD", "SIGIL", "SEPARATOR", "TESTS_HEAD",
-    "BINDING_HEAD", "REFERENCES_HEAD", "APPENDIX_HEAD", "INDENT",
-    "BULLET", "BLANK", "PROSE_NL",
+    "MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL", "SEPARATOR",
+    "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD", "APPENDIX_HEAD",
+    "INDENT", "BULLET", "BLANK", "PROSE_NL",
 }
 
 
@@ -93,35 +84,13 @@ def _normalize(tree: Tree) -> Tree:
     return tree
 
 
-# ── Reserved sigils ──────────────────────────────────────────
-#
-# Sigils that look plausible but are deliberately not (yet) implemented.
-# Syntactically legitimate (part of the grammar's closed SIGIL
-# vocabulary) but rejected here with a specific reason — see
-# grammar.lark's header comment for why this is a semantic check rather
-# than a lexer-level one.
-_RESERVED_SIGILS: dict[str, str] = {
-    "~test": (
-        "'~test' is reserved for a future feature (naming individual "
-        "assertions within a #Tests group) and is not implemented. "
-        "Use the #Tests post-text section instead."
-    ),
-}
-
-# The closed vocabulary of recognised claim sigils, including reserved
-# ones. Mirrors grammar.lark's SIGIL terminal; kept here as a plain tuple
-# for cross-checking against notlob.graph's dispatch (see
+# The closed vocabulary of recognised claim sigils (body-level; excludes
+# ~test, which is TEST_SIGIL, a separate terminal only reachable inside
+# a #Tests group). Mirrors grammar.lark's SIGIL terminal; kept here for
+# cross-checking against notlob.graph's dispatch (see
 # tests/test_graph_completeness.py), which fails loudly if the two drift
 # apart.
 _KNOWN_SIGILS = ("~example", "~run", "~property")
-
-
-def _check_reserved_sigils(tree: Tree) -> None:
-    for claim in tree.find_data("claim"):
-        sigil_tok = claim.children[0]
-        word = str(sigil_tok).split(None, 1)[0]
-        if word in _RESERVED_SIGILS:
-            raise ValueError(_RESERVED_SIGILS[word])
 
 
 # ── Public API ───────────────────────────────────────────────
@@ -132,7 +101,6 @@ def parse(source: str) -> Tree:
         source += "\n"
     tree = _parser.parse(source)
     _normalize(tree)
-    _check_reserved_sigils(tree)
     return tree
 
 

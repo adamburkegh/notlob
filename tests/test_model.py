@@ -8,8 +8,6 @@ where they are semantically inert.
 
 from pathlib import Path
 
-import pytest
-
 from notlob import parse, parse_file, from_tree
 from notlob import (
     Ref,
@@ -151,7 +149,7 @@ class TestClaim:
         assert len(m.body) == 1
         assert isinstance(m.body[0], Claim)
         indent_lines = [
-            l for l in m.body[0].lines if l.strip()
+            line for line in m.body[0].lines if line.strip()
         ]
         assert len(indent_lines) == 3
 
@@ -229,7 +227,7 @@ class TestPostText:
         group = section.items[0]
         assert isinstance(group, TestGroup)
         assert group.title == "group"
-        assert "    x == 1" in group.lines
+        assert "    x == 1" in group.items
 
     def test_multiple_sections_ordered(self):
         src = (

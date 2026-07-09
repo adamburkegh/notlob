@@ -19,13 +19,15 @@
 // outranks the generic REF/PROSE_TEXT terminals it can collide with.
 //
 // The closed sigil vocabulary is the one place priority isn't the whole
-// story: SIGIL enumerates every known word (including reserved ones like
-// `~test`) as an exact literal, and `~` is excluded from PROSE_TEXT only
-// at true line-start (a lookbehind, not "first char of any prose span" —
-// prose spans can also start mid-line, right after an inline ref).
-// Genuinely unknown sigils therefore fail to lex at all, rather than
-// silently becoming prose. "Reserved" vs. "unknown" is a separate,
-// semantic distinction handled after parsing (see notlob.parser).
+// story: SIGIL and TEST_SIGIL together enumerate every known word as an
+// exact literal, and `~` is excluded from PROSE_TEXT only at true
+// line-start (a lookbehind, not "first char of any prose span" — prose
+// spans can also start mid-line, right after an inline ref). Genuinely
+// unknown sigils therefore fail to lex at all, rather than silently
+// becoming prose. `~test` is deliberately its own terminal (TEST_SIGIL),
+// separate from SIGIL, so the grammar itself — not a semantic check —
+// enforces that it's only legal inside a #Tests named_test, never in
+// the module body.
 
 start: module
 
@@ -78,9 +80,26 @@ post_section: tests_section
             | references_section
             | appendix_section
 
-tests_section:      TESTS_HEAD      (BLANK | test_item)*
+// #Tests groups accept prose commentary alongside assertions, the
+// same as the module body -- a literate-programming appendix that
+// can't carry any prose at all would be a strange exception to the
+// rest of the format. A useful side effect: because prose_block is a
+// genuinely different terminal from INDENT/BLANK, inserting one
+// between two adjacent indented constructs (e.g. a bare assertion
+// right after a ~test block) cleanly separates them -- named_test's
+// own body is a greedy repetition (_body_line+, like claim/code_block
+// elsewhere in this grammar), so without something in between, a
+// trailing bare INDENT/BLANK line would merge into the preceding
+// named_test rather than standing on its own.
+tests_section:      TESTS_HEAD      (BLANK | test_item | prose_block)*
 test_item:          test_group | INDENT
-test_group:         SUBHEAD (INDENT | BLANK)*
+test_group:         SUBHEAD (INDENT | BLANK | prose_block | named_test)*
+
+// A named assertion within a #Tests group (`~test <name>`, followed
+// by one or more indented assertion lines). TEST_SIGIL is a terminal
+// distinct from SIGIL specifically so ~test is grammar-enforced as
+// illegal in the module body -- it only exists inside #Tests.
+named_test:         TEST_SIGIL _body_line+
 
 binding_section:    BINDING_HEAD    (INDENT | BLANK)*
 references_section: REFERENCES_HEAD (INDENT | BLANK)*
@@ -117,12 +136,21 @@ REST_OF_LINE: LINE_CHAR*
 MOD_HEAD.10: "#" /[^#\n]/ REST_OF_LINE "\n"
 SUBHEAD.10:  "##" REST_OF_LINE "\n"
 
-// Closed vocabulary: every recognised sigil, including the reserved
-// `~test` (syntactically legitimate here; rejected after parsing with a
-// specific message — see notlob.parser._RESERVED_SIGILS). A `~word` not
-// in this list simply fails to lex, since PROSE_TEXT/LINE_START_TEXT
-// exclude `~` at line-start; there is no silent fallback.
-SIGIL.10: "~example\n" | "~run\n" | "~test\n" | "~property\n" | "~property " REST_OF_LINE "\n"
+// Closed vocabulary for body-level claims. `~test` is deliberately not
+// here — it's TEST_SIGIL below, a separate terminal only reachable from
+// named_test (inside #Tests), so a `~test` line in the module body
+// fails to lex, the same as any other unrecognised sigil would. A
+// `~word` outside this list simply fails to lex, since
+// PROSE_TEXT/LINE_START_TEXT exclude `~` at line-start; there is no
+// silent fallback.
+SIGIL.10: "~example\n" | "~run\n" | "~property\n" | "~property " REST_OF_LINE "\n"
+
+// ~test <name>: requires a name (unlike ~property, where the name is
+// optional) -- an unnamed ~test wouldn't do anything a bare assertion
+// line doesn't already do, so there's no bare `~test\n` form. LINE_CHAR+
+// (one or more), not REST_OF_LINE (zero or more), so "~test \n" with
+// no actual name fails to lex rather than silently matching.
+TEST_SIGIL.10: "~test " LINE_CHAR+ "\n"
 
 SEPARATOR.20:        "---\n"
 TESTS_HEAD.20:       "#Tests\n"
