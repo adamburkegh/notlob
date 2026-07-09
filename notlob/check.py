@@ -415,7 +415,10 @@ def check_imports(graph: NameGraph) -> list[Finding]:
                     )
             if not dep_symbols:
                 continue
-            used = any(
+            # A #Name prose reference to the dep module is explicit usage —
+            # check this before the symbol-name scan.
+            dep_ref = '#' + dep.label
+            used = (dep_ref in code) or any(
                 re.search(r"\b" + re.escape(sym) + r"\b", code)
                 for sym in dep_symbols
             )
