@@ -580,11 +580,19 @@ def _render_binding(project_title: str, language: str) -> str:
 
 
 def _render_starter(module_title: str) -> str:
-    """Return the content of a minimal starter ``.lob`` module."""
+    """Return the content of a starter ``.lob`` module."""
     return (
         f"#{module_title}\n\n"
         "Describe this module here.\n\n"
-        "    # code goes here\n"
+        "    # code goes here\n\n"
+        "~example\n"
+        "    # assertion\n\n"
+        "~property\n"
+        "    # property-based assertion (fc.assert / @given / ...)\n\n"
+        "---\n\n"
+        "#Tests\n\n"
+        "##sanity\n"
+        "    # assertion\n"
     )
 
 
