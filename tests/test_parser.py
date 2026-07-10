@@ -169,9 +169,13 @@ class TestClaim:
 # ── Closed sigil vocabulary ────────────────────────────────────
 
 class TestUnknownSigils:
-    def test_reserved_test_sigil_raises(self):
-        src = "#T\n~test\n    x == 1\n"
-        with pytest.raises(ValueError, match="reserved"):
+    def test_test_sigil_illegal_in_body(self):
+        # ~test is TEST_SIGIL, a terminal only reachable from
+        # named_test inside a #Tests group -- grammar-enforced, not a
+        # semantic reservation check, so this is a generic lex/parse
+        # failure like any other sigil that doesn't belong here.
+        src = "#T\n~test foo\n    x == 1\n"
+        with pytest.raises((UnexpectedCharacters, UnexpectedToken)):
             parse(src)
 
     def test_unknown_sigil_raises(self):
@@ -198,6 +202,16 @@ class TestUnknownSigils:
             "#T\n~property named\n    x > 0\n",
         ):
             parse(src)   # must not raise
+
+    def test_test_sigil_legal_inside_tests_section(self):
+        src = "#T\n---\n#Tests\n##group\n~test named\n    x == 1\n"
+        parse(src)   # must not raise
+
+    def test_test_sigil_requires_a_name(self):
+        # Unlike ~property, ~test has no bare (nameless) form.
+        src = "#T\n---\n#Tests\n##group\n~test \n    x == 1\n"
+        with pytest.raises((UnexpectedCharacters, UnexpectedToken)):
+            parse(src)
 
 
 # ── Subheadings ──────────────────────────────────────────────

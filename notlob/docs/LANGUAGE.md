@@ -99,8 +99,9 @@ Claims are verifiable statements attached to the module. Each begins
 with a `~sigil` line at column 0 and is followed by indented content.
 
 The sigil vocabulary is closed: `~example`, `~run`, and `~property` are
-the only recognised sigils. An unrecognised `~word` is a parse error,
-not a silent no-op.
+the only recognised claim sigils. An unrecognised `~word` is a parse
+error, not a silent no-op. (`~test` is a related but separate sigil,
+legal only inside a `#Tests` `##group` — see [#Tests](#tests) below.)
 
 ### ~example
 
@@ -149,11 +150,16 @@ After the `---` separator, the post-text contains named sections
 ### #Tests
 
 Assertion blocks — epistemically humble, exhaustive, grouped by `##`
-subheadings. Assertions have the same syntax as `~example` but belong
-to the appendix rather than the argument.
+subheadings. Bare assertions have the same syntax as `~example` but
+belong to the appendix rather than the argument. Prose commentary may
+be freely interleaved with assertions, both directly under `#Tests`
+and within a `##group` — the same literate-programming style as the
+rest of the document.
 
 ```
 #Tests
+
+Basic identities, checked directly against the closed-form values.
 
 ##base cases
     fib(0) == 0
@@ -163,6 +169,28 @@ to the appendix rather than the argument.
     fib(10) == 55
     fib(20) == 6765
 ```
+
+An individual assertion can be named with `~test <name>`, so it is
+addressable the way `def test_specific_thing():` names a pytest
+test — unlike a bare line, which is only addressable via its `##group`
+heading. `~test` has no bare (nameless) form; naming is the point of
+using it over a plain assertion line.
+
+```
+##larger values
+    fib(10) == 55
+
+~test known_large_value
+    fib(50) == 12586269025
+```
+
+Bare assertions, `~test <name>` blocks, and prose commentary can repeat
+and interleave in any order within one group. All assertion lines
+sharing one `##group` or one `~test` block share a single address —
+e.g. `roman/numerals#Tests#larger values` for the bare block above, or
+`roman/numerals#Tests#larger values#known_large_value` for the named
+one — distinguished within the runner by source line, not a separate
+address per line.
 
 ### #Binding
 

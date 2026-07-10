@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from notlob.commands import (
     cmd_graph,

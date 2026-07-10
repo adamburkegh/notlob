@@ -11,7 +11,6 @@ import pytest
 
 from notlob import from_tree, parse
 from notlob.bindings import LintResult
-from notlob.bindings.python.assemble import assemble
 from notlob.bindings.python.lint import lint_python, parse_source_map
 
 

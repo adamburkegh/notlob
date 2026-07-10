@@ -9,7 +9,7 @@ from .model import (
     from_tree,
     Ref, Span,
     Module, Subheading, CodeBlock, Claim, ProseBlock, BulletBlock,
-    PostText, TestsSection, TestGroup,
+    PostText, TestsSection, TestGroup, NamedTest,
     BindingSection, ReferencesSection, AppendixSection,
 )
 from .graph import (
@@ -25,8 +25,8 @@ __all__ = [
     "parse", "parse_file", "to_dict", "to_json",
     "from_tree",
     "Ref", "Span",
-    "Module", "Subheading", "CodeBlock", "Claim", "ProseBlock",
-    "PostText", "TestsSection", "TestGroup",
+    "Module", "Subheading", "CodeBlock", "Claim", "ProseBlock", "BulletBlock",
+    "PostText", "TestsSection", "TestGroup", "NamedTest",
     "BindingSection", "ReferencesSection", "AppendixSection",
     "build", "enrich", "validate_refs", "build_package",
     "NameGraph", "Node", "NodeKind", "Edge", "EdgeKind",

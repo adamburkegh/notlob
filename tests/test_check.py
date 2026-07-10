@@ -91,8 +91,10 @@ class TestCheckTypos:
         g.add_node(_mod("pricing/discounts", "Pricing Discounts"))
         n1, e1 = _sym("pricing/discounts", "calculate_discount")
         n2, e2 = _sym("pricing/discounts", "calcualte_discount")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         findings = check_typos(g)
         assert len(findings) == 1
         assert findings[0].check == "typos"
@@ -103,8 +105,10 @@ class TestCheckTypos:
         g.add_node(_mod("m", "M"))
         n1, e1 = _sym("m", "apply_discount")
         n2, e2 = _sym("m", "total_price")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         assert check_typos(g) == []
 
     def test_short_names_ignored(self):
@@ -112,8 +116,10 @@ class TestCheckTypos:
         g.add_node(_mod("m", "M"))
         n1, e1 = _sym("m", "foo")
         n2, e2 = _sym("m", "bar")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         assert check_typos(g) == []
 
     def test_sibling_modules(self):
@@ -122,8 +128,10 @@ class TestCheckTypos:
         g.add_node(_mod("pricing/margins", "Margins"))
         n1, e1 = _sym("pricing/discounts", "apply_rate")
         n2, e2 = _sym("pricing/margins", "apply_ratte")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         findings = check_typos(g)
         assert len(findings) == 1
 
@@ -133,8 +141,10 @@ class TestCheckTypos:
         g.add_node(_mod("b", "B"))
         n1, e1 = _sym("a", "apply_discount")
         n2, e2 = _sym("b", "apply_discount")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         assert check_typos(g) == []
 
     def test_empty_graph(self):
@@ -150,8 +160,10 @@ class TestCheckConventions:
         g.add_node(_mod("b", "B"))
         n1, e1 = _sym("a", "get_price")
         n2, e2 = _sym("b", "fetch_price")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         findings = check_conventions(g)
         assert len(findings) == 1
         assert "price" in findings[0].message
@@ -162,8 +174,10 @@ class TestCheckConventions:
         g.add_node(_mod("b", "B"))
         n1, e1 = _sym("a", "get_price")
         n2, e2 = _sym("b", "get_name")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         assert check_conventions(g) == []
 
     def test_non_synonym_verbs_no_finding(self):
@@ -172,15 +186,18 @@ class TestCheckConventions:
         g.add_node(_mod("b", "B"))
         n1, e1 = _sym("a", "get_price")
         n2, e2 = _sym("b", "set_price")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         assert check_conventions(g) == []
 
     def test_single_word_names_skipped(self):
         g = NameGraph()
         g.add_node(_mod("m", "M"))
         n1, e1 = _sym("m", "discount")
-        g.add_node(n1); g.add_edge(e1)
+        g.add_node(n1)
+        g.add_edge(e1)
         assert check_conventions(g) == []
 
     def test_unknown_verb_skipped(self):
@@ -189,8 +206,10 @@ class TestCheckConventions:
         g.add_node(_mod("b", "B"))
         n1, e1 = _sym("a", "run_task")
         n2, e2 = _sym("b", "start_task")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         assert check_conventions(g) == []
 
     def test_empty_graph(self):
@@ -247,8 +266,10 @@ class TestRunChecks:
         g.add_node(_mod("m", "M"))
         n1, e1 = _sym("m", "calculate_discount")
         n2, e2 = _sym("m", "calcualte_discount")
-        g.add_node(n1); g.add_edge(e1)
-        g.add_node(n2); g.add_edge(e2)
+        g.add_node(n1)
+        g.add_edge(e1)
+        g.add_node(n2)
+        g.add_edge(e2)
         return g
 
     def test_all_checks_run_by_default(self):

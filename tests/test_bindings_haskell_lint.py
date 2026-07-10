@@ -18,7 +18,6 @@ import pytest
 
 from notlob import from_tree, parse
 from notlob.bindings import LintResult
-from notlob.bindings.haskell.assemble import assemble
 from notlob.bindings.haskell.lint import (
     _format_message,
     lint_haskell,

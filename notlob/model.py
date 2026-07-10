@@ -109,21 +109,45 @@ BodyItem = Union[Subheading, CodeBlock, Claim, ProseBlock, BulletBlock]
 # ── Post-text section types ──────────────────────────────────
 
 @dataclass
-class TestGroup:
-    """A named ## group within the #Tests section."""
-    title: str
+class NamedTest:
+    """A named ``~test <name>`` assertion block within a #Tests group.
+
+    Structurally identical to Claim (a sigil followed by its indented
+    body) but only reachable inside a #Tests group -- the grammar
+    enforces that ~test never appears in the module body.
+    """
+    name: str
     lines: list[str]  # assertion lines; blank lines preserved
     start_line: int | None = None
+
+
+@dataclass
+class TestGroup:
+    """A named ## group within the #Tests section.
+
+    Items are bare assertion strings (INDENT/BLANK lines), ProseBlock
+    commentary, or NamedTest blocks, freely intermixed in source order.
+    *line_offsets* maps a bare string's index in *items* to its source
+    line -- needed because bare lines are no longer guaranteed to be
+    consecutive (prose/named blocks can fall between them), the same
+    reason TestsSection has its own line_offsets for its top-level bare
+    items.
+    """
+    title: str
+    items: list[Union[str, ProseBlock, NamedTest]]
+    start_line: int | None = None
+    line_offsets: dict[int, int] | None = None
 
 
 @dataclass
 class TestsSection:
     """The #Tests post-text section.
 
-    Items are either named TestGroups or bare assertion strings
-    (INDENT lines that appear outside any ## group).
+    Items are named TestGroups, bare assertion strings (INDENT lines
+    outside any ## group), or ProseBlock commentary -- freely
+    intermixed, same as TestGroup's own items.
     """
-    items: list[Union[TestGroup, str]]
+    items: list[Union[TestGroup, str, ProseBlock]]
     line_offsets: dict[int, int] | None = None
 
 
@@ -311,10 +335,13 @@ def _post_section(node: Tree) -> PostSection:
 
 
 def _tests_section(node: Tree) -> TestsSection:
-    items: list[Union[TestGroup, str]] = []
+    items: list[Union[TestGroup, str, ProseBlock]] = []
     line_offsets: dict[int, int] = {}
     for child in node.children[1:]:    # skip TESTS_HEAD
         if isinstance(child, Token):   # BLANK
+            continue
+        if child.data == "prose_block":
+            items.append(_prose_block(child))
             continue
         # child is a test_item Tree
         inner = child.children[0]
@@ -334,10 +361,37 @@ def _tests_section(node: Tree) -> TestsSection:
 def _test_group(node: Tree) -> TestGroup:
     title_tok = node.children[0]
     title = str(title_tok)
-    lines = [str(c) for c in node.children[1:]]
+    items: list[Union[str, ProseBlock, NamedTest]] = []
+    line_offsets: dict[int, int] = {}
+    for child in node.children[1:]:
+        if isinstance(child, Token):           # INDENT or BLANK
+            ln = getattr(child, "line", None)
+            if ln is not None:
+                line_offsets[len(items)] = ln
+            items.append(str(child))
+        elif child.data == "prose_block":
+            items.append(_prose_block(child))
+        elif child.data == "named_test":
+            items.append(_named_test(child))
+        else:
+            raise ValueError(f"Unexpected test_group child: {child.data!r}")
     return TestGroup(
-        title=title, lines=lines,
+        title=title, items=items,
         start_line=getattr(title_tok, "line", None),
+        line_offsets=line_offsets or None,
+    )
+
+
+def _named_test(node: Tree) -> NamedTest:
+    sigil_tok = node.children[0]
+    # sigil_tok value is "~test <name>" -- parser.py's normalisation
+    # strips the trailing newline but not the "~test " prefix, the same
+    # convention as ~property's Claim.sigil (e.g. "~property commutativity").
+    name = str(sigil_tok).split(None, 1)[1].strip()
+    return NamedTest(
+        name=name,
+        lines=[str(c) for c in node.children[1:]],
+        start_line=getattr(sigil_tok, "line", None),
     )
 
 

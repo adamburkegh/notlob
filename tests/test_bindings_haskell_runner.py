@@ -17,12 +17,11 @@ import textwrap
 
 import pytest
 
-from notlob.bindings import ClaimResult, Status
+from notlob.bindings import Status
 from notlob.bindings.haskell.runner import (
     _hs_string_escape,
     _iter_assertions,
     _build_examples_harness,
-    _build_property_harness,
     _parse_output,
     run_examples,
     run_tests,
@@ -32,8 +31,8 @@ from notlob.model import (
     Claim,
     CodeBlock,
     Module,
+    NamedTest,
     PostText,
-    ProseBlock,
     ReferencesSection,
     Subheading,
     TestsSection,
@@ -373,7 +372,7 @@ class TestRunTestsIntegration:
         for line in (bare_lines or []):
             items.append(line)
         for title, lines in (groups or []):
-            items.append(TestGroup(title=title, lines=lines))
+            items.append(TestGroup(title=title, items=lines))
         return TestsSection(items=items)
 
     def _run(self, code_text, bare_lines=None, groups=None):
@@ -417,6 +416,31 @@ class TestRunTestsIntegration:
             groups=[("MyGroup", ["    f 1 == 1"])],
         )
         assert results[0].address == "test/module#Tests#MyGroup"
+
+    def test_named_test_in_group(self):
+        results = self._run(
+            "f x = x * 2",
+            groups=[("Doubling", [
+                "    f 3 == 6",
+                NamedTest(name="zero_case", lines=["    f 0 == 0"]),
+            ])],
+        )
+        assert len(results) == 2
+        assert all(r.status == Status.PASS for r in results)
+        addrs = {r.address for r in results}
+        assert "test/module#Tests#Doubling" in addrs
+        assert "test/module#Tests#Doubling#zero_case" in addrs
+
+    def test_named_test_failure_reported(self):
+        results = self._run(
+            "f x = x * 2",
+            groups=[("Doubling", [
+                NamedTest(name="broken", lines=["    f 0 == 99"]),
+            ])],
+        )
+        assert len(results) == 1
+        assert results[0].status == Status.FAIL
+        assert results[0].address == "test/module#Tests#Doubling#broken"
 
 
 # ── Integration: run_properties ──────────────────────────────

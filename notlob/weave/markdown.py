@@ -9,7 +9,10 @@ Design decisions
   documentation.
 - ``#Tests`` sections are included as a ``## Tests`` heading with
   fenced code blocks for each group, keeping the document
-  self-contained.
+  self-contained. Prose commentary interspersed with assertions (at
+  either the section or group level) renders as ordinary prose;
+  ``~test <name>`` blocks render like a named ``~property`` claim (bold
+  label + fenced code).
 - ``#Appendix`` sections are rendered as second-level headings.
 - ``~run`` claims are omitted; ``~example`` and ``~property`` (and
   any other sigil) are rendered with a bold label followed by a
@@ -31,6 +34,7 @@ from notlob.model import (
     Claim,
     CodeBlock,
     Module,
+    NamedTest,
     ProseBlock,
     Ref,
     ReferencesSection,
@@ -161,13 +165,46 @@ def _body_item(
 
 # ── Post-text rendering ───────────────────────────────────────
 
+def _named_test(test: NamedTest, language: str) -> str:
+    """Render a ``~test <name>`` block: a bold label + fenced code,
+    the same style as a named ``~property`` claim (see _sigil_label)."""
+    label = f"**Test {test.name}:**"
+    code = _fenced(test.lines, language)
+    return f"{label}\n\n{code}"
+
+
+def _test_group_items(items: list, language: str) -> list[str]:
+    """Render a TestGroup's (or bare top-level) items: bare assertion
+    strings, ProseBlock commentary, and NamedTest blocks, in source
+    order. Consecutive bare strings are batched into one fenced block
+    so they read as a unified assertion list rather than many fences."""
+    parts: list[str] = []
+    pending: list[str] = []
+
+    def _flush() -> None:
+        if pending:
+            parts.append(_fenced(pending[:], language))
+            pending.clear()
+
+    for item in items:
+        if isinstance(item, str):
+            pending.append(item)
+        elif isinstance(item, ProseBlock):
+            _flush()
+            parts.append(_prose(item))
+        elif isinstance(item, NamedTest):
+            _flush()
+            parts.append(_named_test(item, language))
+
+    _flush()
+    return parts
+
+
 def _tests_section(section: TestsSection, language: str) -> str | None:
     """Render a #Tests section, or ``None`` when empty."""
     if not section.items:
         return None
     parts: list[str] = ["## Tests"]
-    # Accumulate consecutive bare-assertion strings into one block
-    # so they read as a unified assertion list rather than many fences.
     pending: list[str] = []
 
     def _flush() -> None:
@@ -179,7 +216,10 @@ def _tests_section(section: TestsSection, language: str) -> str | None:
         if isinstance(item, TestGroup):
             _flush()
             parts.append(f"### {item.title}")
-            parts.append(_fenced(item.lines, language))
+            parts.extend(_test_group_items(item.items, language))
+        elif isinstance(item, ProseBlock):
+            _flush()
+            parts.append(_prose(item))
         else:
             pending.append(item)    # bare INDENT assertion string
 

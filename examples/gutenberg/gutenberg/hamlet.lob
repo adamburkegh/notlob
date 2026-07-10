@@ -76,6 +76,11 @@ it when the module is executed.
 ##speakers
     SPEAKERS["HAMLET"] > 300
     SPEAKERS["HAMLET"] > SPEAKERS["KING"]
+
+This is the headline fact of the analysis — the character the play is
+named after is also the one who speaks the most, by turn count.
+
+~test hamlet_is_most_frequent_speaker
     SPEAKERS.most_common(1)[0][0] == "HAMLET"
 
 #References

@@ -68,8 +68,10 @@ from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
-from notlob.model import Claim, Module, Subheading, TestsSection, TestGroup
-from notlob.bindings.haskell.assemble import _assemble_body, _merge_modules
+from notlob.model import (
+    Claim, Module, NamedTest, Subheading, TestsSection, TestGroup,
+)
+from notlob.bindings.haskell.assemble import _merge_modules
 from notlob.bindings.haskell.symbols import extract_symbols
 
 
@@ -494,7 +496,13 @@ def _collect_tests_assertions(
     tests_addr: str,
     assertions: list[tuple[str, str, int | None]],
 ) -> None:
-    """Append (address, expression, source_line) from a TestsSection."""
+    """Append (address, expression, source_line) from a TestsSection.
+
+    Prose commentary (interspersed with assertions, at either level)
+    is not evaluated. ``~test <name>`` blocks get their own address
+    (``group_addr#name``), matching the Python binding's addressing --
+    see notlob.graph.property_address.
+    """
     line_offsets = tests_section.line_offsets or {}
     bare: list[str] = []
     bare_indices: list[int] = []
@@ -502,7 +510,7 @@ def _collect_tests_assertions(
         if isinstance(item, str):
             bare.append(item)
             bare_indices.append(idx)
-        else:
+        elif isinstance(item, TestGroup):
             if bare:
                 first_line = line_offsets.get(bare_indices[0])
                 for expr, offset in _iter_assertions(bare):
@@ -511,15 +519,57 @@ def _collect_tests_assertions(
                 bare = []
                 bare_indices = []
             group_addr = f"{tests_addr}#{item.title}"
-            base = (item.start_line + 1) if item.start_line else None
-            for expr, offset in _iter_assertions(item.lines):
-                sl = (base + offset) if base else None
-                assertions.append((group_addr, expr, sl))
+            _collect_group_assertions(item, group_addr, assertions)
+        # ProseBlock: commentary, not evaluated.
     if bare:
         first_line = line_offsets.get(bare_indices[0])
         for expr, offset in _iter_assertions(bare):
             sl = (first_line + offset) if first_line else None
             assertions.append((tests_addr, expr, sl))
+
+
+def _collect_group_assertions(
+    group: TestGroup,
+    group_addr: str,
+    assertions: list[tuple[str, str, int | None]],
+) -> None:
+    """Append (address, expression, source_line) from one TestGroup.
+
+    Bare lines share group_addr; each NamedTest gets its own address
+    (group_addr#name), with all its assertion lines sharing that one
+    address.  ProseBlock items are commentary, not evaluated.
+    """
+    group_offsets = group.line_offsets or {}
+    group_bare: list[str] = []
+    group_bare_indices: list[int] = []
+
+    def _flush_bare() -> None:
+        if not group_bare:
+            return
+        first_line = group_offsets.get(group_bare_indices[0])
+        base = first_line or (
+            (group.start_line + 1) if group.start_line else None
+        )
+        for expr, offset in _iter_assertions(group_bare):
+            sl = (base + offset) if base else None
+            assertions.append((group_addr, expr, sl))
+        group_bare.clear()
+        group_bare_indices.clear()
+
+    for gidx, gitem in enumerate(group.items):
+        if isinstance(gitem, str):
+            group_bare.append(gitem)
+            group_bare_indices.append(gidx)
+        elif isinstance(gitem, NamedTest):
+            _flush_bare()
+            addr = property_address(group_addr, gitem.name)
+            base = (gitem.start_line + 1) if gitem.start_line else None
+            for expr, offset in _iter_assertions(gitem.lines):
+                sl = (base + offset) if base else None
+                assertions.append((addr, expr, sl))
+        # ProseBlock: commentary, not evaluated.
+
+    _flush_bare()
 
 
 # ── Public claim runners ──────────────────────────────────────

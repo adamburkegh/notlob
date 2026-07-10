@@ -50,7 +50,9 @@ from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
     claim_address, module_address, property_address, subheading_address,
 )
-from notlob.model import Claim, Module, Subheading, TestsSection
+from notlob.model import (
+    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
+)
 from notlob.bindings.python.assemble import assemble
 from notlob.project import module_lob_refs
 
@@ -162,7 +164,12 @@ def run_tests(
 
     Assertions under a named ## group get an address of the form
     <module>#Tests#<group>.  Bare assertions outside any group use
-    <module>#Tests.
+    <module>#Tests.  A ``~test <name>`` block gets its own address
+    (<module>#Tests#<group>#<name>), with every assertion line inside
+    it sharing that one address -- matching how an unnamed ~example
+    block's own lines already share one address, distinguished by
+    source line rather than a per-line ordinal.  Prose commentary
+    interspersed with assertions (at either level) is not evaluated.
 
     *binding* is a dict of declarations from binding.lob (e.g.
     ``{"unit-testing": "pytest"}``).  When present, the appropriate
@@ -215,31 +222,9 @@ def run_tests(
     bare: list[str] = []
     bare_indices: list[int] = []
 
-    for idx, item in enumerate(tests_section.items):
-        if isinstance(item, str):
-            bare.append(item)
-            bare_indices.append(idx)
-        else:
-            if bare:
-                first_line = line_offsets.get(bare_indices[0])
-                for assertion, offset in _iter_assertions(bare):
-                    sl = (first_line + offset) if first_line else None
-                    results.append(_eval_line(
-                        tests_addr, assertion, ns,
-                        source_line=sl, file_path=fp,
-                    ))
-                bare = []
-                bare_indices = []
-            group_addr = f"{tests_addr}#{item.title}"
-            base = (item.start_line + 1) if item.start_line else None
-            for assertion, offset in _iter_assertions(item.lines):
-                sl = (base + offset) if base else None
-                results.append(_eval_line(
-                    group_addr, assertion, ns,
-                    source_line=sl, file_path=fp,
-                ))
-
-    if bare:
+    def _flush_bare() -> None:
+        if not bare:
+            return
         first_line = line_offsets.get(bare_indices[0])
         for assertion, offset in _iter_assertions(bare):
             sl = (first_line + offset) if first_line else None
@@ -247,8 +232,72 @@ def run_tests(
                 tests_addr, assertion, ns,
                 source_line=sl, file_path=fp,
             ))
+        bare.clear()
+        bare_indices.clear()
 
+    for idx, item in enumerate(tests_section.items):
+        if isinstance(item, str):
+            bare.append(item)
+            bare_indices.append(idx)
+        elif isinstance(item, TestGroup):
+            _flush_bare()
+            group_addr = f"{tests_addr}#{item.title}"
+            _eval_group_items(item, group_addr, ns, results, fp)
+        # ProseBlock: commentary, not evaluated.
+
+    _flush_bare()
     return results
+
+
+def _eval_group_items(
+    group: TestGroup,
+    group_addr: str,
+    ns: dict,
+    results: list[ClaimResult],
+    file_path: str | None,
+) -> None:
+    """Evaluate one TestGroup's own bare assertions and NamedTest blocks.
+
+    Bare lines share group_addr (like #Tests's own top-level bare
+    lines share tests_addr); each NamedTest gets its own address
+    (group_addr#name), with all its assertion lines sharing that one
+    address -- matching ~example's addressing exactly (see
+    notlob.graph.property_address / claim_address).
+    """
+    line_offsets = group.line_offsets or {}
+    bare: list[str] = []
+    bare_indices: list[int] = []
+
+    def _flush_bare() -> None:
+        if not bare:
+            return
+        first_line = line_offsets.get(bare_indices[0])
+        for assertion, offset in _iter_assertions(bare):
+            sl = (first_line + offset) if first_line else None
+            results.append(_eval_line(
+                group_addr, assertion, ns,
+                source_line=sl, file_path=file_path,
+            ))
+        bare.clear()
+        bare_indices.clear()
+
+    for idx, item in enumerate(group.items):
+        if isinstance(item, str):
+            bare.append(item)
+            bare_indices.append(idx)
+        elif isinstance(item, NamedTest):
+            _flush_bare()
+            addr = property_address(group_addr, item.name)
+            base = (item.start_line + 1) if item.start_line else None
+            for assertion, offset in _iter_assertions(item.lines):
+                sl = (base + offset) if base else None
+                results.append(_eval_line(
+                    addr, assertion, ns,
+                    source_line=sl, file_path=file_path,
+                ))
+        # ProseBlock: commentary, not evaluated.
+
+    _flush_bare()
 
 
 def run_properties(
@@ -334,6 +383,39 @@ def _write_kept_source(
     (keep_dir / filename).write_text(source, encoding="utf-8")
 
 
+def _build_group_source(
+    parts: list[str],
+    group_items: list,
+    group_addr: str,
+) -> None:
+    """Append a TestGroup's own bare assertions and NamedTest blocks.
+
+    ProseBlock items are commentary -- skipped, same as in _add_tests.
+    """
+    bare: list[str] = []
+
+    def _flush_bare() -> None:
+        if not bare:
+            return
+        parts.append(f"\n# --- {group_addr} ---")
+        for assertion, _ in _iter_assertions(list(bare)):
+            parts.append(f"assert {assertion}")
+        bare.clear()
+
+    for item in group_items:
+        if isinstance(item, str):
+            bare.append(item)
+        elif isinstance(item, NamedTest):
+            _flush_bare()
+            addr = property_address(group_addr, item.name)
+            parts.append(f"\n# --- {addr} ---")
+            for assertion, _ in _iter_assertions(item.lines):
+                parts.append(f"assert {assertion}")
+        # ProseBlock: commentary, not evaluated.
+
+    _flush_bare()
+
+
 def _build_tests_source(
     module_source: str,
     tests_section: TestsSection,
@@ -355,12 +437,12 @@ def _build_tests_source(
     for item in tests_section.items:
         if isinstance(item, str):
             bare.append(item)
-        else:
+        elif isinstance(item, TestGroup):
             _flush_bare()
             group_addr = f"{tests_addr}#{item.title}"
             parts.append(f"\n# --- {group_addr} ---")
-            for assertion, _ in _iter_assertions(item.lines):
-                parts.append(f"assert {assertion}")
+            _build_group_source(parts, item.items, group_addr)
+        # ProseBlock: commentary, not evaluated.
 
     _flush_bare()
     return "\n".join(parts) + "\n"

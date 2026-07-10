@@ -14,12 +14,10 @@ Key invariants:
 
 import textwrap
 
-import pytest
 
 from notlob.bindings.haskell.assemble import (
     _module_name,
     _haskell_imports,
-    _assemble_body,
     assemble,
 )
 from notlob.model import (

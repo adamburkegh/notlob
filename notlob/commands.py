@@ -478,13 +478,13 @@ def cmd_test(
         for lob_path in sorted(root.glob("**/*.lob")):
             if lob_path.name == "binding.lob":
                 continue
-            p, f, l = _test_module(
+            p, f, lint = _test_module(
                 lob_path, root, binding, keep_generated_src, only,
                 json_out=json_out,
             )
             n_pass += p
             n_fail += f
-            n_lint += l
+            n_lint += lint
 
     check_errors = False
     check_findings: list[dict] = []
@@ -1281,7 +1281,7 @@ def cmd_init(
     binding_path.write_text(
         _render_binding(project_title, language), encoding="utf-8"
     )
-    print(f"INIT   binding.lob")
+    print("INIT   binding.lob")
 
     # Write starter module
     starter_path = cwd / starter_name
@@ -1308,7 +1308,7 @@ def cmd_init(
         agents_path.write_text(
             _render_agents(project_title), encoding="utf-8"
         )
-        print(f"INIT   AGENTS.md")
+        print("INIT   AGENTS.md")
 
         # Write language reference
         cmd_docs()

@@ -53,6 +53,12 @@ strategy is applied to the already-discounted price, not the original.
     apply_discount(Decimal('0.5'), Decimal('0')) == Decimal('0')
 
 ##composition
+
+Order shouldn't matter when composing two discounts; this pins the
+specific 20%+10% case already illustrated in ##Stacking Discounts above,
+alongside the general commutativity property.
+
+~test composition_is_commutative
     (apply_discount(Decimal('0.8'),
                     apply_discount(Decimal('0.9'), Decimal('100')))
      == Decimal('72'))

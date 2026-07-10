@@ -1,7 +1,6 @@
 """Tests for cross-file CLI behaviour: ModuleCache wiring, -m flag,
 prose cross-reference validation, and module address validation."""
 
-import sys
 from pathlib import Path
 
 import pytest

@@ -7,15 +7,13 @@ unconditionally.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
 
 from notlob import from_tree, parse
-from notlob.bindings import ClaimResult, Status
+from notlob.bindings import Status
 from notlob.bindings.typescript.runner import (
-    _build_harness,
     _claim_call,
     _fast_check_available,
     _iter_assertions,
@@ -262,6 +260,31 @@ class TestRunTestsIntegration:
     def test_no_tests_section(self):
         mod = _module('#T\n\n    const x = 1\n')
         assert _run_tests(mod) == []
+
+    @_RUNNER_SKIP
+    def test_named_test_in_group(self):
+        mod = _module(
+            '#T\n\n    const x = 1\n\n---\n\n#Tests\n\n'
+            '##my group\n    x === 1\n\n'
+            '~test named_case\n    x === 1\n'
+        )
+        results = _run_tests(mod)
+        assert len(results) == 2
+        assert all(r.status == Status.PASS for r in results)
+        addrs = {r.address for r in results}
+        assert any(a.endswith('#Tests#my group') for a in addrs)
+        assert any(a.endswith('#Tests#my group#named_case') for a in addrs)
+
+    @_RUNNER_SKIP
+    def test_named_test_failure_reported(self):
+        mod = _module(
+            '#T\n\n    const x = 1\n\n---\n\n#Tests\n\n'
+            '##my group\n~test broken\n    x === 99\n'
+        )
+        results = _run_tests(mod)
+        assert len(results) == 1
+        assert results[0].status == Status.FAIL
+        assert results[0].address.endswith('#Tests#my group#broken')
 
 
 # ── Unit: _fast_check_available ──────────────────────────────

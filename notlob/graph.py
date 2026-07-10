@@ -64,8 +64,8 @@ from typing import Iterator
 
 from .bindings import Extractor
 from .model import (
-    AppendixSection, BulletBlock, Claim, CodeBlock, Module,
-    ProseBlock, Ref, Subheading, TestsSection,
+    AppendixSection, BulletBlock, Claim, CodeBlock, Module, NamedTest,
+    ProseBlock, Ref, Subheading, TestGroup, TestsSection,
 )
 
 
@@ -134,7 +134,7 @@ class NodeKind(Enum):
     PROPERTY   = auto()    # symbols: named ~property claim
     EXAMPLE    = auto()    # claims: ~example block
     RUN        = auto()    # claims: ~run entry-point block
-    TEST       = auto()    # claims: #Tests group or bare assertions
+    TEST       = auto()    # claims: #Tests group, bare assertions, or ~test <name>
     EXTERNAL   = auto()    # external file declared with ~external in binding.lob
 
 
@@ -582,6 +582,37 @@ def _add_subheading(
     ))
 
 
+def _add_named_tests(
+    graph: NameGraph,
+    items: list,
+    containing_addr: str,
+) -> None:
+    """Register each NamedTest in *items* as its own TEST node.
+
+    One address per ~test block (`containing_addr#name`), matching
+    ~example's own addressing: every assertion line inside the block
+    shares that one address, distinguished by source line, not by a
+    per-line ordinal suffix.
+    """
+    for item in items:
+        if not isinstance(item, NamedTest):
+            continue
+        addr = property_address(containing_addr, item.name)
+        source = "\n".join(item.lines).strip()
+        graph.add_node(Node(
+            address=addr,
+            label=item.name,
+            kind=NodeKind.TEST,
+            content=_node_content(None, source or None),
+            start_line=item.start_line,
+        ))
+        graph.add_edge(Edge(
+            source=containing_addr,
+            target=addr,
+            kind=EdgeKind.DEFINES,
+        ))
+
+
 def _add_tests(
     graph:  NameGraph,
     module: Module,
@@ -603,9 +634,10 @@ def _add_tests(
     for item in tests_section.items:
         if isinstance(item, str):
             has_bare = True
-        else:
+        elif isinstance(item, TestGroup):
             group_addr = f"{tests_addr}#{item.title}"
-            source = "\n".join(item.lines).strip()
+            bare_lines = [i for i in item.items if isinstance(i, str)]
+            source = "\n".join(bare_lines).strip()
             graph.add_node(Node(
                 address=group_addr,
                 label=item.title,
@@ -618,6 +650,8 @@ def _add_tests(
                 target=group_addr,
                 kind=EdgeKind.DEFINES,
             ))
+            _add_named_tests(graph, item.items, group_addr)
+        # ProseBlock items are commentary, not addressable nodes.
 
     if has_bare:
         bare_lines = [

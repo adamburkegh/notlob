@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from notlob import from_tree, parse
 from notlob.bindings.typescript.assemble import assemble

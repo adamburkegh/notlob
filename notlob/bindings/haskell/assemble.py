@@ -27,7 +27,6 @@ inject user code into a harness that supplies its own module header.
 from __future__ import annotations
 
 import re
-import textwrap
 
 from notlob.bindings import assemble_section, collect_blocks
 from notlob.graph import module_address, subheading_address

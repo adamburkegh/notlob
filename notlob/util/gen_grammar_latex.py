@@ -2,7 +2,7 @@ r"""Generate a backnaur-flavoured LaTeX fragment describing notlob's grammar.
 
 Usage::
 
-    notlobenv/Scripts/python scripts/gen_grammar_latex.py > var/notlob_grammar.tex
+    notlobenv/Scripts/python notlob/util/gen_grammar_latex.py > var/notlob_grammar.tex
 
 Why this exists
 ----------------
@@ -16,39 +16,60 @@ LaTeX escaping (``#`` -> ``\#``, ``~`` -> ``\textasciitilde{}`` -- NOT the
 bare ``\~`` accent shortcut, which silently produces an accented letter
 instead of a tilde), and every time the grammar changes there's a fresh
 chance to get an escape wrong or drift out of sync with the real source.
-That's the actual "whack-a-mole" problem, not the overall structure (which
-has been gotten right by hand several times over already, at this point).
 
-This script doesn't parse ``grammar.lark`` itself -- its regex-heavy
-terminal definitions don't map onto BNF notation without human judgement
-(see the ``PROSE_TEXT`` / ``PROSE_NL`` "except"/lookahead handling below,
-which is a deliberate abstraction, not a mechanical transcription -- see
-notlob/docs/DESIGN.md, "The grammar is the specification"). Instead, the
-PRODUCTIONS and TERMINALS lists below are a small, hand-maintained model
-of the same grammar, and this script's only job is to render that model
-into correctly-escaped ``backnaur`` LaTeX, reliably, every time. When
-``grammar.lark`` changes, update the model below to match; the rendering
-itself never needs touching by hand again.
+How the model is derived
+-------------------------
+This script parses ``grammar.lark`` for real, rather than maintaining a
+hand-typed shadow copy of it. It does this by loading Lark's own
+``grammars/lark.lark`` -- the grammar Lark ships that describes ``.lark``
+file syntax itself -- as an ordinary ``Lark`` instance, and using *that*
+to parse ``notlob/grammar.lark``'s source text. (This isn't how Lark
+bootstraps its own parser -- see that file's own comment, "Lark is not
+bootstrapped, its parser is implemented in load_grammar.py" -- but
+nothing stops it being used this way as an independent tool.) The
+resulting parse tree mirrors the file's EBNF structure directly (``|``,
+``*``, ``+``, ``?``, ``(...)``, string/regex literals, ``.N``
+priorities), so every *rule* (nonterminal production) and every
+string-literal-only *terminal* translates into this script's small BNF
+AST (``NT``/``T``/``D``/``Seq``/``Or``/``Opt``/``Rep``/``RepPlus``/
+``Except``) completely mechanically -- there is no hand-maintained
+production list to let drift out of sync.
 
-KNOWN GAP (deliberately deferred, not an oversight): PRODUCTIONS and
-TERMINALS can still drift out of sync with the real grammar.lark, since
-nothing here checks that. The PRODUCTIONS half of that is fixable without
-much difficulty -- grammar.lark's rule syntax (`|`, `*`, `+`, `?`, parens)
-is mechanically identical to this script's own AST, so it could be parsed
-straight out of the real file instead of hand-duplicated. TERMINALS can't
-be auto-derived the same way (that's the regex-to-prose judgement call
-above), but could at least be cross-checked against grammar.lark's actual
-terminal names/priorities, so a change there that isn't reflected here
-fails loudly instead of drifting silently -- the same pattern already
-used for the sigil vocabulary in tests/test_graph_completeness.py.
-Revisit after the paper's first draft; not worth the extra build-out
-before the content itself has been validated.
+What's still hand-maintained, and why
+--------------------------------------
+Terminals defined by a genuine regex (``REF``, ``LINE_START_TEXT``,
+``PROSE_TEXT``, ``LINE_CHAR``, and the anonymous inline character
+classes ``[^#\n]`` and ``[ \t]`` used inside ``MOD_HEAD``/``INDENT``/
+``BULLET``) cannot be mechanically turned into EBNF -- translating a
+regex like the lookahead-conditioned prose terminals into readable BNF
+is a judgement call, not a transcription (see notlob/docs/DESIGN.md,
+"The grammar is the specification"). These get a small hand-authored
+entry in ``_REGEX_OVERRIDES``, keyed by the terminal's *exact* extracted
+regex source. If ``grammar.lark`` adds, removes, or changes one of these
+regexes without a matching update here, ``parse_grammar()`` raises
+loudly (missing-override *and* stale-override are both detected) instead
+of silently rendering something wrong or out of date.
+
+``_PRIORITY_TIERS`` (used to generate the disambiguation section's
+priority-grouping sentence) is cross-checked the same way against the
+real ``.N`` priorities parsed from the file.
+
+``_DISAMBIGUATION``'s surrounding prose (what priority even means,
+positional constraints, lookahead-conditioned terminal definitions) stays
+hand-written -- turning that narrative into something mechanically
+generated isn't worth the complexity it would add.
 """
 
 from __future__ import annotations
 
+import ast
+import re
 from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path
 from typing import Union
+
+from lark import Lark, Token, Tree
 
 # ── A small BNF expression AST ──────────────────────────────────────
 
@@ -115,16 +136,7 @@ class Except:
     minus: "Node"
 
 
-@dataclass(frozen=True)
-class Break:
-    """A manual line-break point, valid only as a direct item of the
-    Seq passed as a production's top-level right-hand side (see
-    render_production) -- backnaur's \\bnfmore is a sibling of
-    \\bnfprod, not something that can be nested inside a grouped
-    sub-expression, so a Break anywhere else can't be honoured."""
-
-
-Node = Union[NT, T, D, Seq, Or, Opt, Rep, RepPlus, Except, Break]
+Node = Union[NT, T, D, Seq, Or, Opt, Rep, RepPlus, Except]
 
 
 # ── Escaping and rendering ──────────────────────────────────────────
@@ -148,6 +160,15 @@ def escape_terminal(text: str) -> str:
     return "".join(_TERMINAL_ESCAPES.get(ch, ch) for ch in text)
 
 
+def escape_name(name: str) -> str:
+    """Escape a rule/terminal identifier for use as a \\bnfpn{...} or
+    \\bnfprod{...} argument. Unlike escape_terminal, this only needs to
+    handle the one special character valid Lark identifiers can contain
+    (``_``) -- real grammar.lark names are otherwise plain ASCII
+    letters/digits."""
+    return name.replace("_", r"\_")
+
+
 def _needs_group(node: Node) -> bool:
     """True if *node* renders as multiple bnfsp/bnfor-separated tokens,
     and so needs explicit parens when nested inside another Seq/Or or a
@@ -165,7 +186,7 @@ def render_grouped(node: Node) -> str:
 
 def render(node: Node) -> str:
     if isinstance(node, NT):
-        return f"\\bnfpn{{{node.name}}}"
+        return f"\\bnfpn{{{escape_name(node.name)}}}"
     if isinstance(node, T):
         if node.text == " ":
             # A bare space as a \bnfts{} argument is illegible -- see
@@ -191,43 +212,19 @@ def render(node: Node) -> str:
         return f"{render_grouped(node.item)}\\textsuperscript{{+}}"
     if isinstance(node, Except):
         return f"{render_grouped(node.item)} - {render_grouped(node.minus)}"
-    if isinstance(node, Break):
-        raise TypeError(
-            "Break is only valid as a direct item of a production's "
-            "top-level Seq (see render_production) -- it can't be "
-            "rendered as part of an ordinary expression"
-        )
     raise TypeError(f"unhandled node type: {node!r}")
-
-
-def _split_on_breaks(items: tuple[Node, ...]) -> list[list[Node]]:
-    """Split *items* into segments at each Break marker, dropping the
-    markers themselves. Empty segments (e.g. a Break at either end) are
-    dropped too."""
-    segments: list[list[Node]] = [[]]
-    for item in items:
-        if isinstance(item, Break):
-            segments.append([])
-        else:
-            segments[-1].append(item)
-    return [seg for seg in segments if seg]
 
 
 def render_production(name: str, rhs: Node) -> list[str]:
     """Return the backnaur source lines for one production (no
     trailing '\\\\' -- the caller joins lines across all productions)."""
+    display_name = escape_name(name)
     if isinstance(rhs, Or) and len(rhs.items) > 1:
         first, *rest = rhs.items
-        lines = [f"\\bnfprod{{{name}}}\n    {{{render(first)}}}"]
+        lines = [f"\\bnfprod{{{display_name}}}\n    {{{render(first)}}}"]
         lines += [f"\\bnfmore{{\\bnfor {render(item)}}}" for item in rest]
         return lines
-    if isinstance(rhs, Seq) and any(isinstance(i, Break) for i in rhs.items):
-        segments = _split_on_breaks(rhs.items)
-        first, *rest = segments
-        lines = [f"\\bnfprod{{{name}}}\n    {{{render(Seq(*first))}}}"]
-        lines += [f"\\bnfmore{{{render(Seq(*seg))}}}" for seg in rest]
-        return lines
-    return [f"\\bnfprod{{{name}}}\n    {{{render(rhs)}}}"]
+    return [f"\\bnfprod{{{display_name}}}\n    {{{render(rhs)}}}"]
 
 
 def render_bnf_block(productions: list[tuple[str, Node]]) -> str:
@@ -238,66 +235,42 @@ def render_bnf_block(productions: list[tuple[str, Node]]) -> str:
     return f"\\begin{{bnf*}}\n{body}\n\\end{{bnf*}}"
 
 
-# ── The grammar model ────────────────────────────────────────────
+# ── Parsing grammar.lark via Lark's own meta-grammar ─────────────────
 #
-# Mirrors notlob/grammar.lark. Keep in sync by hand when that file
-# changes; see the module docstring for why this isn't done by parsing
-# grammar.lark directly.
+# Every "rule" (lowercase, e.g. `module`, `named_test`) becomes a
+# PRODUCTIONS entry; every "token" (uppercase, e.g. `MOD_HEAD`,
+# `TEST_SIGIL`) becomes a TERMINALS entry. Both are derived by walking
+# the real parse tree -- see the module docstring for what's still
+# hand-maintained and why.
 
-PRODUCTIONS: list[tuple[str, Node]] = [
-    ("Start", NT("Module")),
-    ("Module", Seq(NT("ModHead"), NT("Body"), Opt(NT("PostText")))),
-    ("Body", Rep(NT("BodyItem"))),
-    ("BodyItem", Or(NT("Subheading"), NT("CodeBlock"), NT("Claim"),
-                     NT("ProseBlock"), NT("BulletBlock"), NT("Blank"))),
-    ("Subheading", Seq(NT("SubHead"), Rep(NT("SubItem")))),
-    ("SubItem", Or(NT("CodeBlock"), NT("Claim"), NT("ProseBlock"),
-                    NT("BulletBlock"), NT("Blank"))),
-    ("CodeBlock", Seq(NT("Indent"), Rep(NT("BodyLine")))),
-    ("BodyLine", Or(NT("Indent"), NT("Blank"))),
-    ("Claim", Seq(NT("Sigil"), RepPlus(NT("BodyLine")))),
-    ("ProseBlock", RepPlus(NT("ProseLine"))),
-    ("ProseLine", Seq(RepPlus(Or(NT("LineStartText"), NT("ProseText"), NT("Ref"))),
-                       NT("ProseNL"))),
-    ("BulletBlock", RepPlus(NT("Bullet"))),
-    ("PostText", Seq(NT("Separator"), Rep(Or(NT("Blank"), NT("PostSection"))))),
-    ("PostSection", Or(NT("TestsSection"), NT("BindingSection"),
-                        NT("ReferencesSection"), NT("AppendixSection"))),
-    ("TestsSection", Seq(NT("TestsHead"), Rep(Or(NT("Blank"), NT("TestItem"))))),
-    ("TestItem", Or(NT("TestGroup"), NT("Indent"))),
-    ("TestGroup", Seq(NT("SubHead"), Rep(Or(NT("Indent"), NT("Blank"))))),
-    ("BindingSection", Seq(NT("BindingHead"), Rep(Or(NT("Indent"), NT("Blank"))))),
-    ("ReferencesSection", Seq(NT("ReferencesHead"), Rep(Or(NT("Indent"), NT("Blank"))))),
-    ("AppendixSection", Seq(NT("AppendixHead"), Rep(NT("BodyItem")))),
-]
+_REGEX_OVERRIDES: dict[str, Node] = {
+    r"[^\n]": D("any character other than newline"),
+    r"[^#\n]": NT("NonHashLineChar"),
+    r"[ \t]": Or(NT("Space"), NT("Tab")),
+    # REF -- deliberately omits the "not preceded by a word char or /"
+    # lookbehind from the formal grammar; that constraint is prose-only
+    # (see _DISAMBIGUATION), not expressible with EBNF's own operators.
+    r"(?<![\w\/])##?[A-Z][A-Za-z0-9_]*(?:[ ][A-Z][A-Za-z0-9_]*)*": Seq(
+        Or(T("#"), T("##")), NT("UpperLetter"), Rep(NT("WordChar")),
+        Rep(Seq(NT("Space"), NT("UpperLetter"), Rep(NT("WordChar")))),
+    ),
+    # LINE_START_TEXT / PROSE_TEXT reference ProseInitial/ProseTail,
+    # which are deliberately NOT in _EXTRA_TERMINALS -- their own
+    # definitions depend on one-token lookahead, not expressible with
+    # EBNF's own operators, so they're described in _DISAMBIGUATION's
+    # prose instead of the terminals table.
+    r"(?<=\n)(?:[^#~\n]|#(?!#?[A-Z])|~(?![a-z]))(?:[^#\n]|#(?!#?[A-Z]))*":
+        Seq(NT("ProseInitial"), Rep(NT("ProseTail"))),
+    r"(?<!\n)(?:[^#\n]|#(?!#?[A-Z]))+":
+        RepPlus(NT("ProseTail")),
+}
 
-TERMINALS: list[tuple[str, Node]] = [
-    ("ModHead", Seq(T("#"), NT("NonHashLineChar"), NT("RestOfLine"), NT("NewLine"))),
-    ("SubHead", Seq(T("##"), NT("RestOfLine"), NT("NewLine"))),
-    ("Sigil", Or(
-        Seq(T("~example"), NT("NewLine")),
-        Seq(T("~run"), NT("NewLine")),
-        Seq(T("~test"), NT("NewLine")),
-        Seq(T("~property"), NT("NewLine")),
-        Seq(T("~property "), NT("RestOfLine"), NT("NewLine")),
-    )),
-    ("Separator", Seq(T("---"), NT("NewLine"))),
-    ("TestsHead", Seq(T("#Tests"), NT("NewLine"))),
-    ("BindingHead", Seq(T("#Binding"), NT("NewLine"))),
-    ("ReferencesHead", Seq(T("#References"), NT("NewLine"))),
-    ("AppendixHead", Seq(T("#Appendix:"), NT("RestOfLine"), NT("NewLine"))),
-    ("Indent", Seq(Or(NT("Space"), NT("Tab")), NT("RestOfLine"), NT("NewLine"))),
-    ("Blank", NT("NewLine")),
-    ("Bullet", Seq(T("*"), Opt(Seq(Or(NT("Space"), NT("Tab")), NT("RestOfLine"))), NT("NewLine"))),
-    ("Ref", Seq(Or(T("#"), T("##")), NT("UpperLetter"), Rep(NT("WordChar")),
-                Break(),
-                Rep(Seq(NT("Space"), NT("UpperLetter"), Rep(NT("WordChar")))))),
-    ("LineStartText", Seq(NT("ProseInitial"), Rep(NT("ProseTail")))),
-    ("ProseText", RepPlus(NT("ProseTail"))),
-    ("ProseNL", NT("NewLine")),
-    ("LineChar", D("any character other than newline")),
-    ("RestOfLine", Rep(NT("LineChar"))),
-    ("NonHashLineChar", Except(NT("LineChar"), T("#"))),
+# Synthetic terminals referenced by _REGEX_OVERRIDES above but not
+# present as their own named terminal in grammar.lark -- appended to
+# the mechanically-derived TERMINALS list so they still get a row in
+# the rendered table.
+_EXTRA_TERMINALS: list[tuple[str, Node]] = [
+    ("NonHashLineChar", Except(NT("LINE_CHAR"), T("#"))),
     ("UpperLetter", D("an uppercase ASCII letter")),
     ("WordChar", D("an ASCII letter, digit, or underscore")),
     ("Space", D("a space character")),
@@ -305,7 +278,234 @@ TERMINALS: list[tuple[str, Node]] = [
     ("NewLine", D("the newline character")),
 ]
 
-_DISAMBIGUATION = r"""
+# Priority tiers referenced by the generated disambiguation sentence,
+# cross-checked against grammar.lark's real `.N` values in
+# parse_grammar() -- add/remove/repriority a terminal there without
+# updating this and generation fails loudly instead of the paper
+# silently describing a stale priority order.
+_PRIORITY_TIERS: dict[int, list[str]] = {
+    20: ["SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
+         "APPENDIX_HEAD"],
+    10: ["MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL"],
+    8: ["INDENT", "BLANK", "BULLET"],
+    5: ["REF"],
+    1: ["LINE_START_TEXT", "PROSE_TEXT"],
+}
+
+
+def _string_value(token: Token) -> str:
+    """Unescape a Lark STRING token's raw source text (e.g. '"\\n"',
+    quotes and backslash included) into the string it represents."""
+    body = token.value if token.value.endswith('"') else token.value[:-1]
+    return ast.literal_eval(body)
+
+
+_REGEXP_RE = re.compile(r"^/((?:\\/|\\\\|[^/])*)/[a-zA-Z]*$")
+
+
+def _regexp_pattern(token: Token) -> str:
+    """Strip a Lark REGEXP token's delimiters and flags, returning its
+    raw pattern source (backslash escapes left as-is, not unescaped --
+    this is a regex, not a string)."""
+    m = _REGEXP_RE.match(token.value)
+    if not m:
+        raise ValueError(f"could not parse REGEXP token: {token.value!r}")
+    return m.group(1)
+
+
+def _convert_string(value: str) -> Node:
+    """Convert a literal string's *value* into a Node, splitting out
+    any embedded newline character(s) as NT("NewLine") -- a raw
+    newline surviving into a \\bnfts{...} argument is invisible/broken
+    in the typeset output (same reasoning as the Space/Tab handling
+    below). grammar.lark writes some terminals' trailing newline as
+    its own separate literal (e.g. MOD_HEAD's `... REST_OF_LINE "\n"`)
+    and others with the newline embedded in a longer literal (e.g.
+    SIGIL's `"~example\n"`) -- this handles both uniformly."""
+    if "\n" not in value:
+        return T(value)
+    pieces: list[Node] = []
+    parts = value.split("\n")
+    for i, part in enumerate(parts):
+        if part:
+            pieces.append(T(part))
+        if i < len(parts) - 1:
+            pieces.append(NT("NewLine"))
+    return pieces[0] if len(pieces) == 1 else Seq(*pieces)
+
+
+def _convert_literal(token: Token, used_overrides: set[str]) -> Node:
+    if token.type == "STRING":
+        return _convert_string(_string_value(token))
+    if token.type == "REGEXP":
+        pattern = _regexp_pattern(token)
+        if pattern not in _REGEX_OVERRIDES:
+            raise KeyError(
+                f"grammar.lark uses regex {pattern!r} with no matching "
+                f"entry in _REGEX_OVERRIDES -- add one describing what "
+                f"it means for the paper's grammar section"
+            )
+        used_overrides.add(pattern)
+        return _REGEX_OVERRIDES[pattern]
+    raise TypeError(f"unknown literal token type: {token.type!r}")
+
+
+def _convert_expr(tree: Tree, used_overrides: set[str]) -> Node:
+    atom = tree.children[0]
+    inner = _convert(atom, used_overrides)
+    if len(tree.children) == 1:
+        return inner
+    op = tree.children[1]
+    if not (isinstance(op, Token) and op.type == "OP"):
+        raise NotImplementedError(
+            f"bounded repetition (item~N or item~N..M) is not used "
+            f"anywhere in grammar.lark today and isn't supported here: "
+            f"{tree!r}"
+        )
+    return {"+": RepPlus, "*": Rep, "?": Opt}[str(op)](inner)
+
+
+def _convert(node: Tree | Token, used_overrides: set[str]) -> Node:
+    if isinstance(node, Token):
+        raise TypeError(
+            f"unexpected bare token in expansion position: {node!r} -- "
+            f"grammar.lark uses a Lark construct this script doesn't "
+            f"handle yet"
+        )
+    data = node.data
+    if data == "expansions":
+        return Or(*[_convert(c, used_overrides) for c in node.children])
+    if data == "expansion":
+        return Seq(*[_convert(c, used_overrides) for c in node.children])
+    if data == "expr":
+        return _convert_expr(node, used_overrides)
+    if data == "maybe":
+        return Opt(_convert(node.children[0], used_overrides))
+    if data == "name":
+        return NT(str(node.children[0]))
+    if data == "literal":
+        return _convert_literal(node.children[0], used_overrides)
+    raise TypeError(
+        f"unhandled grammar.lark construct: {data!r} ({node!r}) -- this "
+        f"script covers the subset of Lark syntax grammar.lark actually "
+        f"uses, not the whole Lark meta-grammar"
+    )
+
+
+def _priority_of(item: Tree) -> int:
+    for c in item.children:
+        if isinstance(c, Tree) and c.data == "priority":
+            return int(str(c.children[0]))
+    return 0
+
+
+def _load_meta_grammar() -> Lark:
+    """Load Lark's own grammar-of-grammars (the .lark file describing
+    .lark syntax) as an ordinary Lark instance, so it can be used to
+    parse notlob/grammar.lark itself. Not how Lark bootstraps its own
+    parser (see grammars/lark.lark's own comment) -- just a convenient,
+    always-in-sync-with-the-installed-Lark-version parser for our
+    purposes."""
+    meta_src = (
+        resources.files("lark.grammars")
+        .joinpath("lark.lark")
+        .read_text(encoding="utf-8")
+    )
+    return Lark(meta_src, parser="lalr", maybe_placeholders=False)
+
+
+def _check_priority_tiers(priorities: dict[str, int]) -> None:
+    declared = {
+        name: prio
+        for prio, names in _PRIORITY_TIERS.items()
+        for name in names
+    }
+    actual = {name: prio for name, prio in priorities.items() if prio != 0}
+    if declared == actual:
+        return
+    missing = set(actual) - set(declared)
+    stale = set(declared) - set(actual)
+    wrong_tier = {
+        n for n in (set(declared) & set(actual)) if declared[n] != actual[n]
+    }
+    raise ValueError(
+        "_PRIORITY_TIERS is out of sync with grammar.lark's real "
+        f"terminal priorities -- missing (in grammar.lark, not in "
+        f"_PRIORITY_TIERS): {missing or None}; stale (in "
+        f"_PRIORITY_TIERS, no longer in grammar.lark): {stale or None}; "
+        f"wrong tier: {wrong_tier or None}"
+    )
+
+
+def _priority_sentence() -> str:
+    """Render the "X, Y (priority 20) outrank A, B (priority 10), which
+    outrank ... (priority 1, the fallback)" sentence fragment from
+    _PRIORITY_TIERS, highest priority first, with verb agreement
+    (outrank/outranks) matching the size of the tier doing the
+    outranking at each step."""
+    tiers = sorted(_PRIORITY_TIERS, reverse=True)
+
+    def rendered(prio: int) -> str:
+        names = _PRIORITY_TIERS[prio]
+        text = ", ".join(f"\\synt{{{escape_name(n)}}}" for n in names)
+        note = ", the fallback" if prio == tiers[-1] else ""
+        return f"{text} (priority {prio}{note})"
+
+    pieces = [rendered(tiers[0])]
+    for i in range(1, len(tiers)):
+        verb = "outrank" if len(_PRIORITY_TIERS[tiers[i - 1]]) > 1 \
+            else "outranks"
+        lead = "" if i == 1 else "which "
+        pieces.append(f"{lead}{verb} {rendered(tiers[i])}")
+    return ", ".join(pieces)
+
+
+def parse_grammar(
+    path: Path,
+) -> tuple[list[tuple[str, Node]], list[tuple[str, Node]]]:
+    """Parse *path* (notlob/grammar.lark) into (PRODUCTIONS, TERMINALS)
+    lists, in the same AST render_bnf_block already knows how to
+    render. Raises if a regex terminal has no _REGEX_OVERRIDES entry,
+    if _REGEX_OVERRIDES has a stale entry no longer used, or if
+    _PRIORITY_TIERS is out of sync with the file's real `.N` values."""
+    meta = _load_meta_grammar()
+    tree = meta.parse(path.read_text(encoding="utf-8"))
+
+    productions: list[tuple[str, Node]] = []
+    terminals: list[tuple[str, Node]] = []
+    priorities: dict[str, int] = {}
+    used_overrides: set[str] = set()
+
+    for item in tree.children:
+        if item is None:
+            continue
+        if item.data not in ("rule", "token"):
+            raise NotImplementedError(
+                f"unsupported top-level grammar.lark construct "
+                f"{item.data!r} -- only rule/token declarations are "
+                f"used today, no %import/%ignore/%declare/%override"
+            )
+        name = str(item.children[0])
+        rhs = _convert(item.children[-1], used_overrides)
+        if item.data == "rule":
+            productions.append((name, rhs))
+        else:
+            terminals.append((name, rhs))
+            priorities[name] = _priority_of(item)
+
+    unused = set(_REGEX_OVERRIDES) - used_overrides
+    if unused:
+        raise KeyError(
+            f"_REGEX_OVERRIDES has entries no longer used by "
+            f"grammar.lark: {unused!r} -- remove them"
+        )
+    _check_priority_tiers(priorities)
+
+    terminals += _EXTRA_TERMINALS
+    return productions, terminals
+
+
+_DISAMBIGUATION_INTRO = r"""
 \synt{ProseInitial} and \synt{ProseTail} are omitted from the table
 above: unlike the other terminals, their definitions depend on
 one-token lookahead (what follows a character, not the character
@@ -319,8 +519,8 @@ The productions and terminal definitions above are a complete
 description of the \emph{language} -- what strings are valid .lob
 source. They are not, by themselves, sufficient to determine a
 \emph{unique parse}: several terminals are deliberately allowed to
-overlap in the strings they can match (e.g.\ \synt{SubHead} and
-\synt{Ref} can both match \term{\#\#Stacking Discounts}), because
+overlap in the strings they can match (e.g.\ \synt{SUBHEAD} and
+\synt{REF} can both match \term{\#\#Stacking Discounts}), because
 which one applies depends on where the text occurs, not what it looks
 like in isolation. A deterministic single-pass (LALR) parser resolves
 this the same way lexer generators conventionally do -- by an explicit
@@ -331,36 +531,42 @@ dangling-\term{else} ambiguity in C's grammar:
 \begin{itemize}
   \item \textbf{Priority.} Where more than one terminal can match the
     same input at the same point in a parse, the one with higher
-    priority is chosen: \synt{Separator}, \synt{TestsHead},
-    \synt{BindingHead}, \synt{ReferencesHead}, \synt{AppendixHead}
-    (priority 20) outrank \synt{ModHead}, \synt{SubHead},
-    \synt{Sigil} (priority 10), which outrank \synt{Indent},
-    \synt{Bullet} (priority 8), which outrank \synt{Ref} (priority
-    5), which outranks \synt{ProseText} and \synt{LineStartText}
-    (priority 1, the fallback).
-  \item \textbf{Positional constraints.} \synt{LineStartText} may only
-    begin immediately after a \synt{NewLine} or at the start of input;
-    \synt{ProseText} may not begin in that position (reserved for
-    \synt{LineStartText}); \synt{Ref} may not be immediately
+    priority is chosen:
+""".strip()
+
+_DISAMBIGUATION_REST = r"""
+  \item \textbf{Positional constraints.} \synt{LINE\_START\_TEXT} may
+    only begin immediately after a \synt{NewLine} or at the start of
+    input; \synt{PROSE\_TEXT} may not begin in that position (reserved
+    for \synt{LINE\_START\_TEXT}); \synt{REF} may not be immediately
     preceded by a word character or \term{/} (so it does not match
     inside identifiers or URLs).
   \item \textbf{Lookahead-conditioned terminals.} \synt{ProseInitial}
-    and \synt{ProseTail} (used by \synt{LineStartText} and
-    \synt{ProseText} respectively) admit \term{\#} and
+    and \synt{ProseTail} (used by \synt{LINE\_START\_TEXT} and
+    \synt{PROSE\_TEXT} respectively) admit \term{\#} and
     \term{\textasciitilde} except where doing so would swallow a
     character that a higher-priority terminal is entitled to:
     \begin{itemize}
-      \item \synt{ProseTail} is \synt{LineChar}, except where the
+      \item \synt{ProseTail} is \synt{LINE\_CHAR}, except where the
         character is \term{\#} immediately followed by an optional
         \term{\#} and an uppercase letter (that prefix belongs to
-        \synt{Ref} instead).
+        \synt{REF} instead).
       \item \synt{ProseInitial} is the same as \synt{ProseTail},
         additionally excluding \term{\textasciitilde} when
         immediately followed by a lowercase letter (that prefix
-        belongs to \synt{Sigil} instead).
+        belongs to \synt{SIGIL}/\synt{TEST\_SIGIL} instead).
     \end{itemize}
 \end{itemize}
 """.strip()
+
+
+def _disambiguation() -> str:
+    return "\n".join([
+        _DISAMBIGUATION_INTRO,
+        "    " + _priority_sentence() + ".",
+        _DISAMBIGUATION_REST,
+    ])
+
 
 # \synt and \term aren't backnaur commands -- backnaur only documents
 # \bnfpn/\bnfts/\bnftd/etc. for use *inside* a bnf/bnf* environment (its
@@ -374,8 +580,10 @@ _PREAMBLE = r"""
 % (https://ctan.org/pkg/backnaur) -- chosen over mdwtools' `syntax`
 % package after `syntax` turned out to clash with acmart.
 %
-% Generated by scripts/gen_grammar_latex.py -- do not hand-edit; update
-% the PRODUCTIONS/TERMINALS model in that script instead and regenerate.
+% Generated by notlob/util/gen_grammar_latex.py from notlob/grammar.lark
+% -- do not hand-edit; regenerate instead. See that script's own
+% docstring for what parts of this file are mechanically derived vs
+% hand-maintained.
 
 \documentclass{article}
 \usepackage[margin=1in]{geometry}
@@ -419,12 +627,14 @@ _END = r"""
 
 
 def main() -> None:
+    grammar_path = Path(__file__).resolve().parent.parent / "grammar.lark"
+    productions, terminals = parse_grammar(grammar_path)
     parts = [
         _PREAMBLE,
-        render_bnf_block(PRODUCTIONS),
+        render_bnf_block(productions),
         _MIDDLE,
-        render_bnf_block(TERMINALS),
-        _DISAMBIGUATION,
+        render_bnf_block(terminals),
+        _disambiguation(),
         _END,
     ]
     print("\n\n".join(parts))

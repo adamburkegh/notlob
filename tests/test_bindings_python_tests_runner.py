@@ -151,7 +151,7 @@ class TestExampleFiles:
         results = self._run(EXAMPLES / "retail/pricing/discounts.lob")
         addrs = {r.address for r in results}
         assert "pricing/discounts#Tests#boundary conditions" in addrs
-        assert "pricing/discounts#Tests#composition" in addrs
+        assert "pricing/discounts#Tests#composition#composition_is_commutative" in addrs
 
     def test_roman_numerals_all_pass(self):
         results = self._run(EXAMPLES / "roman/roman/numerals.lob")

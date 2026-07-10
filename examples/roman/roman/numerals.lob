@@ -83,8 +83,14 @@ value is mangled.
     to_roman(90)   == 'XC'
     to_roman(400)  == 'CD'
     to_roman(900)  == 'CM'
-    to_roman(1994) == 'MCMXCIV'
     to_roman(3999) == 'MMMCMXCIX'
+
+The 1994 case stacks all four subtractive forms at once (CM, XC, IV),
+so it's worth naming — a regression here is immediately legible on
+its own instead of blending into the list above.
+
+~test mcmxciv
+    to_roman(1994) == 'MCMXCIV'
 
 ##decoding
     from_roman('I')       == 1
