@@ -21,6 +21,18 @@ version where the file and the tag are back in sync.
 - Prose commentary is now legal inside `#Tests`, both directly under
   the section head and within a `##group`, freely interleaved with
   assertions and `~test` blocks.
+- TypeScript `~property` claims now run via fast-check. `fc` is
+  injected into the claim scope automatically; no `~property-testing`
+  declaration is needed beyond `~language typescript`. If fast-check
+  is not installed, claims error rather than skip.
+
+### Changed
+- `gen_grammar_latex.py` now reads `grammar.lark` directly as its
+  source of truth, closing the drift risk noted in the 0.5.0 entry.
+
+### Fixed
+- Missing `import textwrap` in the TypeScript runner caused a
+  `NameError` when executing any `~property` claim.
 
 ## [0.5.0] - 2026-07-09
 
