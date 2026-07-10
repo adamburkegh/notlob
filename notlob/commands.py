@@ -584,15 +584,22 @@ def _render_starter(module_title: str) -> str:
     return (
         f"#{module_title}\n\n"
         "Describe this module here.\n\n"
-        "    # code goes here\n\n"
+        "    code goes here\n\n"
+        "Description of a general property of these concepts. Example\n"
+        "properties might be roundtrip, preserves, monotone, rejects, or\n"
+        "wellformed.\n\n"
+        "~property property-name\n"
+        "    property assertion code \n\n"
+        "More description setting up the example. Properties are often well-served by an example.\n\n"
         "~example\n"
-        "    # assertion\n\n"
-        "~property\n"
-        "    # property-based assertion (fc.assert / @given / ...)\n\n"
+        "    assertion code\n\n"
         "---\n\n"
         "#Tests\n\n"
-        "##sanity\n"
-        "    # assertion\n"
+        "##test group named for what it establishes \n"
+        "    anonymous assertion code \n\n"
+        "~test named test \n"
+        "    assertion code \n\n"
+        "#References\n\n"
     )
 
 
