@@ -1,6 +1,9 @@
 {
   "name": "ts-media",
   "private": true,
+  "dependencies": {
+    "fast-check": "^3.0.0"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "esbuild": "^0.21.0",

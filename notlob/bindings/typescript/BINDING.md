@@ -5,18 +5,20 @@ runs through `tsc`.
 
 ## Toolchain
 
-`tsx` (runs claims) and `typescript`/`tsc` (type-checks) come from npm.
-notlob is distributed via pip and cannot ship npm packages, so a
-TypeScript project provides its own toolchain:
+`tsx` (runs claims), `typescript`/`tsc` (type-checks), and `fast-check`
+(property testing) come from npm. notlob is distributed via pip and
+cannot ship npm packages, so a TypeScript project provides its own
+toolchain:
 
 - `notlob init --language typescript` scaffolds `package.json` (tsx +
-  typescript) and `tsconfig.json`.
+  typescript + fast-check) and `tsconfig.json`.
 - Run `npm install` to fetch them — the npm analog of `pip install`.
 
 The runner discovers `tsx` (then `ts-node`) from the project's
 `node_modules/.bin` first, then `PATH`; the linter discovers `tsc` the
-same way. On Windows the `.cmd` shim is preferred (the extensionless
-shim is not directly executable).
+same way. `fast-check` is located as a package directory rather than a
+binary. On Windows the `.cmd` shim is preferred for executables (the
+extensionless shim is not directly executable).
 
 ## Linting
 
@@ -37,7 +39,7 @@ The scaffolded `tsconfig.json` mirrors the linter's flags (target
 | `~example`  | yes — boolean expressions, `===` for equality            |
 | `#Tests`    | yes                                                      |
 | `~run`      | yes — included in `notlob build` output (entry point)    |
-| `~property` | not yet — `~property-testing fast-check` is reserved; `~property` claims currently report `SKIP` |
+| `~property` | yes — fast-check; `fc` is injected into the claim scope automatically |
 
 Equality assertions use `===`; the runner reports concrete left/right
 values on failure for `a === b`. Other expressions are evaluated as

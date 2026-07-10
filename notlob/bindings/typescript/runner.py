@@ -47,10 +47,12 @@ method chains) are passed as a single boolean arrow function.
 
 Properties
 ----------
-``run_properties`` requires ``~property-testing fast-check`` in
-``binding.lob``.  Without this declaration every ``~property`` claim
-receives ``Status.SKIP``.  Fast-check integration is planned for a
-future iteration.
+``run_properties`` uses fast-check, which is part of the TypeScript
+binding toolchain.  No ``~property-testing`` declaration is needed in
+``binding.lob`` — ``~language typescript`` is sufficient.  Each
+``~property`` block is wrapped in a ``fc.assert`` harness and executed
+via tsx.  If fast-check is not installed, every ``~property`` claim
+receives ``Status.ERROR``.
 """
 
 from __future__ import annotations
@@ -103,6 +105,26 @@ function __safeStr(v: unknown): string {
 """
 
 
+_PROPERTY_HARNESS_HEADER = """\
+import * as fc from 'fast-check';
+
+function __runProperty(
+  addr: string,
+  expr: string,
+  fn:   () => void,
+): void {
+  process.stdout.write('CLAIM\\t' + addr + '\\t' + expr + '\\n');
+  try {
+    fn();
+    process.stdout.write('PASS\\n');
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    process.stdout.write('ERROR\\t' + msg + '\\n');
+  }
+}
+"""
+
+
 # ── Runner discovery ──────────────────────────────────────────
 
 def node_bin(name: str, root: Path | None) -> str | None:
@@ -146,12 +168,20 @@ def _tsx_cmd(root: Path | None) -> list[str] | None:
     return None
 
 
+def _fast_check_available(root: Path | None) -> bool:
+    """Return True if fast-check is installed in the project's node_modules."""
+    if root is not None:
+        return (root / 'node_modules' / 'fast-check').is_dir()
+    return False
+
+
 # ── Harness execution ─────────────────────────────────────────
 
 def _run_harness(
     harness:   str,
     cmd:       list[str],
     keep_path: Path | None = None,
+    env:       dict | None = None,
 ) -> tuple[str, str, int]:
     """Write *harness* to a temp file, execute with *cmd*, return
     ``(stdout, stderr, returncode)``.
@@ -176,6 +206,7 @@ def _run_harness(
             capture_output=True,
             encoding='utf-8',
             errors='replace',
+            env=env,
         )
         return proc.stdout, proc.stderr, proc.returncode
     finally:
@@ -258,6 +289,33 @@ def _build_harness(module_source: str, claim_calls: list[str]) -> str:
     if module_source:
         parts.append(module_source)
     parts.append('\n'.join(claim_calls))
+    return '\n\n'.join(parts)
+
+
+def _property_call(addr: str, sigil: str, lines: list[str]) -> str:
+    """Return a ``__runProperty(...)`` TypeScript call for a ~property block.
+
+    The entire block body is passed as a zero-argument arrow function so
+    the harness can catch fast-check assertion failures and report them
+    via the CLAIM protocol.  ``fc`` is available in scope via the
+    property harness import.
+    """
+    addr_s  = json.dumps(addr)
+    sigil_s = json.dumps(sigil)
+    body    = textwrap.indent(textwrap.dedent('\n'.join(lines)), '  ')
+    return (
+        f'__runProperty({addr_s}, {sigil_s}, () => {{\n'
+        f'{body}\n'
+        f'}});\n'
+    )
+
+
+def _build_property_harness(module_source: str, property_calls: list[str]) -> str:
+    """Combine module source, property harness header, and property calls."""
+    parts = [_PROPERTY_HARNESS_HEADER]
+    if module_source:
+        parts.append(module_source)
+    parts.append('\n'.join(property_calls))
     return '\n\n'.join(parts)
 
 
@@ -348,6 +406,33 @@ def _assembly_error(
 
 
 # ── Section collectors ────────────────────────────────────────
+
+def _collect_property_calls(
+    body:            list,
+    containing_addr: str,
+    out_calls:       list[str],
+    out_addrs:       list[str],
+    out_sigils:      list[str],
+    out_lines:       list[int | None],
+) -> None:
+    """Collect ~property blocks from *body* into parallel output lists."""
+    prop_n = 0
+    for item in body:
+        if not (isinstance(item, Claim) and item.sigil.startswith('~property')):
+            continue
+        prop_n += 1
+        parts     = item.sigil.split(None, 1)
+        prop_name = parts[1].strip() if len(parts) > 1 else None
+        addr      = (
+            property_address(containing_addr, prop_name)
+            if prop_name else
+            claim_address(containing_addr, 'property', prop_n)
+        )
+        out_calls.append(_property_call(addr, item.sigil, item.lines))
+        out_addrs.append(addr)
+        out_sigils.append(item.sigil)
+        out_lines.append(item.start_line)
+
 
 def _collect_example_claims(
     body:            list,
@@ -526,47 +611,69 @@ def run_properties(
     cache:     Any         = None,
     keep_dir:  Path | None = None,
 ) -> list[ClaimResult]:
-    """Run ~property claims in *module*.
+    """Run ~property claims in *module* using fast-check.
 
-    Requires ``~property-testing fast-check`` in ``binding.lob``.
-    Without this declaration every ~property claim receives SKIP.
-    Fast-check integration is planned for a future iteration.
+    fast-check is part of the TypeScript binding toolchain; no
+    ``~property-testing`` declaration is required in ``binding.lob``.
+    Each ``~property`` block is wrapped in a ``__runProperty`` call and
+    executed via tsx with ``fc`` available in scope.
+
+    If fast-check is not installed, every claim receives Status.ERROR.
     """
+    root     = getattr(cache, 'root', None)
     mod_addr = module_address(module.title)
+    fp       = str(file_path) if file_path else None
 
-    fp = str(file_path) if file_path else None
+    prop_calls:  list[str]        = []
+    prop_addrs:  list[str]        = []
+    prop_sigils: list[str]        = []
+    src_lines:   list[int | None] = []
 
-    def _props_in(body: list, containing_addr: str) -> list[ClaimResult]:
-        results = []
-        prop_n = 0
-        for item in body:
-            if not (isinstance(item, Claim)
-                    and item.sigil.startswith('~property')):
-                continue
-            prop_n += 1
-            parts     = item.sigil.split(None, 1)
-            prop_name = parts[1].strip() if len(parts) > 1 else None
-            addr      = (
-                property_address(containing_addr, prop_name)
-                if prop_name else
-                claim_address(containing_addr, 'property', prop_n)
+    _collect_property_calls(
+        module.body, mod_addr, prop_calls, prop_addrs, prop_sigils, src_lines,
+    )
+    for item in module.body:
+        if isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            _collect_property_calls(
+                item.body, sub_addr, prop_calls, prop_addrs, prop_sigils, src_lines,
             )
-            results.append(ClaimResult(
+
+    if not prop_calls:
+        return []
+
+    if not _fast_check_available(root):
+        return [
+            ClaimResult(
                 address=addr,
-                line=item.sigil,
-                status=Status.SKIP,
-                source_line=item.start_line,
+                line=sig,
+                status=Status.ERROR,
+                error=Exception(
+                    'fast-check not found — run `npm install fast-check` '
+                    'in the project root'
+                ),
+                source_line=sl,
                 file_path=fp,
-            ))
-        return results
+            )
+            for addr, sig, sl in zip(prop_addrs, prop_sigils, src_lines)
+        ]
 
-    if binding is None or binding.get('property-testing') != 'fast-check':
-        results = _props_in(module.body, mod_addr)
-        for item in module.body:
-            if isinstance(item, Subheading):
-                sub_addr = subheading_address(mod_addr, item.title)
-                results += _props_in(item.body, sub_addr)
-        return results
+    cmd = _tsx_cmd(root)
+    if cmd is None:
+        return [ClaimResult(
+            address=mod_addr, line='<runner>',
+            status=Status.ERROR,
+            error=Exception('tsx or ts-node not found on PATH or in node_modules/.bin'),
+        )]
 
-    # fast-check integration: TODO
-    return []
+    mod_source = _build_module_source(module, root)
+    harness    = _build_property_harness(mod_source, prop_calls)
+    keep_path  = _write_kept_source(keep_dir, '_properties.ts', harness)
+
+    node_env = {**os.environ, 'NODE_PATH': str(root / 'node_modules')} if root else None
+    stdout, stderr, rc = _run_harness(harness, cmd, keep_path, env=node_env)
+
+    results = _parse_output(stdout, stderr, mod_addr, src_lines, file_path)
+    if not results and rc != 0:
+        return _assembly_error(mod_addr, stderr, file_path)
+    return results

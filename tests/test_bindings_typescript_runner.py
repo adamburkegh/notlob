@@ -17,10 +17,12 @@ from notlob.bindings import ClaimResult, Status
 from notlob.bindings.typescript.runner import (
     _build_harness,
     _claim_call,
+    _fast_check_available,
     _iter_assertions,
     _parse_output,
     _tsx_cmd,
     run_examples,
+    run_properties,
     run_tests,
 )
 
@@ -63,6 +65,10 @@ def _run_examples(mod):
 
 def _run_tests(mod):
     return run_tests(mod, cache=_TS_CACHE)
+
+
+def _run_properties(mod, binding=None):
+    return run_properties(mod, binding=binding, cache=_TS_CACHE)
 
 
 # ── Unit: _claim_call ─────────────────────────────────────────
@@ -256,3 +262,95 @@ class TestRunTestsIntegration:
     def test_no_tests_section(self):
         mod = _module('#T\n\n    const x = 1\n')
         assert _run_tests(mod) == []
+
+
+# ── Unit: _fast_check_available ──────────────────────────────
+
+class TestFastCheckAvailable:
+    def test_true_when_fast_check_in_node_modules(self):
+        assert _fast_check_available(_REPO_ROOT) is True
+
+    def test_false_when_root_is_none(self):
+        assert _fast_check_available(None) is False
+
+    def test_false_when_fast_check_absent(self, tmp_path):
+        assert _fast_check_available(tmp_path) is False
+
+
+# ── Integration: run_properties ──────────────────────────────
+
+_FC_SKIP = pytest.mark.skipif(
+    not _fast_check_available(_REPO_ROOT),
+    reason='fast-check not installed (run `npm install` at repo root)',
+)
+
+
+class TestRunPropertiesIntegration:
+    @_RUNNER_SKIP
+    @_FC_SKIP
+    def test_passing_property(self):
+        mod = _module(
+            '#T\n\n    const x = 1\n\n'
+            '~property\n'
+            '    fc.assert(fc.property(fc.constant(x), v => v === 1))\n'
+        )
+        results = _run_properties(mod)
+        assert len(results) == 1
+        assert results[0].status == Status.PASS
+
+    @_RUNNER_SKIP
+    @_FC_SKIP
+    def test_named_property_address(self):
+        mod = _module(
+            '#T\n\n    const x = 1\n\n'
+            '~property identity\n'
+            '    fc.assert(fc.property(fc.constant(x), v => v === 1))\n'
+        )
+        results = _run_properties(mod)
+        assert results[0].status == Status.PASS
+        assert 'identity' in results[0].address
+
+    @_RUNNER_SKIP
+    @_FC_SKIP
+    def test_failing_property(self):
+        mod = _module(
+            '#T\n\n    const x = 1\n\n'
+            '~property\n'
+            '    fc.assert(fc.property(fc.integer(), n => n === 0))\n'
+        )
+        results = _run_properties(mod)
+        assert results[0].status == Status.ERROR  # fast-check raises on counterexample
+
+    @_RUNNER_SKIP
+    @_FC_SKIP
+    def test_property_in_subheading(self):
+        mod = _module(
+            '#T\n\n##Section\n\n    const y = 42\n\n'
+            '~property\n'
+            '    fc.assert(fc.property(fc.constant(y), v => v === 42))\n'
+        )
+        results = _run_properties(mod)
+        assert results[0].status == Status.PASS
+        assert '#Section' in results[0].address
+
+    @_RUNNER_SKIP
+    @_FC_SKIP
+    def test_no_properties_returns_empty(self):
+        mod = _module('#T\n\n    const x = 1\n')
+        assert _run_properties(mod) == []
+
+    def test_fast_check_absent_returns_error(self, tmp_path):
+        """Without fast-check, ~property claims error rather than skip."""
+        mod = _module(
+            '#T\n\n    const x = 1\n\n'
+            '~property\n'
+            '    fc.assert(fc.property(fc.constant(x), v => v === 1))\n'
+        )
+
+        class _NoFCCache:
+            root = tmp_path  # tmp_path has no node_modules
+
+        results = run_properties(mod, cache=_NoFCCache())
+        assert len(results) == 1
+        assert results[0].status == Status.ERROR
+        assert 'fast-check' in str(results[0].error)

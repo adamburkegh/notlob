@@ -74,6 +74,13 @@ similarity measure without normalisation.
     dist([0, 0], [0, 0]) === 0
     dist([1, 0], [0, 0]) === 1
 
+~property symmetry
+    fc.assert(fc.property(
+      fc.array(fc.integer({ min: 1, max: 10 }), { minLength: 5, maxLength: 5 }),
+      fc.array(fc.integer({ min: 1, max: 10 }), { minLength: 5, maxLength: 5 }),
+      (a, b) => dist(a, b) === dist(b, a)
+    ))
+
 ##Clustering
 
 Standard k-means with random centroid initialisation.  Assignments
