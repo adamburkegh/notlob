@@ -25,6 +25,13 @@ version where the file and the tag are back in sync.
   injected into the claim scope automatically; no `~property-testing`
   declaration is needed beyond `~language typescript`. If fast-check
   is not installed, claims error rather than skip.
+- `gen_listings_lang.py`, generating a `listings` `\lstdefinelanguage{notlob}`
+  block for typesetting `.lob` source in the paper (`~example`/`~run`/
+  `~property`/`~test`/`---` colored; reuses the same `grammar.lark`
+  parse as `gen_grammar_latex.py` for the keyword list). `#`-prefixed
+  markers (`#Tests`, `##`, ...) are deliberately left uncolored — every
+  escaping strategy tried for them fails against this listings version,
+  confirmed by compiling; see the script's own docstring.
 
 ### Changed
 - `gen_grammar_latex.py` now reads `grammar.lark` directly as its

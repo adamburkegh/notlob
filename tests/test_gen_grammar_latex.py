@@ -38,12 +38,12 @@ _GRAMMAR_PATH = Path(__file__).parent.parent / "notlob" / "grammar.lark"
 
 class TestParseRealGrammar:
     def test_parses_without_raising(self):
-        productions, terminals = parse_grammar(_GRAMMAR_PATH)
+        productions, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         assert productions
         assert terminals
 
     def test_named_test_production_present(self):
-        productions, _ = parse_grammar(_GRAMMAR_PATH)
+        productions, _, _priorities = parse_grammar(_GRAMMAR_PATH)
         names = {name for name, _ in productions}
         assert "named_test" in names
         assert "test_group" in names
@@ -52,7 +52,7 @@ class TestParseRealGrammar:
         # Regression: the old hand-maintained model had a stale bare
         # "~test" alternative folded into SIGIL, left over from before
         # TEST_SIGIL existed as its own terminal.
-        _, terminals = parse_grammar(_GRAMMAR_PATH)
+        _, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         by_name = dict(terminals)
         assert "TEST_SIGIL" in by_name
         sigil = by_name["SIGIL"]
@@ -61,7 +61,7 @@ class TestParseRealGrammar:
         assert not any("test" in alt for alt in rendered_alts)
 
     def test_full_render_produces_nonempty_latex(self):
-        productions, terminals = parse_grammar(_GRAMMAR_PATH)
+        productions, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         prod_tex = render_bnf_block(productions)
         term_tex = render_bnf_block(terminals)
         assert prod_tex.startswith("\\begin{bnf*}")
@@ -71,7 +71,7 @@ class TestParseRealGrammar:
         # Regression: literals like "~example\n" or "---\n" must have
         # their trailing newline split into NT("NewLine"), not embedded
         # raw in a \bnfts{...} argument.
-        productions, terminals = parse_grammar(_GRAMMAR_PATH)
+        productions, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         tex = render_bnf_block(productions) + render_bnf_block(terminals)
         for line in tex.splitlines():
             assert "\\bnfts{" not in line or line.count("{") == line.count("}")

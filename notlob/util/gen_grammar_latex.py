@@ -462,12 +462,16 @@ def _priority_sentence() -> str:
 
 def parse_grammar(
     path: Path,
-) -> tuple[list[tuple[str, Node]], list[tuple[str, Node]]]:
-    """Parse *path* (notlob/grammar.lark) into (PRODUCTIONS, TERMINALS)
-    lists, in the same AST render_bnf_block already knows how to
-    render. Raises if a regex terminal has no _REGEX_OVERRIDES entry,
-    if _REGEX_OVERRIDES has a stale entry no longer used, or if
-    _PRIORITY_TIERS is out of sync with the file's real `.N` values."""
+) -> tuple[list[tuple[str, Node]], list[tuple[str, Node]], dict[str, int]]:
+    """Parse *path* (notlob/grammar.lark) into (PRODUCTIONS, TERMINALS,
+    priorities) -- PRODUCTIONS/TERMINALS in the same AST
+    render_bnf_block already knows how to render; priorities is a
+    terminal-name -> `.N` value map (0 for terminals with no explicit
+    priority), used by both _check_priority_tiers and downstream
+    consumers such as gen_listings_lang.py. Raises if a regex terminal
+    has no _REGEX_OVERRIDES entry, if _REGEX_OVERRIDES has a stale
+    entry no longer used, or if _PRIORITY_TIERS is out of sync with
+    the file's real `.N` values."""
     meta = _load_meta_grammar()
     tree = meta.parse(path.read_text(encoding="utf-8"))
 
@@ -502,7 +506,7 @@ def parse_grammar(
     _check_priority_tiers(priorities)
 
     terminals += _EXTRA_TERMINALS
-    return productions, terminals
+    return productions, terminals, priorities
 
 
 _DISAMBIGUATION_INTRO = r"""
@@ -628,7 +632,7 @@ _END = r"""
 
 def main() -> None:
     grammar_path = Path(__file__).resolve().parent.parent / "grammar.lark"
-    productions, terminals = parse_grammar(grammar_path)
+    productions, terminals, _priorities = parse_grammar(grammar_path)
     parts = [
         _PREAMBLE,
         render_bnf_block(productions),
