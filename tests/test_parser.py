@@ -108,7 +108,7 @@ class TestCodeBlock:
         assert items[0].data == "code_block"
         indent_lines = [
             c for c in items[0].children
-            if isinstance(c, Token) and c.type == "INDENT"
+            if isinstance(c, Token) and c.type == "INDENTED_LINE"
         ]
         assert len(indent_lines) == 2
 
@@ -161,7 +161,7 @@ class TestClaim:
         claim = meaningful(body(tree))[0]
         indent_lines = [
             c for c in claim.children
-            if isinstance(c, Token) and c.type == "INDENT"
+            if isinstance(c, Token) and c.type == "INDENTED_LINE"
         ]
         assert len(indent_lines) == 3
 

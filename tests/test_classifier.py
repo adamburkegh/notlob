@@ -113,13 +113,13 @@ def test_blank_empty_line():
 
 def test_indent_leading_spaces():
     tree = parse("#T\n    result = x * y\n")
-    tok = _first_token_of_type(tree, "INDENT")
+    tok = _first_token_of_type(tree, "INDENTED_LINE")
     assert str(tok) == "    result = x * y"
 
 
 def test_indent_leading_tab():
     tree = parse("#T\n\treturn result\n")
-    _first_token_of_type(tree, "INDENT")
+    _first_token_of_type(tree, "INDENTED_LINE")
 
 
 def test_prose_unindented():

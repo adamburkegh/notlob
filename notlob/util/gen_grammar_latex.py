@@ -152,6 +152,7 @@ _TERMINAL_ESCAPES = {
     "#": r"\#",
     "~": r"\textasciitilde{}",
     "^": r"\textasciicircum{}",
+    "-": "{-}",   # prevent -- and --- ligatures (en/em dash)
 }
 
 
@@ -288,8 +289,7 @@ _PRIORITY_TIERS: dict[int, list[str]] = {
     20: ["SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
          "APPENDIX_HEAD"],
     10: ["MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL"],
-    9: ["LANGUAGE_DECL", "EXTERNAL_DECL", "ON_BUILD_DECL", "KEEP_SRC_DECL"],
-    8: ["INDENT", "BLANK", "BULLET"],
+    8: ["INDENTED_LINE", "BLANK", "BULLET"],
     5: ["REF"],
     1: ["LINE_START_TEXT", "PROSE_TEXT"],
 }
@@ -632,18 +632,58 @@ _END = r"""
 """.strip()
 
 
+def _render_figure(body: str, caption: str, label: str) -> str:
+    return (
+        "\\begin{figure}[t]\n"
+        "  \\centering\n"
+        "  \\grammarsize\n\n"
+        + body + "\n\n"
+        + f"\\caption{{{caption}}}\n"
+        + f"\\label{{{label}}}\n"
+        "\\end{figure}"
+    )
+
+
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser(
+        description="Generate a backnaur-flavoured LaTeX fragment for notlob's grammar."
+    )
+    ap.add_argument(
+        "--two-column", action="store_true",
+        help=(
+            "Emit two separate figure environments (productions and terminals) "
+            "for inclusion in a paper via \\input{}. "
+            "Default: emit a standalone LaTeX document for preview."
+        ),
+    )
+    args = ap.parse_args()
+
     grammar_path = Path(__file__).resolve().parent.parent / "grammar.lark"
     productions, terminals, _priorities = parse_grammar(grammar_path)
-    parts = [
-        _PREAMBLE,
-        render_bnf_block(productions),
-        _MIDDLE,
-        render_bnf_block(terminals),
-        _disambiguation(),
-        _END,
-    ]
-    print("\n\n".join(parts))
+
+    if args.two_column:
+        fig_productions = _render_figure(
+            render_bnf_block(productions),
+            caption="Notlob grammar -- Productions.",
+            label="fig:notlob_grammar_productions",
+        )
+        fig_terminals = _render_figure(
+            render_bnf_block(terminals),
+            caption="Notlob grammar -- Terminals.",
+            label="fig:notlob_grammar_terminals",
+        )
+        print(fig_productions + "\n\n" + fig_terminals)
+    else:
+        parts = [
+            _PREAMBLE,
+            render_bnf_block(productions),
+            _MIDDLE,
+            render_bnf_block(terminals),
+            _disambiguation(),
+            _END,
+        ]
+        print("\n\n".join(parts))
 
 
 if __name__ == "__main__":

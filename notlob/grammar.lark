@@ -52,24 +52,23 @@ _sub_item: code_block | claim | prose_block | bullet_block | BLANK
 
 // An indented block begins with an INDENT line and continues while
 // each subsequent line is INDENT or BLANK.
-code_block: INDENT _body_line*
+code_block: INDENTED_LINE _body_line*
 
 // A claim sigil followed by its indented body (at least one line).
 claim: SIGIL _body_line+
 
 // A prose block is one or more prose lines.  Each prose_line is a
-// sequence of plain-text fragments and inline refs, terminated by a
-// PROSE_NL sentinel.  Blank lines between paragraphs produce separate
-// prose_block nodes because BLANK is a body_item, not part of a
-// prose_line.
+// sequence of plain-text fragments and inline refs, terminated by
+// BLANK.  Blank lines between paragraphs produce separate prose_block
+// nodes because BLANK is a body_item, not part of a prose_line.
 prose_block: prose_line+
-prose_line:  (LINE_START_TEXT | PROSE_TEXT | REF)+ PROSE_NL
+prose_line:  (LINE_START_TEXT | PROSE_TEXT | REF)+ BLANK
 
 // A bullet block is one or more consecutive BULLET lines.  Bullets
 // must be flush-left (* item); indented bullets remain code (INDENT).
 bullet_block: BULLET+
 
-_body_line: INDENT | BLANK
+_body_line: INDENTED_LINE | BLANK
 
 // ── Post-text ───────────────────────────────────────────────
 
@@ -92,8 +91,8 @@ post_section: tests_section
 // trailing bare INDENT/BLANK line would merge into the preceding
 // named_test rather than standing on its own.
 tests_section:      TESTS_HEAD      (BLANK | test_item | prose_block)*
-test_item:          test_group | INDENT
-test_group:         SUBHEAD (INDENT | BLANK | prose_block | named_test)*
+test_item:          test_group | INDENTED_LINE
+test_group:         SUBHEAD (INDENTED_LINE | BLANK | prose_block | named_test)*
 
 // A named assertion within a #Tests group (`~test <name>`, followed
 // by one or more indented assertion lines). TEST_SIGIL is a terminal
@@ -101,17 +100,18 @@ test_group:         SUBHEAD (INDENT | BLANK | prose_block | named_test)*
 // illegal in the module body -- it only exists inside #Tests.
 named_test:         TEST_SIGIL _body_line+
 
-binding_section:    BINDING_HEAD    (LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL | KEEP_SRC_DECL | BLANK)*
-references_section: REFERENCES_HEAD (INDENT | BLANK)*
+binding_section:    BINDING_HEAD    (INDENT bind_detail_decl | BLANK)*
+bind_detail_decl:   LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL | KEEP_SRC_DECL
+references_section: REFERENCES_HEAD (INDENTED_LINE | BLANK)*
 appendix_section:   APPENDIX_HEAD   body_item*
 
 // ── Terminal definitions ────────────────────────────────────
 //
 // Every terminal consumes through its own trailing newline (so the
 // lexer's cursor is always at a true physical line-start when trying
-// the next token) EXCEPT the prose sub-tokens (LINE_START_TEXT,
-// PROSE_TEXT, REF), which build up a multi-span prose_line ending in a
-// separate PROSE_NL sentinel.
+// the next token). Prose sub-tokens (LINE_START_TEXT, PROSE_TEXT, REF)
+// are the exception: they build up a multi-span prose_line whose final
+// span ends with BLANK (which matches the trailing newline).
 //
 // Priorities: structural line-types are priority 20 (post-text
 // reserved heads and SEPARATOR — must outrank both the generic MOD_HEAD
@@ -124,17 +124,18 @@ appendix_section:   APPENDIX_HEAD   body_item*
 //
 // LINE_CHAR / REST_OF_LINE are helper terminals, not structural tokens
 // in their own right — they're referenced from other terminal
-// definitions below (Lark inlines them at compile time) purely to avoid
-// repeating "any character but newline, zero or more times" six times.
-// Because neither is ever referenced from a grammar *rule*, the lexer
-// never treats them as independently matchable tokens, so this carries
-// no priority or ambiguity implications of its own.
+// definitions below (Lark inlines them at compile time). REST_OF_LINE
+// captures zero or more non-newline characters plus the trailing "\n",
+// so every structural terminal that ends with REST_OF_LINE automatically
+// consumes through its own line terminator without a separate "\n"
+// literal. Because neither helper is ever referenced from a grammar
+// *rule*, the lexer never treats them as independently matchable tokens.
 
 LINE_CHAR: /[^\n]/
-REST_OF_LINE: LINE_CHAR*
+REST_OF_LINE: LINE_CHAR* "\n"
 
-MOD_HEAD.10: "#" /[^#\n]/ REST_OF_LINE "\n"
-SUBHEAD.10:  "##" REST_OF_LINE "\n"
+MOD_HEAD.10: "#" /[^#\n]/ REST_OF_LINE
+SUBHEAD.10:  "##" REST_OF_LINE
 
 // Closed vocabulary for body-level claims. `~test` is deliberately not
 // here — it's TEST_SIGIL below, a separate terminal only reachable from
@@ -143,34 +144,34 @@ SUBHEAD.10:  "##" REST_OF_LINE "\n"
 // `~word` outside this list simply fails to lex, since
 // PROSE_TEXT/LINE_START_TEXT exclude `~` at line-start; there is no
 // silent fallback.
-SIGIL.10: "~example\n" | "~run\n" | "~property\n" | "~property " REST_OF_LINE "\n"
+SIGIL.10: "~example\n" | "~run\n" | "~property\n" | "~property " REST_OF_LINE
 
 // ~test <name>: requires a name (unlike ~property, where the name is
 // optional) -- an unnamed ~test wouldn't do anything a bare assertion
 // line doesn't already do, so there's no bare `~test\n` form. LINE_CHAR+
 // (one or more), not REST_OF_LINE (zero or more), so "~test \n" with
 // no actual name fails to lex rather than silently matching.
-TEST_SIGIL.10: "~test " LINE_CHAR+ "\n"
+TEST_SIGIL.10: "~test " LINE_CHAR REST_OF_LINE
 
-// Typed declarations inside #Binding.  Priority 9 sits between INDENT.8
-// and the body-level structural terminals at 10 — high enough to win over
-// INDENT inside a binding_section context, low enough not to interfere
-// elsewhere (INDENT is still the right match for code-block lines in the
-// essay body and post-text sections other than #Binding).
-LANGUAGE_DECL.9:  /[ \t]+/ "~language "         LINE_CHAR+ "\n"
-EXTERNAL_DECL.9:  /[ \t]+/ "~external "         LINE_CHAR+ "\n"
-ON_BUILD_DECL.9:  /[ \t]+/ "~on-build "         LINE_CHAR+ "\n"
-KEEP_SRC_DECL.9:  /[ \t]+/ "~keep-generated-src" REST_OF_LINE "\n"
+// Typed declarations inside #Binding.  These terminals carry no explicit
+// priority because they are only reachable after INDENT inside
+// binding_section — the parser state eliminates all competing terminals
+// at that point, so no priority disambiguation is needed.
+LANGUAGE_DECL: "~language "         LINE_CHAR REST_OF_LINE
+EXTERNAL_DECL: "~external "         LINE_CHAR REST_OF_LINE
+ON_BUILD_DECL: "~on-build "         LINE_CHAR REST_OF_LINE
+KEEP_SRC_DECL: "~keep-generated-src" REST_OF_LINE
 
 SEPARATOR.20:        "---\n"
 TESTS_HEAD.20:       "#Tests\n"
 BINDING_HEAD.20:     "#Binding\n"
 REFERENCES_HEAD.20:  "#References\n"
-APPENDIX_HEAD.20:    "#Appendix:" REST_OF_LINE "\n"
+APPENDIX_HEAD.20:    "#Appendix:" REST_OF_LINE
 
-INDENT.8: /[ \t]/ REST_OF_LINE "\n"
+INDENT:        /[ \t]+/
+INDENTED_LINE.8: INDENT REST_OF_LINE
 BLANK.8:  "\n"
-BULLET.8: "*" (/[ \t]/ REST_OF_LINE)? "\n"
+BULLET.8: "*" ("\n" | /[ \t]/ REST_OF_LINE)
 
 // Inline cross-reference: #Label or ##Label mid-prose. Lookbehind
 // prevents matching # inside URLs or identifiers.
@@ -189,4 +190,3 @@ LINE_START_TEXT.1: /(?<=\n)(?:[^#~\n]|#(?!#?[A-Z])|~(?![a-z]))(?:[^#\n]|#(?!#?[A
 // ref-shaped, so REF gets a chance to match.
 PROSE_TEXT.1: /(?<!\n)(?:[^#\n]|#(?!#?[A-Z]))+/
 
-PROSE_NL: "\n"

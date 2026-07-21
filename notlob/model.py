@@ -85,7 +85,7 @@ class BulletBlock:
     """A flush-left bullet list block.
 
     Each item in *items* is the line text with the leading ``* ``
-    prefix stripped.  Indented bullet lines remain code (INDENT tokens).
+    prefix stripped.  Indented bullet lines remain code (INDENTED_LINE tokens).
     """
     items: list[str]
     start_line: int | None = None
@@ -125,7 +125,7 @@ class NamedTest:
 class TestGroup:
     """A named ## group within the #Tests section.
 
-    Items are bare assertion strings (INDENT/BLANK lines), ProseBlock
+    Items are bare assertion strings (INDENTED_LINE/BLANK lines), ProseBlock
     commentary, or NamedTest blocks, freely intermixed in source order.
     *line_offsets* maps a bare string's index in *items* to its source
     line -- needed because bare lines are no longer guaranteed to be
@@ -143,7 +143,7 @@ class TestGroup:
 class TestsSection:
     """The #Tests post-text section.
 
-    Items are named TestGroups, bare assertion strings (INDENT lines
+    Items are named TestGroups, bare assertion strings (INDENTED_LINE lines
     outside any ## group), or ProseBlock commentary -- freely
     intermixed, same as TestGroup's own items.
     """
@@ -287,7 +287,7 @@ def _claim(node: Tree) -> Claim:
 
 def _prose_block(node: Tree) -> ProseBlock:
     # node.children are prose_line Trees.  Flatten their tokens into a
-    # single span list, converting PROSE_NL sentinels to "\n" string
+    # single span list, converting line-terminating BLANK tokens to "\n" string
     # spans at each line boundary (but not after the final line).
     # Preserving line structure matters for renderers (weave, LLM
     # context) that need accurate source text; consumers that only
@@ -297,7 +297,7 @@ def _prose_block(node: Tree) -> ProseBlock:
     for i, line_node in enumerate(lines):
         last_line = (i == len(lines) - 1)
         for tok in line_node.children:
-            if tok.type == "PROSE_NL":
+            if tok.type == "BLANK":
                 if not last_line:
                     spans.append("\n")      # line boundary within block
             elif tok.type == "REF":
@@ -354,7 +354,7 @@ def _tests_section(node: Tree) -> TestsSection:
             continue
         # child is a test_item Tree
         inner = child.children[0]
-        if isinstance(inner, Token):   # bare INDENT assertion
+        if isinstance(inner, Token):   # bare INDENTED_LINE assertion
             ln = getattr(inner, "line", None)
             if ln is not None:
                 line_offsets[len(items)] = ln
@@ -373,7 +373,7 @@ def _test_group(node: Tree) -> TestGroup:
     items: list[Union[str, ProseBlock, NamedTest]] = []
     line_offsets: dict[int, int] = {}
     for child in node.children[1:]:
-        if isinstance(child, Token):           # INDENT or BLANK
+        if isinstance(child, Token):           # INDENTED_LINE or BLANK
             ln = getattr(child, "line", None)
             if ln is not None:
                 line_offsets[len(items)] = ln
@@ -409,17 +409,18 @@ def _binding_section(node: Tree) -> BindingSection:
     externals: list[str] = []
     on_build           = None
     keep_generated_src = None
-    for child in node.children[1:]:   # skip BINDING_HEAD
-        if not isinstance(child, Token):
+    for child in node.children[1:]:   # skip BINDING_HEAD; INDENT and BLANK skipped below
+        if not isinstance(child, Tree) or child.data != 'bind_detail_decl':
             continue
-        raw = str(child).strip()
-        if child.type == 'LANGUAGE_DECL':
+        decl = child.children[0]
+        raw  = str(decl).strip()
+        if decl.type == 'LANGUAGE_DECL':
             language = raw.removeprefix('~language ').strip()
-        elif child.type == 'EXTERNAL_DECL':
+        elif decl.type == 'EXTERNAL_DECL':
             externals.append(raw.removeprefix('~external ').strip())
-        elif child.type == 'ON_BUILD_DECL':
+        elif decl.type == 'ON_BUILD_DECL':
             on_build = raw.removeprefix('~on-build ').strip()
-        elif child.type == 'KEEP_SRC_DECL':
+        elif decl.type == 'KEEP_SRC_DECL':
             keep_generated_src = raw.removeprefix('~keep-generated-src').strip() or None
     return BindingSection(
         language=language,
