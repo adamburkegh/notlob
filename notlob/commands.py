@@ -634,6 +634,7 @@ def _render_package_json(project_slug: str) -> str:
         "name": project_slug,
         "private": True,
         "devDependencies": {
+            "fast-check": "^3.0.0",
             "tsx": "^4.0.0",
             "typescript": "^5.4.0",
         },

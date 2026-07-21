@@ -37,6 +37,7 @@ interpreter.
 python -m venv notlobenv                  create venv (if missing)
 notlobenv/Scripts/pip install -e .        install in editable mode
 notlobenv/Scripts/pytest                  run the full test suite
+npm install                               install TypeScript toolchain (tsx, tsc, fast-check)
 ```
 
 ## Conventions
