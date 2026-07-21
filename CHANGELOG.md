@@ -3,14 +3,8 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
-Entries begin at 0.5.0 — this file didn't exist before. For earlier
-history, see `git log`. One known quirk worth recording: the `v0.4.0`
-git tag (2026-06-03) was cut without bumping `pyproject.toml`'s version
-field, which still read `0.3.1` at that commit. The tag is already
-public, so it hasn't been rewritten; this file starts clean from the
-version where the file and the tag are back in sync.
 
-## [Unreleased]
+## [0.5.1] - 2026-07-21
 
 ### Added
 - `notlob --version`.
@@ -89,3 +83,15 @@ version where the file and the tag are back in sync.
   tests added.
 - Shared assembler and source-map code deduplicated across all three
   language bindings.
+
+
+## Pre-0.5.0 Historical Note
+
+Entries begin at 0.5.0 — this file didn't exist before. For earlier
+history, see `git log`. One known quirk worth recording: the `v0.4.0`
+git tag (2026-06-03) was cut without bumping `pyproject.toml`'s version
+field, which still read `0.3.1` at that commit. The tag is already
+public, so it hasn't been rewritten; this file starts clean from the
+version where the file and the tag are back in sync.
+
+
