@@ -17,7 +17,7 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 - `~property-testing` and `~unit-testing` sigils in `binding.lob` are
   no longer recognised. Projects using them must remove those lines.
   They were never part of the grammar; this formalises what the grammar
-  already implied.
+  already implied. Breaking change for projects using these sigils.
 
 
 ## [0.5.1] - 2026-07-21
