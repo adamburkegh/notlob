@@ -7,5 +7,3 @@ editions of classic works, using Project Gutenberg sources.
 
 #Binding
     ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest

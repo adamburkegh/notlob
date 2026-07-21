@@ -457,22 +457,13 @@ class TestRunPropertiesIntegration:
         assert len(results) == 1
         assert results[0].status == Status.SKIP
 
-    def test_skip_without_quickcheck_binding(self):
-        prop = _property_claim(
-            "~property",
-            ["prop_id :: Int -> Bool", "prop_id x = x == x"],
-        )
-        m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding={"property-testing": "hypothesis"})
-        assert results[0].status == Status.SKIP
-
     def test_passing_property(self):
         prop = _property_claim(
             "~property",
             ["prop_id :: Int -> Bool", "prop_id x = x == x"],
         )
         m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding={"property-testing": "quickcheck"})
+        results = run_properties(m)
         assert len(results) == 1
         assert results[0].status == Status.PASS
 
@@ -483,7 +474,7 @@ class TestRunPropertiesIntegration:
             ["prop_bad :: Int -> Bool", "prop_bad _ = False"],
         )
         m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding={"property-testing": "quickcheck"})
+        results = run_properties(m)
         assert results[0].status == Status.FAIL
 
     def test_named_property_address(self):
@@ -493,7 +484,7 @@ class TestRunPropertiesIntegration:
              "prop_comm a b = a + b == b + a"],
         )
         m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding={"property-testing": "quickcheck"})
+        results = run_properties(m)
         assert results[0].address == "test/module#commutativity"
 
     def test_unnamed_property_address(self):
@@ -502,10 +493,9 @@ class TestRunPropertiesIntegration:
             ["prop_id :: Int -> Bool", "prop_id x = x == x"],
         )
         m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding={"property-testing": "quickcheck"})
+        results = run_properties(m)
         assert results[0].address == "test/module#property#1"
 
     def test_no_properties_returns_empty(self):
         m = _module("Test Module", body=[_code("f x = x")])
-        results = run_properties(m, binding={"property-testing": "quickcheck"})
-        assert results == []
+        assert run_properties(m) == []

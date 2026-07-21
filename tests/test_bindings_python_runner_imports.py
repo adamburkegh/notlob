@@ -15,8 +15,7 @@ from notlob.bindings.python.runner import Status, run_examples, run_properties, 
 
 # ── Helpers ───────────────────────────────────────────────────
 
-_BINDING = "#Proj\n\n---\n\n#Binding\n    ~language python\n    ~property-testing hypothesis\n    ~unit-testing pytest\n"
-_BINDING_DECLS = {"property-testing": "hypothesis", "unit-testing": "pytest"}
+_BINDING = "#Proj\n\n---\n\n#Binding\n    ~language python\n"
 
 
 def _write(tmp_path: Path, name: str, content: str) -> Path:
@@ -132,7 +131,6 @@ class TestRunPropertiesWithCache:
         )
         results = run_properties(
             _module(src),
-            binding=_BINDING_DECLS,
             cache=cache,
         )
         assert len(results) == 1

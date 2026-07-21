@@ -30,28 +30,6 @@ from .graph import (
 from .model import Module, ReferencesSection
 
 
-def _parse_binding_lines(lines: list[str]) -> dict:
-    """Extract ``~sigil value`` declarations from a ``#Binding`` section.
-
-    Most sigils are single-valued and stored as ``str``.  ``~external``
-    may appear multiple times and is stored as ``list[str]``.
-    """
-    result: dict = {}
-    externals: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("~"):
-            parts = stripped[1:].split(None, 1)
-            key   = parts[0]
-            value = parts[1].strip() if len(parts) > 1 else ""
-            if key == "external":
-                externals.append(value)
-            else:
-                result[key] = value
-    if externals:
-        result["external"] = externals
-    return result
-
 
 def find_project_root(path: Path) -> Path | None:
     """Walk up from *path* to find the nearest ``binding.lob``.
@@ -280,15 +258,17 @@ def _add_external_nodes(graph: NameGraph, root: Path) -> None:
     except Exception:
         return
 
-    declarations: dict = {}
+    binding_section: BindingSection | None = None
     if bmod.post_text:
         for section in bmod.post_text.sections:
             if isinstance(section, BindingSection):
-                declarations = _parse_binding_lines(section.lines)
+                binding_section = section
                 break
 
-    external_files: list[str] = list(declarations.get("external", []))
-    on_build = declarations.get("on-build")
+    external_files: list[str] = list(
+        binding_section.externals if binding_section else []
+    )
+    on_build = binding_section.on_build if binding_section else None
     if on_build:
         external_files.append(on_build)
 

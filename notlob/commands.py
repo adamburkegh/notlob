@@ -38,7 +38,6 @@ from notlob.bindings.python.loader import ModuleCache
 from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (
-    _parse_binding_lines,
     address_from_path,
     build_package,
     find_project_root, module_lob_refs, resolve_module_path,
@@ -71,13 +70,21 @@ def _get_binding_kit(language: str | None):
 
 # ── Binding resolution ────────────────────────────────────────
 
-def _parse_binding_declarations(lines: list[str]) -> dict:
-    """Extract ~sigil declarations from a #Binding section's lines.
-
-    Delegates to :func:`notlob.project._parse_binding_lines` — kept
-    here as the public name used by the rest of this module.
+def _binding_to_dict(section: BindingSection) -> dict:
+    """Convert a typed BindingSection to the string dict used throughout
+    this module.  Keys match the old ~sigil names so all call sites that
+    read ``binding.get("language")`` etc. continue to work unchanged.
     """
-    return _parse_binding_lines(lines)
+    result: dict = {}
+    if section.language is not None:
+        result['language'] = section.language
+    if section.externals:
+        result['external'] = section.externals
+    if section.on_build is not None:
+        result['on-build'] = section.on_build
+    if section.keep_generated_src is not None:
+        result['keep-generated-src'] = section.keep_generated_src
+    return result
 
 
 def _find_binding(file_path: Path) -> dict[str, str]:
@@ -92,7 +99,7 @@ def _find_binding(file_path: Path) -> dict[str, str]:
         if bmod.post_text:
             for section in bmod.post_text.sections:
                 if isinstance(section, BindingSection):
-                    return _parse_binding_declarations(section.lines)
+                    return _binding_to_dict(section)
     except Exception:
         pass
     return {}

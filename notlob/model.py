@@ -19,7 +19,7 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Union
 
 from lark import Token, Tree
@@ -153,8 +153,17 @@ class TestsSection:
 
 @dataclass
 class BindingSection:
-    """The #Binding post-text section."""
-    lines: list[str]
+    """The #Binding post-text section.
+
+    Each declaration is a typed field; ``~language`` is required in
+    practice (enforced at the grammar level — the lexer rejects unknown
+    ``~sigil`` lines inside ``#Binding``).  ``externals`` is a list
+    because ``~external`` may appear more than once.
+    """
+    language:           str | None  = None
+    externals:          list[str]   = field(default_factory=list)
+    on_build:           str | None  = None
+    keep_generated_src: str | None  = None
 
 
 @dataclass
@@ -396,8 +405,27 @@ def _named_test(node: Tree) -> NamedTest:
 
 
 def _binding_section(node: Tree) -> BindingSection:
+    language           = None
+    externals: list[str] = []
+    on_build           = None
+    keep_generated_src = None
+    for child in node.children[1:]:   # skip BINDING_HEAD
+        if not isinstance(child, Token):
+            continue
+        raw = str(child).strip()
+        if child.type == 'LANGUAGE_DECL':
+            language = raw.removeprefix('~language ').strip()
+        elif child.type == 'EXTERNAL_DECL':
+            externals.append(raw.removeprefix('~external ').strip())
+        elif child.type == 'ON_BUILD_DECL':
+            on_build = raw.removeprefix('~on-build ').strip()
+        elif child.type == 'KEEP_SRC_DECL':
+            keep_generated_src = raw.removeprefix('~keep-generated-src').strip() or None
     return BindingSection(
-        lines=[str(c) for c in node.children[1:]]
+        language=language,
+        externals=externals,
+        on_build=on_build,
+        keep_generated_src=keep_generated_src,
     )
 
 

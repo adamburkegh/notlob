@@ -3,11 +3,30 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.2] - 2026-07-21
+
+### Changed
+- `#Binding` declarations (`~language`, `~external`, `~on-build`,
+  `~keep-generated-src`) are now first-class grammar terminals.
+  Unknown declarations inside `#Binding` are now parse errors rather
+  than silently ignored lines.
+- hypothesis (Python) and QuickCheck (Haskell) are now implicit in
+  their binding toolchains — no declaration is needed beyond
+  `~language python` or `~language haskell`.
+### Removed
+- `~property-testing` and `~unit-testing` sigils in `binding.lob` are
+  no longer recognised. Projects using them must remove those lines.
+  They were never part of the grammar; this formalises what the grammar
+  already implied.
+
 
 ## [0.5.1] - 2026-07-21
 
 ### Added
 - `notlob --version`.
+- `notlob init` starter template now includes `~property`, `~example`,
+  `#Tests`, and `#References` stubs with guiding prose, to set
+  expectations for the richness of language from the start.
 - `~test <name>` sigil for naming individual assertions within a
   `#Tests` `##group`, addressed the same way as a named `~property`
   claim (one address per block, not a per-line ordinal). Fully

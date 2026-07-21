@@ -7,5 +7,3 @@ how strategies transform them, and how strategies compose.
 
 #Binding
     ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest

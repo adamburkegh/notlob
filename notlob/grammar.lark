@@ -101,7 +101,7 @@ test_group:         SUBHEAD (INDENT | BLANK | prose_block | named_test)*
 // illegal in the module body -- it only exists inside #Tests.
 named_test:         TEST_SIGIL _body_line+
 
-binding_section:    BINDING_HEAD    (INDENT | BLANK)*
+binding_section:    BINDING_HEAD    (LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL | KEEP_SRC_DECL | BLANK)*
 references_section: REFERENCES_HEAD (INDENT | BLANK)*
 appendix_section:   APPENDIX_HEAD   body_item*
 
@@ -151,6 +151,16 @@ SIGIL.10: "~example\n" | "~run\n" | "~property\n" | "~property " REST_OF_LINE "\
 // (one or more), not REST_OF_LINE (zero or more), so "~test \n" with
 // no actual name fails to lex rather than silently matching.
 TEST_SIGIL.10: "~test " LINE_CHAR+ "\n"
+
+// Typed declarations inside #Binding.  Priority 9 sits between INDENT.8
+// and the body-level structural terminals at 10 — high enough to win over
+// INDENT inside a binding_section context, low enough not to interfere
+// elsewhere (INDENT is still the right match for code-block lines in the
+// essay body and post-text sections other than #Binding).
+LANGUAGE_DECL.9:  /[ \t]+/ "~language "         LINE_CHAR+ "\n"
+EXTERNAL_DECL.9:  /[ \t]+/ "~external "         LINE_CHAR+ "\n"
+ON_BUILD_DECL.9:  /[ \t]+/ "~on-build "         LINE_CHAR+ "\n"
+KEEP_SRC_DECL.9:  /[ \t]+/ "~keep-generated-src" REST_OF_LINE "\n"
 
 SEPARATOR.20:        "---\n"
 TESTS_HEAD.20:       "#Tests\n"

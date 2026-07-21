@@ -212,7 +212,7 @@ class TestPostText:
         )
         section = m.post_text.sections[0]
         assert isinstance(section, BindingSection)
-        assert "    ~language python" in section.lines
+        assert section.language == "python"
 
     def test_tests_section_groups(self):
         src = (
@@ -283,10 +283,7 @@ class TestExampleFiles:
             if isinstance(s, BindingSection)
         ]
         assert len(bindings) == 1
-        combined = "\n".join(bindings[0].lines)
-        assert "python" in combined
-        assert "hypothesis" in combined
-        assert "pytest" in combined
+        assert bindings[0].language == "python"
 
 
 # ── BulletBlock ──────────────────────────────────────────────

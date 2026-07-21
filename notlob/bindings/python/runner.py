@@ -30,8 +30,7 @@ from pathlib import Path
 from typing import Any
 
 # _HYPOTHESIS_NS is built lazily on first use; see _build_property_ns.
-# Keeping the import out of module scope means projects that do not
-# declare ~property-testing hypothesis need not have hypothesis installed.
+# Projects need not have hypothesis explicitly installed.
 
 # Names injected into #Tests assertion namespaces when binding declares
 # ~unit-testing pytest.  Probably anemic; likely to grow as usage
@@ -57,50 +56,39 @@ from notlob.bindings.python.assemble import assemble
 from notlob.project import module_lob_refs
 
 
-def _build_property_ns(binding: dict | None) -> dict:
-    """Return the namespace to inject into ~property claim contexts.
+def _build_property_ns() -> dict:
+    """Return the hypothesis namespace injected into ~property claim contexts.
 
-    Driven by the ``property-testing`` key in *binding*.  Currently
-    only ``hypothesis`` is supported.
-
-    hypothesis is imported lazily here so that projects which do not
-    declare ``~property-testing hypothesis`` need not have hypothesis
-    installed.
+    Returns an empty dict if hypothesis is not
+    installed so that a missing install surfaces as a NameError at claim
+    time rather than an import error at startup.
     """
-    if binding is None:
+    try:
+        import hypothesis as _hyp
+        import hypothesis.strategies as _st
+    except ImportError:
         return {}
-    if binding.get("property-testing") == "hypothesis":
-        try:
-            import hypothesis as _hyp
-            import hypothesis.strategies as _st
-        except ImportError:
-            return {}
-        return {
-            "given":       _hyp.given,
-            "settings":    _hyp.settings,
-            "assume":      _hyp.assume,
-            "note":        _hyp.note,
-            "target":      _hyp.target,
-            "HealthCheck": _hyp.HealthCheck,
-            "Phase":       _hyp.Phase,
-            "Verbosity":   _hyp.Verbosity,
-            "st":          _st,
-            "strategies":  _st,
-        }
-    return {}
+    return {
+        "given":       _hyp.given,
+        "settings":    _hyp.settings,
+        "assume":      _hyp.assume,
+        "note":        _hyp.note,
+        "target":      _hyp.target,
+        "HealthCheck": _hyp.HealthCheck,
+        "Phase":       _hyp.Phase,
+        "Verbosity":   _hyp.Verbosity,
+        "st":          _st,
+        "strategies":  _st,
+    }
 
 
-def _build_test_ns(binding: dict | None) -> dict:
-    """Return the namespace to inject into #Tests assertion contexts.
+def _build_test_ns() -> dict:
+    """Return the pytest namespace injected into #Tests assertion contexts.
 
-    Driven by the ``unit-testing`` key in *binding*.  Currently only
-    ``pytest`` is supported.
+    pytest is part of the Python binding toolchain — always injected,
+    no declaration needed.
     """
-    if binding is None:
-        return {}
-    if binding.get("unit-testing") == "pytest":
-        return dict(_PYTEST_NS)
-    return {}
+    return dict(_PYTEST_NS)
 
 
 def run_examples(
@@ -213,7 +201,7 @@ def run_tests(
             error=exc,
         )]
 
-    ns.update(_build_test_ns(binding))
+    ns.update(_build_test_ns())
 
     fp = str(file_path) if file_path else None
     line_offsets = tests_section.line_offsets or {}
@@ -348,7 +336,7 @@ def run_properties(
             error=exc,
         )]
 
-    inject_ns = _build_property_ns(binding)
+    inject_ns = _build_property_ns()
     results: list[ClaimResult] = []
 
     _run_props_in(

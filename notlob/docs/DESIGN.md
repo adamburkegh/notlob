@@ -631,6 +631,27 @@ cross-references become `@label` citations.  Typst is preferred over
 direct LaTeX generation because the notlob `#` syntax conflicts with
 LaTeX comment characters.
 
+**Multi-language projects and scoped bindings.** Today `binding.lob`
+declares a single `~language` that applies to the whole project.  The
+natural extension is `~language` as a sigil at section or code-block
+level, overriding the project default for that scope — a `##` subheading
+could declare `~language typescript` and have its code blocks dispatched
+to the TypeScript runner while the rest of the file runs Python.  This
+keeps single-language projects unchanged and makes full-stack
+colocations expressible without a new file format or filesystem
+discovery mechanism.  The grammar already distinguishes sigils by
+position; the binding could follow the same scope hierarchy the
+name-graph already tracks.  How full-stack projects will naturally
+organise themselves — colocated concepts in one file, or separate
+subtrees — is an open question best answered by real usage before the
+binding discovery mechanism is extended.
+
+A companion change is a plugin-style binding registry (Python entry
+points under `"notlob.bindings"`) so third parties can define bindings
+for other languages without modifying notlob itself, and `~language` at
+the grammar level becomes a validated terminal rather than a free-form
+string parsed by convention.
+
 **Tree-sitter grammar.** A `grammar.js` living in this repository
 (not a separate package — `grammar.js` *is* the canonical notlob
 grammar, not a reimplementation of one).  The primary motivation is

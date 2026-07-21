@@ -34,11 +34,11 @@ as a single ERROR result with line ``"<compile>"``.
 
 Property testing
 ----------------
-``run_properties`` requires ``~property-testing quickcheck`` in
-``binding.lob``.  Without this declaration every ~property claim
-receives ``Status.SKIP``.  With it, each claim is run in its own
-subprocess with ``Test.QuickCheck`` loaded.  The property function
-named in the claim block is found via :func:`extract_symbols`.
+``run_properties`` runs each ~property claim in its own subprocess
+with ``Test.QuickCheck`` loaded.  QuickCheck is part of the Haskell
+binding toolchain — no declaration in ``binding.lob`` is needed.
+The property function named in the claim block is found via
+:func:`extract_symbols`.
 
 Limitations (v1)
 ----------------
@@ -664,9 +664,6 @@ def run_properties(
 ) -> list[ClaimResult]:
     """Run all ~property claims in *module* and return results.
 
-    Requires ``~property-testing quickcheck`` in ``binding.lob``.
-    Without this declaration every ~property claim yields SKIP.
-
     Each claim block is run in its own subprocess.  The property
     function name is extracted from the claim lines using the Haskell
     symbol extractor; the first function found in the block is used.
@@ -677,11 +674,6 @@ def run_properties(
     If *keep_dir* is set each property harness is written there as
     ``_prop_<name>.hs`` before execution.
     """
-    use_qc = (
-        binding is not None
-        and binding.get("property-testing") == "quickcheck"
-    )
-
     mod_addr    = module_address(module.title)
     dep_modules = _load_dep_modules(module, file_path)
     results: list[ClaimResult] = []
@@ -702,16 +694,6 @@ def run_properties(
                 addr = claim_address(containing_addr, "property", prop_n)
 
             sl = item.start_line
-
-            if not use_qc:
-                results.append(ClaimResult(
-                    address=addr,
-                    line=item.sigil,
-                    status=Status.SKIP,
-                    source_line=sl,
-                    file_path=str(file_path) if file_path else None,
-                ))
-                continue
 
             syms = extract_symbols(item.lines)
             if not syms:

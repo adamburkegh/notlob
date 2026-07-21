@@ -7,5 +7,3 @@ as Roman strings and decoding them back.
 
 #Binding
     ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest

@@ -247,6 +247,7 @@ _REGEX_OVERRIDES: dict[str, Node] = {
     r"[^\n]": D("any character other than newline"),
     r"[^#\n]": NT("NonHashLineChar"),
     r"[ \t]": Or(NT("Space"), NT("Tab")),
+    r"[ \t]+": RepPlus(Or(NT("Space"), NT("Tab"))),
     # REF -- deliberately omits the "not preceded by a word char or /"
     # lookbehind from the formal grammar; that constraint is prose-only
     # (see _DISAMBIGUATION), not expressible with EBNF's own operators.
@@ -287,6 +288,7 @@ _PRIORITY_TIERS: dict[int, list[str]] = {
     20: ["SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
          "APPENDIX_HEAD"],
     10: ["MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL"],
+    9: ["LANGUAGE_DECL", "EXTERNAL_DECL", "ON_BUILD_DECL", "KEEP_SRC_DECL"],
     8: ["INDENT", "BLANK", "BULLET"],
     5: ["REF"],
     1: ["LINE_START_TEXT", "PROSE_TEXT"],
