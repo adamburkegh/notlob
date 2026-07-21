@@ -1,13 +1,15 @@
 """Tests for notlob.commands binding resolution.
 
-Covers _find_binding and the typed BindingSection model.
+Covers _find_binding, the typed BindingSection model, and the binding
+registry (_get_binding_kit).
 """
 
 from pathlib import Path
 
 import pytest
 
-from notlob.commands import _find_binding
+from notlob.bindings import BindingKit
+from notlob.commands import _find_binding, _get_binding_kit
 
 
 # ── _find_binding ─────────────────────────────────────────────
@@ -142,3 +144,28 @@ class TestFindBinding:
             pytest.skip("retail example not present")
         result = _find_binding(discounts)
         assert result.get("language") == "python"
+
+
+# ── Binding registry (_get_binding_kit) ──────────────────────
+
+class TestGetBindingKit:
+    def test_none_returns_python(self):
+        kit, extract = _get_binding_kit(None)
+        assert isinstance(kit, BindingKit)
+        assert callable(extract)
+
+    def test_python_explicit(self):
+        kit, extract = _get_binding_kit("python")
+        assert kit.extension == "py"
+
+    def test_haskell(self):
+        kit, extract = _get_binding_kit("haskell")
+        assert kit.extension == "hs"
+
+    def test_typescript(self):
+        kit, extract = _get_binding_kit("typescript")
+        assert kit.extension == "ts"
+
+    def test_unknown_language_raises(self):
+        with pytest.raises(ValueError, match="no binding registered"):
+            _get_binding_kit("cobol")

@@ -98,13 +98,27 @@ Assembler = Callable[[Module], str]
 
 @dataclass
 class BindingKit:
-    """A composed set of language-specific tooling callables.
+    """The extension contract for a notlob language binding.
 
+    A binding is a Python package (or module) that exposes a ``kit``
+    instance of this class and an ``extract_symbols`` callable.  It is
+    registered under the ``"notlob.bindings"`` entry-point group, keyed
+    by the language identifier that appears in ``~language`` declarations:
+
+        [project.entry-points."notlob.bindings"]
+        rust = "my_notlob_rust_binding"
+
+    The three built-in bindings (``python``, ``haskell``,
+    ``typescript``) are registered the same way in notlob's own
+    ``pyproject.toml``.
+
+    Fields
+    ------
     extract_symbols  Symbol extraction: code lines → names.
     assemble         Code assembly: Module → executable string.
     run_examples     (module, *, file_path=None) -> list[ClaimResult]
-    run_properties   (module, *, binding=None, file_path=None) -> list[ClaimResult]
-    run_tests        (module, *, binding=None, file_path=None) -> list[ClaimResult]
+    run_properties   (module, *, file_path=None) -> list[ClaimResult]
+    run_tests        (module, *, file_path=None) -> list[ClaimResult]
     lint             (module, *, root=None) -> list[LintResult], or None
                      when the binding does not support static analysis.
     extension        File extension for build artifacts (e.g. ``"py"``,

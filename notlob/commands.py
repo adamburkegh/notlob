@@ -24,6 +24,8 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+from functools import lru_cache
+from importlib.metadata import entry_points
 from pathlib import Path
 
 from notlob import (
@@ -33,7 +35,6 @@ from notlob import (
 from notlob.bindings import (
     ClaimResult, LintResult, LintToolUnavailable, Status,
 )
-from notlob.bindings.python import extract_symbols as _py_extract, kit as _py_kit
 from notlob.bindings.python.loader import ModuleCache
 from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
@@ -46,26 +47,36 @@ from notlob.project import (
 
 # ── Language dispatch ─────────────────────────────────────────
 
+@lru_cache(maxsize=None)
+def _load_binding_kit(name: str):
+    """Load ``(kit, extract_symbols)`` for *name* from the binding registry.
+
+    Bindings are discovered via Python entry points in the
+    ``"notlob.bindings"`` group.  Third-party packages register a
+    binding by declaring an entry point whose name is the language
+    identifier (e.g. ``"rust"``) and whose value is a module that
+    exposes a ``kit: BindingKit`` and an ``extract_symbols`` callable.
+    The three built-in bindings (``python``, ``haskell``,
+    ``typescript``) are registered the same way in ``pyproject.toml``.
+    """
+    eps = {ep.name: ep for ep in entry_points(group="notlob.bindings")}
+    if name not in eps:
+        available = sorted(eps)
+        raise ValueError(
+            f"no binding registered for language {name!r} -- "
+            f"available: {available}"
+        )
+    mod = eps[name].load()
+    return mod.kit, mod.extract_symbols
+
+
 def _get_binding_kit(language: str | None):
     """Return ``(kit, extract_symbols)`` for the given language name.
 
-    Defaults to the Python kit for ``None`` or unrecognised languages.
-    Adding a new language binding requires only a new branch here.
+    ``None`` (no ``~language`` declared) defaults to Python.
+    Unknown language names raise ``ValueError``.
     """
-    if language == "haskell":
-        from notlob.bindings.haskell import (   # lazy: avoids import if unused
-            kit as _hs_kit,
-            extract_symbols as _hs_extract,
-        )
-        return _hs_kit, _hs_extract
-    if language == "typescript":
-        from notlob.bindings.typescript import (
-            kit as _ts_kit,
-            extract_symbols as _ts_extract,
-        )
-        return _ts_kit, _ts_extract
-    # default — python
-    return _py_kit, _py_extract
+    return _load_binding_kit(language or "python")
 
 
 # ── Binding resolution ────────────────────────────────────────
@@ -331,7 +342,7 @@ def cmd_run(
         print(f"ERROR  <address>  {addr_err}", file=sys.stderr)
         return 1
 
-    py_kit = _py_kit
+    py_kit, _ = _get_binding_kit(language)
     cache = ModuleCache(root) if root else None
     ns: dict = {"__file__": str(path.resolve())}
     old_argv = sys.argv

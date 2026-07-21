@@ -375,6 +375,24 @@ linter, and supported claims — the binding is the unit that determines
 how a language is realized, so it documents itself there rather than in
 the language reference.
 
+**Binding registry.** Bindings are discovered at runtime via Python
+entry points under the `"notlob.bindings"` group.  The entry-point name
+is the language identifier that appears in `~language` declarations; the
+value is a module exposing `kit: BindingKit` and `extract_symbols`.  The
+three built-in bindings are registered in notlob's own `pyproject.toml`
+using the same mechanism a third-party binding would use:
+
+```toml
+[project.entry-points."notlob.bindings"]
+python     = "notlob.bindings.python"
+haskell    = "notlob.bindings.haskell"
+typescript = "notlob.bindings.typescript"
+```
+
+An unknown `~language` value is an error at command invocation time, not
+at parse time — the grammar accepts any string; the registry rejects
+unregistered names when the binding kit is actually loaded.
+
 `BindingKit` is a dataclass that composes callables — one per tooling
 concern — so the name-graph and claim runner can ask for exactly the
 capability they need without coupling to a particular language:
@@ -644,13 +662,9 @@ position; the binding could follow the same scope hierarchy the
 name-graph already tracks.  How full-stack projects will naturally
 organise themselves — colocated concepts in one file, or separate
 subtrees — is an open question best answered by real usage before the
-binding discovery mechanism is extended.
-
-A companion change is a plugin-style binding registry (Python entry
-points under `"notlob.bindings"`) so third parties can define bindings
-for other languages without modifying notlob itself, and `~language` at
-the grammar level becomes a validated terminal rather than a free-form
-string parsed by convention.
+scoped-binding dispatch is extended.  (The registry that makes
+third-party bindings possible is already implemented; see the Binding
+registry section above.)
 
 **Tree-sitter grammar.** A `grammar.js` living in this repository
 (not a separate package — `grammar.js` *is* the canonical notlob

@@ -11,6 +11,11 @@ dev = ["jsonschema>=4"]
 notlob = "notlob.cli:main"
 lob    = "notlob.cli:lob_main"
 
+[project.entry-points."notlob.bindings"]
+python     = "notlob.bindings.python"
+haskell    = "notlob.bindings.haskell"
+typescript = "notlob.bindings.typescript"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["notlob*"]
