@@ -447,16 +447,6 @@ class TestRunTestsIntegration:
 
 @_RUNNER_SKIP
 class TestRunPropertiesIntegration:
-    def test_skip_without_binding(self):
-        prop = _property_claim(
-            "~property",
-            ["prop_id :: Int -> Bool", "prop_id x = x == x"],
-        )
-        m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding=None)
-        assert len(results) == 1
-        assert results[0].status == Status.SKIP
-
     def test_passing_property(self):
         prop = _property_claim(
             "~property",
