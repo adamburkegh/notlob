@@ -73,7 +73,7 @@ address does not match its file path, before running any claims.
 
 **`---` as post-text boundary.** Everything after `---` is post-text. The
 compiler treats `#Tests`, `#Binding`, and `#References` as reserved
-headings with special behaviour. `#Appendix:` is available as an open
+headings with special behaviour. `#Appendix` is available as an open
 extension point for domain-specific appendices.
 
 **Claims as a distinct layer.** Claims (`~example`, `~property`, `~proof`)

@@ -242,7 +242,7 @@ class TestAppendixRefs:
             "##Decoding\n"
             "    code\n"
             "---\n"
-            "#Appendix: Notes\n"
+            "#Appendix Notes\n"
             "See #Decoding above.\n"
         )
         g, m = _graph(src)
@@ -252,7 +252,7 @@ class TestAppendixRefs:
         src = (
             "#T\n"
             "---\n"
-            "#Appendix: Notes\n"
+            "#Appendix Notes\n"
             "See #Unknown here.\n"
         )
         g, m = _graph(src)

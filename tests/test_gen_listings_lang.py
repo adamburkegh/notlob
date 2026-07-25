@@ -36,7 +36,7 @@ class TestExtractKeywords:
         }
 
     def test_hash_prefixed_heads_excluded(self):
-        # Regression: #Tests/#Binding/#References/#Appendix: used to be
+        # Regression: #Tests/#Binding/#References/#Appendix used to be
         # included, but "#" cannot be reliably used in a `literate`
         # pattern in this listings version (confirmed via real pdflatex
         # compiles -- see module docstring). Excluding them at the
