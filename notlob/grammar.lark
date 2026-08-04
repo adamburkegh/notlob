@@ -166,7 +166,7 @@ SEPARATOR.20:        "---\n"
 TESTS_HEAD.20:       "#Tests\n"
 BINDING_HEAD.20:     "#Binding\n"
 REFERENCES_HEAD.20:  "#References\n"
-APPENDIX_HEAD.20:    "#Appendix:" REST_OF_LINE
+APPENDIX_HEAD.20:    "#Appendix" REST_OF_LINE
 
 INDENT:        /[ \t]+/
 INDENTED_LINE.8: INDENT REST_OF_LINE

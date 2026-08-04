@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- `#Appendix` no longer uses a colon (`#Appendix: Title` → `#Appendix
+  Title`), matching every other `#`/`##` heading convention in the
+  language. The old colon form still parses (it's just ordinary title
+  text now, not a special separator) and renders identically — no
+  stray leading colon — but new appendices should drop it.
+
 ## [0.5.2] - 2026-07-21
 
 ### Changed

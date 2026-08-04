@@ -230,11 +230,15 @@ def _tests_section(section: TestsSection, language: str) -> str | None:
 def _appendix_section(
     section: AppendixSection, language: str
 ) -> str:
-    """Render a #Appendix: … section as a second-level heading."""
-    # section.title is the full token, e.g. "#Appendix: Notes"
+    """Render a #Appendix … section as a second-level heading."""
+    # section.title is the full token, e.g. "#Appendix Notes". The
+    # grammar no longer requires a colon after "Appendix" (it's just
+    # ordinary title text now, swallowed by REST_OF_LINE), but a
+    # leftover ":" from the old convention is stripped defensively so
+    # old habit doesn't render as a stray leading colon.
     raw = section.title.lstrip("#").strip()
-    if raw.lower().startswith("appendix:"):
-        raw = raw[len("appendix:"):].strip()
+    if raw.lower().startswith("appendix"):
+        raw = raw[len("appendix"):].strip().lstrip(":").strip()
     parts: list[str] = [f"## {raw}"]
     for item in section.body:
         rendered = _body_item(item, language)

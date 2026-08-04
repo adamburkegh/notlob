@@ -174,8 +174,8 @@ class ReferencesSection:
 
 @dataclass
 class AppendixSection:
-    """A #Appendix: … post-text section."""
-    title: str  # full token value, e.g. "#Appendix: Notes"
+    """A #Appendix … post-text section."""
+    title: str  # full token value, e.g. "#Appendix Notes"
     body: list[BodyItem]
 
 

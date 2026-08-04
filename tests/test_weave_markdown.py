@@ -229,16 +229,25 @@ class TestPostMachinery:
 
 class TestPostAppendix:
     def test_appendix_rendered_as_h2(self):
-        src = "#T\n---\n#Appendix: Notes\nSome notes.\n"
+        src = "#T\n---\n#Appendix Notes\nSome notes.\n"
         out = md(src)
         assert "## Notes" in out
         assert "Some notes." in out
 
     def test_appendix_strips_prefix(self):
-        src = "#T\n---\n#Appendix: Background\n    code\n"
+        src = "#T\n---\n#Appendix Background\n    code\n"
         out = md(src)
         assert "## Background" in out
-        assert "Appendix:" not in out
+        assert "Appendix" not in out
+
+    def test_appendix_leftover_colon_stripped(self):
+        # The grammar no longer treats ":" as part of the #Appendix
+        # marker -- it's ordinary title text now. Old habit typing
+        # "#Appendix: Notes" must not leave a stray leading colon.
+        src = "#T\n---\n#Appendix: Notes\nSome notes.\n"
+        out = md(src)
+        assert "## Notes" in out
+        assert "## :" not in out
 
 
 # ── Document structure ────────────────────────────────────────

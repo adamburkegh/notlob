@@ -27,7 +27,7 @@ grammar.lark, this list changes with it automatically.
 
 Why ``#``-prefixed markers are NOT colored
 --------------------------------------------
-``#Tests``, ``#Binding``, ``#References``, ``#Appendix:``, ``##``, and
+``#Tests``, ``#Binding``, ``#References``, ``#Appendix``, ``##``, and
 bare ``#`` are deliberately absent from the generated `literate` table,
 confirmed against a real compile (MiKTeX 23.12 / listings, pdflatex) --
 this is not an oversight, it's a real limitation of this listings

@@ -50,7 +50,7 @@ def test_references_head():
 
 
 def test_appendix_head():
-    tree = parse("#T\n---\n#Appendix: Notes\nSome notes.\n")
+    tree = parse("#T\n---\n#Appendix Notes\nSome notes.\n")
     _first_token_of_type(tree, "APPENDIX_HEAD")
 
 
