@@ -160,16 +160,19 @@ class BindingSection:
     ``~sigil`` lines inside ``#Binding``).  ``externals`` is a list
     because ``~external`` may appear more than once.
     """
-    language:           str | None  = None
-    externals:          list[str]   = field(default_factory=list)
-    on_build:           str | None  = None
-    keep_generated_src: str | None  = None
+    language:           str | None       = None
+    externals:          list[str]        = field(default_factory=list)
+    external_lines:     list[int | None] = field(default_factory=list)
+    on_build:           str | None       = None
+    on_build_line:      int | None       = None
+    keep_generated_src: str | None       = None
 
 
 @dataclass
 class ReferencesSection:
     """The #References post-text section."""
-    lines: list[str]
+    lines:        list[str]
+    line_numbers: list[int | None] = field(default_factory=list)
 
 
 @dataclass
@@ -406,8 +409,10 @@ def _named_test(node: Tree) -> NamedTest:
 
 def _binding_section(node: Tree) -> BindingSection:
     language           = None
-    externals: list[str] = []
+    externals:      list[str]        = []
+    external_lines: list[int | None] = []
     on_build           = None
+    on_build_line: int | None = None
     keep_generated_src = None
     for child in node.children[1:]:   # skip BINDING_HEAD; INDENT and BLANK skipped below
         if not isinstance(child, Tree) or child.data != 'bind_detail_decl':
@@ -418,21 +423,27 @@ def _binding_section(node: Tree) -> BindingSection:
             language = raw.removeprefix('~language ').strip()
         elif decl.type == 'EXTERNAL_DECL':
             externals.append(raw.removeprefix('~external ').strip())
+            external_lines.append(getattr(decl, "line", None))
         elif decl.type == 'ON_BUILD_DECL':
             on_build = raw.removeprefix('~on-build ').strip()
+            on_build_line = getattr(decl, "line", None)
         elif decl.type == 'KEEP_SRC_DECL':
             keep_generated_src = raw.removeprefix('~keep-generated-src').strip() or None
     return BindingSection(
         language=language,
         externals=externals,
+        external_lines=external_lines,
         on_build=on_build,
+        on_build_line=on_build_line,
         keep_generated_src=keep_generated_src,
     )
 
 
 def _references_section(node: Tree) -> ReferencesSection:
+    children = node.children[1:]
     return ReferencesSection(
-        lines=[str(c) for c in node.children[1:]]
+        lines=[str(c) for c in children],
+        line_numbers=[getattr(c, "line", None) for c in children],
     )
 
 

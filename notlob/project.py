@@ -76,6 +76,25 @@ def address_from_path(path: Path, root: Path) -> str:
     return path.relative_to(root).with_suffix("").as_posix()
 
 
+def _module_lob_refs_with_lines(
+    module: "Module",
+) -> list[tuple[str, int | None]]:
+    """Like :func:`module_lob_refs` but returns (address, line_number) pairs."""
+    if module.post_text is None:
+        return []
+    for section in module.post_text.sections:
+        if isinstance(section, ReferencesSection):
+            result = []
+            for line, lineno in zip(section.lines, section.line_numbers or []):
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    label = stripped[1:].strip()
+                    if label:
+                        result.append((module_address(label), lineno))
+            return result
+    return []
+
+
 def parse_lob_refs(lines: list[str]) -> list[str]:
     """Return module addresses declared in a ``#References`` line list.
 
@@ -220,7 +239,7 @@ def build_package(
     seen: set[tuple[str, str]] = set()
     for module in modules:
         importer = module_address(module.title)
-        for dep_addr in module_lob_refs(module):
+        for dep_addr, ref_line in _module_lob_refs_with_lines(module):
             key = (importer, dep_addr)
             if key in seen:
                 continue
@@ -229,6 +248,7 @@ def build_package(
                     source=importer,
                     target=dep_addr,
                     kind=EdgeKind.IMPORTS,
+                    start_line=ref_line,
                 ))
                 seen.add(key)
 
@@ -275,14 +295,17 @@ def _add_external_nodes(graph: NameGraph, root: Path) -> None:
                 binding_section = section
                 break
 
-    external_files: list[str] = list(
-        binding_section.externals if binding_section else []
-    )
+    # Pair each external filename with its declaration line.
+    external_files: list[tuple[str, int | None]] = list(zip(
+        binding_section.externals if binding_section else [],
+        binding_section.external_lines if binding_section else [],
+    ))
     on_build = binding_section.on_build if binding_section else None
     if on_build:
-        external_files.append(on_build)
+        on_build_line = binding_section.on_build_line if binding_section else None
+        external_files.append((on_build, on_build_line))
 
-    for filename in external_files:
+    for filename, decl_line in external_files:
         addr = filename   # address is the filename relative to project root
         if graph.node(addr) is None:
             graph.add_node(Node(
@@ -294,4 +317,5 @@ def _add_external_nodes(graph: NameGraph, root: Path) -> None:
             source=binding_addr,
             target=addr,
             kind=EdgeKind.USES_EXTERNAL,
+            start_line=decl_line,
         ))
