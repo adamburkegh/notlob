@@ -24,7 +24,7 @@ from typing import Callable
 
 from .graph import (
     module_address,
-    add_uses_edges, build, enrich,
+    add_references_edges, add_uses_edges, build, enrich,
     Edge, EdgeKind, Node, NodeKind, NameGraph,
 )
 from .model import Module, ReferencesSection
@@ -255,7 +255,10 @@ def build_package(
     # Third pass: add EXTERNAL nodes from binding.lob declarations.
     _add_external_nodes(graph, root)
 
-    # Fourth pass: add USES edges from statically visible call references.
+    # Fourth pass: add REFERENCES edges from prose #Label cross-references.
+    add_references_edges(graph, modules)
+
+    # Fifth pass: add USES edges from statically visible call references.
     if call_extractor is not None:
         add_uses_edges(graph, call_extractor)
 

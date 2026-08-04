@@ -328,9 +328,11 @@ information:
   them against the name-graph using a three-step resolution order: symbol
   or subheading in the current module, then module reached via a declared
   `IMPORTS` edge. Unresolved references are build errors, reported
-  alongside address mismatches before any claim runs. Planned extension:
-  `REFERENCES` edges recording each resolved mention, enabling navigation
-  and cross-reference coverage analysis.
+  alongside address mismatches before any claim runs. Successfully resolved
+  mentions become `REFERENCES` edges (MODULE/SUBHEADING → target node)
+  emitted in a fourth `build_package` pass, enabling navigation and
+  cross-reference analysis via `notlob query references` and
+  `notlob query referenced-by`.
 
 - *Package graph.* Module addresses resolved across a package, with
   `binding.lob` providing the project root. IMPORTS edges connect

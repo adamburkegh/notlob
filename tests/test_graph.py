@@ -14,7 +14,7 @@ from notlob import (
     NameGraph, NodeKind, Edge, EdgeKind,
     module_address, subheading_address,
 )
-from notlob.graph import add_uses_edges, enrich
+from notlob.graph import add_uses_edges, add_references_edges, enrich
 from notlob.bindings.python.symbols import extract_calls, extract_symbols
 
 
@@ -375,3 +375,89 @@ class TestAddUsesEdges:
             if e["source"] == "m#caller" and e["target"] == "m#callee"
         )
         assert edge["start_line"] == 3  # first call site
+
+
+# ── add_references_edges ──────────────────────────────────────
+
+def _refs_edges(g: NameGraph) -> list[dict]:
+    return [e for e in g.to_dict()["edges"] if e["kind"] == "REFERENCES"]
+
+
+def _module_graph(source: str):
+    """Build a structural graph AND return both graph and module."""
+    module = from_tree(parse(source))
+    g = build(module)
+    return g, module
+
+
+class TestAddReferencesEdges:
+    def test_module_prose_ref_to_subheading(self):
+        src = (
+            "#M\n"
+            "See #Section here.\n"
+            "##Section\n"
+            "    code\n"
+        )
+        g, module = _module_graph(src)
+        add_references_edges(g, [module])
+        refs = _refs_edges(g)
+        assert any(e["source"] == "m" and e["target"] == "m#Section"
+                   for e in refs)
+
+    def test_subheading_prose_ref_to_other_subheading(self):
+        src = (
+            "#M\n"
+            "##Alpha\n"
+            "See #Beta below.\n"
+            "##Beta\n"
+            "    code\n"
+        )
+        g, module = _module_graph(src)
+        add_references_edges(g, [module])
+        refs = _refs_edges(g)
+        assert any(e["source"] == "m#Alpha" and e["target"] == "m#Beta"
+                   for e in refs)
+
+    def test_unresolved_ref_emits_no_edge(self):
+        src = "#M\nSee #Phantom here.\n"
+        g, module = _module_graph(src)
+        add_references_edges(g, [module])
+        assert _refs_edges(g) == []
+
+    def test_deduplicates_repeated_ref(self):
+        src = (
+            "#M\n"
+            "See #Section and #Section again.\n"
+            "##Section\n"
+            "    code\n"
+        )
+        g, module = _module_graph(src)
+        add_references_edges(g, [module])
+        refs = [e for e in _refs_edges(g)
+                if e["source"] == "m" and e["target"] == "m#Section"]
+        assert len(refs) == 1
+
+    def test_ref_edge_carries_start_line(self):
+        src = (
+            "#M\n"                   # line 1
+            "See #Section here.\n"  # line 2
+            "##Section\n"
+            "    code\n"
+        )
+        g, module = _module_graph(src)
+        add_references_edges(g, [module])
+        refs = [e for e in _refs_edges(g)
+                if e["source"] == "m" and e["target"] == "m#Section"]
+        assert len(refs) == 1
+        assert refs[0].get("start_line") == 2
+
+    def test_multiple_modules(self):
+        mod_a = from_tree(parse("#A\nSee #B here.\n"))
+        mod_b = from_tree(parse("#B\n    code\n"))
+        g = NameGraph()
+        g.merge(build(mod_a))
+        g.merge(build(mod_b))
+        g.add_edge(Edge(source="a", target="b", kind=EdgeKind.IMPORTS))
+        add_references_edges(g, [mod_a, mod_b])
+        refs = _refs_edges(g)
+        assert any(e["source"] == "a" and e["target"] == "b" for e in refs)

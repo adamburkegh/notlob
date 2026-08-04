@@ -109,7 +109,8 @@
             "DEFINES",
             "IMPORTS",
             "USES",
-            "USES_EXTERNAL"
+            "USES_EXTERNAL",
+            "REFERENCES"
           ]
         },
         "start_line": {

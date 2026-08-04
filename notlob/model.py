@@ -35,11 +35,13 @@ class Ref:
                   (the full three-step order from DESIGN.md).
     ``##Label`` — resolved as subheading of the current module only.
 
-    *label* is the referenced name without sigil characters.
-    *sub*   is True when the source wrote ``##``, False for ``#``.
+    *label*      is the referenced name without sigil characters.
+    *sub*        is True when the source wrote ``##``, False for ``#``.
+    *start_line* is the 1-based source line in the .lob file.
     """
-    label: str
-    sub:   bool = False
+    label:      str
+    sub:        bool        = False
+    start_line: int | None  = None
 
 
 #: A single span within a :class:`ProseBlock`: either plain text or a
@@ -306,7 +308,11 @@ def _prose_block(node: Tree) -> ProseBlock:
             elif tok.type == "REF":
                 raw = str(tok)              # "##Stacking Discounts" or "#Foo"
                 sub = raw.startswith("##")
-                spans.append(Ref(label=raw.lstrip("#").strip(), sub=sub))
+                spans.append(Ref(
+                    label=raw.lstrip("#").strip(),
+                    sub=sub,
+                    start_line=getattr(tok, "line", None),
+                ))
             else:                           # PROSE_TEXT
                 spans.append(str(tok))
     return ProseBlock(spans=spans)

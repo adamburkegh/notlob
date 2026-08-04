@@ -1157,6 +1157,26 @@ def cmd_query_callees(address: str) -> int:
     return 0
 
 
+def cmd_query_references(address: str) -> int:
+    """Print nodes that *address* mentions via prose #Label references."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    results = list(graph.children(address, EdgeKind.REFERENCES))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+def cmd_query_referenced_by(address: str) -> int:
+    """Print nodes whose prose contains a #Label reference to *address*."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    results = list(graph.parents(address, EdgeKind.REFERENCES))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
 # ── Check command ─────────────────────────────────────────────
 
 def cmd_check(

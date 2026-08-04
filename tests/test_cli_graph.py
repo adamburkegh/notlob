@@ -9,6 +9,7 @@ from notlob.commands import (
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
     cmd_query_callers, cmd_query_callees,
+    cmd_query_references, cmd_query_referenced_by,
 )
 
 
@@ -390,3 +391,61 @@ class TestCmdQueryCallees:
     def test_no_project_returns_1(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         assert cmd_query_callees("any#symbol") == 1
+
+
+_REFS_LOB = (
+    "#Refs\n"
+    "See #Section here.\n"
+    "##Section\n"
+    "    code\n"
+)
+
+
+class TestCmdQueryReferences:
+    def test_returns_referenced_node(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "refs.lob", _REFS_LOB)
+        monkeypatch.chdir(root)
+        rc = cmd_query_references("refs")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        labels = [n["label"] for n in data]
+        assert "Section" in labels
+
+    def test_no_refs_returns_empty_array(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "refs.lob", _REFS_LOB)
+        monkeypatch.chdir(root)
+        cmd_query_references("refs#Section")
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
+    def test_no_project_returns_1(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert cmd_query_references("any") == 1
+
+
+class TestCmdQueryReferencedBy:
+    def test_returns_referencing_node(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "refs.lob", _REFS_LOB)
+        monkeypatch.chdir(root)
+        rc = cmd_query_referenced_by("refs#Section")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        addrs = [n["address"] for n in data]
+        assert "refs" in addrs
+
+    def test_no_referencing_nodes_returns_empty(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        root = _project(tmp_path)
+        _write(root, "refs.lob", _REFS_LOB)
+        monkeypatch.chdir(root)
+        cmd_query_referenced_by("refs")
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
+    def test_no_project_returns_1(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert cmd_query_referenced_by("any#section") == 1

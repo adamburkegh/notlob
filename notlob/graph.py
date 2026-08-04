@@ -168,11 +168,12 @@ class Node:
 # ── Edge ─────────────────────────────────────────────────────
 
 class EdgeKind(Enum):
-    CONTAINS = auto()   # module → subheading
-    DEFINES  = auto()   # module/subheading → symbol
-    IMPORTS  = auto()   # module → module
+    CONTAINS      = auto()   # module → subheading
+    DEFINES       = auto()   # module/subheading → symbol
+    IMPORTS       = auto()   # module → module
     USES_EXTERNAL = auto()   # binding module → external file
     USES          = auto()   # symbol → symbol (statically visible reference)
+    REFERENCES    = auto()   # module/subheading → any node (prose #Label mention)
 
 
 @dataclass(frozen=True)
@@ -755,6 +756,57 @@ def enrich(
                             graph, sub_item, sub_addr, sub_prop_n,
                             extractor,
                         )
+
+
+def add_references_edges(
+    graph:   NameGraph,
+    modules: "list",
+) -> None:
+    """Populate REFERENCES edges from prose ``#Label`` cross-references.
+
+    Walks each module's body and subheading bodies for
+    :class:`~notlob.model.ProseBlock` items, then resolves each
+    :class:`~notlob.model.Ref` against the graph.  Successfully resolved
+    references become ``EdgeKind.REFERENCES`` edges from the containing
+    MODULE or SUBHEADING node to the resolved target node.
+
+    *start_line* on each edge is taken directly from ``Ref.start_line``.
+
+    Must be called after all ``enrich()`` and IMPORTS passes so that
+    ``graph.resolve()`` has the full import context available.
+    """
+    from .model import ProseBlock, Ref, Subheading
+
+    seen: set[tuple[str, str]] = set()
+
+    def _emit(source_addr: str, ref: "Ref", context: str) -> None:
+        node = graph.resolve(ref.label, context=context)
+        if node is None:
+            return
+        key = (source_addr, node.address)
+        if key not in seen:
+            graph.add_edge(Edge(
+                source=source_addr,
+                target=node.address,
+                kind=EdgeKind.REFERENCES,
+                start_line=ref.start_line,
+            ))
+            seen.add(key)
+
+    def _walk_body(body: list, source_addr: str, context: str) -> None:
+        for item in body:
+            if isinstance(item, ProseBlock):
+                for span in item.spans:
+                    if isinstance(span, Ref):
+                        _emit(source_addr, span, context)
+
+    for module in modules:
+        mod_addr = module_address(module.title)
+        _walk_body(module.body, mod_addr, mod_addr)
+        for item in module.body:
+            if isinstance(item, Subheading):
+                sub_addr = subheading_address(mod_addr, item.title)
+                _walk_body(item.body, sub_addr, mod_addr)
 
 
 def add_uses_edges(

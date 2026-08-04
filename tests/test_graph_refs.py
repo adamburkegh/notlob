@@ -86,14 +86,14 @@ class TestErrors:
         g, m = _graph(src)
         errs = validate_refs(g, m)
         assert len(errs) == 1
-        assert errs[0].ref == Ref(label="Unknown", sub=False)
+        assert errs[0].ref.label == "Unknown" and errs[0].ref.sub is False
 
     def test_unknown_double_hash_ref(self):
         src = "#T\nSee ##Unknown below.\n"
         g, m = _graph(src)
         errs = validate_refs(g, m)
         assert len(errs) == 1
-        assert errs[0].ref == Ref(label="Unknown", sub=True)
+        assert errs[0].ref.label == "Unknown" and errs[0].ref.sub is True
 
     def test_sub_ref_to_symbol_is_error(self):
         # ##Label requires a subheading, not a symbol.

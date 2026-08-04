@@ -147,7 +147,7 @@ TOOLS = [
                 "kind": {
                     "type": "string",
                     "enum": [
-                        "CONTAINS", "DEFINES", "IMPORTS", "USES", "USES_EXTERNAL",
+                        "CONTAINS", "DEFINES", "IMPORTS", "USES", "USES_EXTERNAL", "REFERENCES",
                     ],
                     "description": "Edge kind (default: CONTAINS)",
                 },
