@@ -174,6 +174,11 @@ def main() -> None:
         help="output format (default: json)",
     )
 
+    query_p = sub.add_parser(
+        "query", help="query the package name-graph"
+    )
+    qsub = query_p.add_subparsers(dest="query_op", metavar="operation")
+
     check_p = sub.add_parser(
         "check",
         help="run semantic checks on the project name-graph",
@@ -192,19 +197,6 @@ def main() -> None:
     check_p.add_argument(
         "--json", dest="json_mode", action="store_true", default=False,
         help="output findings as JSON",
-    )
-
-    docs_p = sub.add_parser(
-        "docs",
-        help="write the language reference to notlob-docs/",
-    )
-    docs_p.add_argument(
-        "--output", "-o", metavar="DIR", default=None,
-        help="output directory (default: notlob-docs/)",
-    )
-    docs_p.add_argument(
-        "--full", action="store_true", default=False,
-        help="also write DESIGN.md and USER-AGENTS.md",
     )
 
     init_p = sub.add_parser(
@@ -229,12 +221,20 @@ def main() -> None:
         help="module address, e.g. roman/numerals",
     )
 
-    sub.add_parser("mcp", help="start the MCP tool server (stdin/stdout)")
-
-    query_p = sub.add_parser(
-        "query", help="query the package name-graph"
+    docs_p = sub.add_parser(
+        "docs",
+        help="write the language reference to notlob-docs/",
     )
-    qsub = query_p.add_subparsers(dest="query_op", metavar="operation")
+    docs_p.add_argument(
+        "--output", "-o", metavar="DIR", default=None,
+        help="output directory (default: notlob-docs/)",
+    )
+    docs_p.add_argument(
+        "--full", action="store_true", default=False,
+        help="also write DESIGN.md and USER-AGENTS.md",
+    )
+
+    sub.add_parser("mcp", help="start the MCP tool server (stdin/stdout)")
 
     qc = qsub.add_parser("children", help="list direct children of a node")
     qc.add_argument("address")
