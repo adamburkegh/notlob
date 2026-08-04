@@ -219,20 +219,28 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
     return result
 
 
-def extract_calls(source: str) -> list[str]:
-    """Return lowercase identifiers referenced in *source* but not defined there.
+def extract_calls(source: str) -> list[tuple[str, int]]:
+    """Return (name, line) pairs for identifiers referenced in *source* but not defined there.
 
     Scans for all lowercase Haskell identifiers, subtracts names defined
     at the top level of the block and Haskell keywords.  Qualified names
     (e.g. ``Data.List.sort``) contribute only the leaf (``sort``).
+    *line* is 1-indexed within *source*; first occurrence is returned.
     Local variables and type variables are included in the output; the
     graph resolution step filters to only addresses that exist.
 
-    >>> "numerals" in extract_calls("toRoman 0 = \\\"\\\"\\ntoRoman n = snd h ++ toRoman (n - fst h)\\n  where h = head (filter ((<=n) . fst) numerals)")
+    >>> "numerals" in [n for n, _ in extract_calls("toRoman 0 = \\\"\\\"\\ntoRoman n = snd h ++ toRoman (n - fst h)\\n  where h = head (filter ((<=n) . fst) numerals)")]
     True
-    >>> "toRoman" in extract_calls("toRoman 0 = \\\"\\\"\\ntoRoman n = snd h")
+    >>> "toRoman" in [n for n, _ in extract_calls("toRoman 0 = \\\"\\\"\\ntoRoman n = snd h")]
     False
     """
     defined = {info.name for info in extract_symbols(source.splitlines())}
-    raw = set(re.findall(r'\b([a-z_][A-Za-z0-9_\']*)\b', source))
-    return sorted(raw - defined - _HASKELL_KEYWORDS)
+    exclude = defined | _HASKELL_KEYWORDS
+    first_line: dict[str, int] = {}
+    for m in re.finditer(r'\b([a-z_][A-Za-z0-9_\']*)\b', source):
+        name = m.group(1)
+        if name not in exclude:
+            line = source.count('\n', 0, m.start()) + 1
+            if name not in first_line:
+                first_line[name] = line
+    return sorted(first_line.items())

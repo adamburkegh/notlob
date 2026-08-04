@@ -92,10 +92,10 @@ Extractor = Callable[[Sequence[str]], list[SymbolInfo]]
 
 #: Callable that returns statically visible symbol references from source text.
 #: Takes dedented source text (a single definition or whole block); returns
-#: bare names that are referenced but not defined within that text.
+#: (name, source_line) pairs where source_line is 1-indexed within the text.
 #: Builtins and stdlib names should be excluded where detectable.
 #: Returns an empty list when static analysis is not possible.
-CallExtractor = Callable[[str], list[str]]
+CallExtractor = Callable[[str], list[tuple[str, int]]]
 
 #: Callable that assembles a Module into one executable string.
 Assembler = Callable[[Module], str]

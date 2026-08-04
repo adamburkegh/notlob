@@ -381,33 +381,46 @@ class TestEdgeCases:
 
 # ── extract_calls ────────────────────────────────────────────
 
+def _call_names(calls):
+    return [n for n, _ in calls]
+
+
 class TestExtractCalls:
     def test_finds_callee(self):
         src = "toRoman 0 = \"\"\ntoRoman n = snd h\n  where h = head (filter ((<=n) . fst) numerals)"
-        refs = extract_calls(src)
-        assert "numerals" in refs
+        assert "numerals" in _call_names(extract_calls(src))
 
     def test_excludes_defined_name(self):
         src = "toRoman 0 = \"\"\ntoRoman n = snd h"
-        assert "toRoman" not in extract_calls(src)
+        assert "toRoman" not in _call_names(extract_calls(src))
 
     def test_excludes_keywords(self):
         src = "f x = if x > 0 then x else 0"
-        refs = extract_calls(src)
-        assert "if" not in refs
-        assert "then" not in refs
-        assert "else" not in refs
+        names = _call_names(extract_calls(src))
+        assert "if" not in names
+        assert "then" not in names
+        assert "else" not in names
 
     def test_finds_multiple_refs(self):
         src = "pipeline x = encode (decode x)"
-        refs = extract_calls(src)
-        assert "encode" in refs
-        assert "decode" in refs
+        names = _call_names(extract_calls(src))
+        assert "encode" in names
+        assert "decode" in names
 
     def test_empty_source_returns_empty(self):
         assert extract_calls("") == []
 
     def test_qualified_name_contributes_leaf(self):
-        # "sort" is the leaf of Data.List.sort
         src = "f xs = Data.List.sort xs"
-        assert "sort" in extract_calls(src)
+        assert "sort" in _call_names(extract_calls(src))
+
+    def test_returns_line_numbers(self):
+        src = "f x = g x\ng2 x = h x"
+        pairs = dict(extract_calls(src))
+        assert pairs["g"] == 1
+        assert pairs["h"] == 2
+
+    def test_first_occurrence_wins(self):
+        src = "f x = g x\nf2 x = g x"
+        pairs = dict(extract_calls(src))
+        assert pairs["g"] == 1

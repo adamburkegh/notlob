@@ -137,36 +137,49 @@ class TestSource:
         assert 'inner' in result[0].source
 
 
+def _call_names(calls):
+    return [n for n, _ in calls]
+
+
 # ── extract_calls ────────────────────────────────────────────
 
 class TestExtractCalls:
     def test_bare_function_call(self):
-        assert "toRoman" in extract_calls("const x = toRoman(n);")
+        assert "toRoman" in _call_names(extract_calls("const x = toRoman(n);"))
 
     def test_multiple_calls(self):
-        refs = extract_calls("const x = encode(decode(s));")
-        assert "encode" in refs
-        assert "decode" in refs
+        names = _call_names(extract_calls("const x = encode(decode(s));"))
+        assert "encode" in names
+        assert "decode" in names
 
     def test_method_call_excluded(self):
-        # Method calls (.foo()) require type info — excluded by design.
-        assert "toRoman" not in extract_calls("obj.toRoman(n);")
+        assert "toRoman" not in _call_names(extract_calls("obj.toRoman(n);"))
 
     def test_excludes_defined_name(self):
         src = "function toRoman(n: number) { return helper(n); }"
-        refs = extract_calls(src)
-        assert "toRoman" not in refs
-        assert "helper" in refs
+        names = _call_names(extract_calls(src))
+        assert "toRoman" not in names
+        assert "helper" in names
 
     def test_excludes_ts_keywords(self):
         src = "const x = new MyClass();"
-        assert "new" not in extract_calls(src)
+        assert "new" not in _call_names(extract_calls(src))
 
     def test_empty_source_returns_empty(self):
         assert extract_calls("") == []
 
     def test_chained_call_captures_first(self):
-        # foo(bar()) — both foo and bar are bare calls
-        refs = extract_calls("const r = foo(bar(x));")
-        assert "foo" in refs
-        assert "bar" in refs
+        names = _call_names(extract_calls("const r = foo(bar(x));"))
+        assert "foo" in names
+        assert "bar" in names
+
+    def test_returns_line_numbers(self):
+        src = "function f() {\n  g();\n}\nfunction f2() {\n  h();\n}"
+        pairs = dict(extract_calls(src))
+        assert pairs["g"] == 2
+        assert pairs["h"] == 5
+
+    def test_first_occurrence_wins(self):
+        src = "function f() { g(); }\nfunction f2() { g(); }"
+        pairs = dict(extract_calls(src))
+        assert pairs["g"] == 1

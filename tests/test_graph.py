@@ -337,3 +337,41 @@ class TestAddUsesEdges:
         uses = _uses_edges(g)
         assert any(e["source"] == "a#caller" and e["target"] == "b#callee"
                    for e in uses)
+
+    def test_uses_edge_has_start_line(self):
+        # caller starts on line 2 (#M is line 1), callee() call is line 3
+        src = (
+            "#M\n"
+            "    def caller():\n"
+            "        return callee()\n"
+            "\n"
+            "    def callee():\n"
+            "        return 1\n"
+        )
+        g = _enriched(src)
+        add_uses_edges(g, extract_calls)
+        edge = next(
+            e for e in _uses_edges(g)
+            if e["source"] == "m#caller" and e["target"] == "m#callee"
+        )
+        assert "start_line" in edge
+        assert edge["start_line"] == 3  # line 2 (caller) + offset 1 (return callee())
+
+    def test_uses_edge_first_call_site(self):
+        # callee called on lines 2 and 3 of caller's body — first wins
+        src = (
+            "#M\n"
+            "    def caller():\n"
+            "        x = callee()\n"
+            "        return callee() + x\n"
+            "\n"
+            "    def callee():\n"
+            "        return 1\n"
+        )
+        g = _enriched(src)
+        add_uses_edges(g, extract_calls)
+        edge = next(
+            e for e in _uses_edges(g)
+            if e["source"] == "m#caller" and e["target"] == "m#callee"
+        )
+        assert edge["start_line"] == 3  # first call site

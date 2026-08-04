@@ -111,6 +111,10 @@
             "USES",
             "USES_EXTERNAL"
           ]
+        },
+        "start_line": {
+          "description": "1-based .lob file line of the first call site. Present on USES edges only.",
+          "type": "integer"
         }
       }
     }

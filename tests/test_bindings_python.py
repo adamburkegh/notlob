@@ -175,32 +175,35 @@ def test_class_source_includes_methods():
 
 # ── extract_calls ────────────────────────────────────────────
 
+def _call_names(calls):
+    return [n for n, _ in calls]
+
+
 class TestExtractCalls:
     def test_returns_called_names(self):
         src = "def f():\n    return g() + h()"
-        refs = extract_calls(src)
-        assert "g" in refs
-        assert "h" in refs
+        names = _call_names(extract_calls(src))
+        assert "g" in names
+        assert "h" in names
 
     def test_excludes_builtins(self):
         src = "def f(xs):\n    return len(xs)"
-        assert "len" not in extract_calls(src)
+        assert "len" not in _call_names(extract_calls(src))
 
     def test_excludes_print(self):
-        assert "print" not in extract_calls("def f():\n    print('hi')")
+        assert "print" not in _call_names(extract_calls("def f():\n    print('hi')"))
 
     def test_parameter_included_unfiltered(self):
-        # Parameters appear as Name loads; graph resolution will drop them.
         src = "def f(x):\n    return g(x)"
-        refs = extract_calls(src)
-        assert "x" in refs
-        assert "g" in refs
+        names = _call_names(extract_calls(src))
+        assert "x" in names
+        assert "g" in names
 
     def test_cross_function_refs(self):
         src = "def pipeline(x):\n    return encode(decode(x))"
-        refs = extract_calls(src)
-        assert "encode" in refs
-        assert "decode" in refs
+        names = _call_names(extract_calls(src))
+        assert "encode" in names
+        assert "decode" in names
 
     def test_syntax_error_returns_empty(self):
         assert extract_calls("def f(") == []
@@ -210,9 +213,18 @@ class TestExtractCalls:
 
     def test_defined_name_still_included_if_called_recursively(self):
         src = "def fact(n):\n    return n * fact(n - 1)"
-        # fact is defined here but also called — graph handles self-loops
-        refs = extract_calls(src)
-        assert "fact" in refs
+        assert "fact" in _call_names(extract_calls(src))
+
+    def test_returns_line_numbers(self):
+        src = "def f():\n    return g()\ndef f2():\n    return h()"
+        pairs = dict(extract_calls(src))
+        assert pairs["g"] == 2
+        assert pairs["h"] == 4
+
+    def test_first_occurrence_wins(self):
+        src = "def f():\n    g()\ndef f2():\n    g()"
+        pairs = dict(extract_calls(src))
+        assert pairs["g"] == 2
 
 
 def test_syntax_error_source_is_not_present():

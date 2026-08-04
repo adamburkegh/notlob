@@ -177,9 +177,10 @@ class EdgeKind(Enum):
 
 @dataclass(frozen=True)
 class Edge:
-    source: str       # address of the source node
-    target: str       # address of the target node
-    kind:   EdgeKind
+    source:     str             # address of the source node
+    target:     str             # address of the target node
+    kind:       EdgeKind
+    start_line: int | None = field(default=None, hash=False, compare=False)
 
 
 # ── Graph ────────────────────────────────────────────────────
@@ -358,15 +359,16 @@ class NameGraph:
             if node.start_line is not None:
                 d["start_line"] = node.start_line
             nodes.append(d)
+        def _edge_dict(edge: "Edge") -> dict:
+            d = {"source": edge.source, "target": edge.target,
+                 "kind": edge.kind.name}
+            if edge.start_line is not None:
+                d["start_line"] = edge.start_line
+            return d
+
         return {
             "nodes": nodes,
-            "edges": [
-                {
-                    "source": edge.source,
-                    "target": edge.target,
-                    "kind":   edge.kind.name,
-                }
-                for edge in self._edges
+            "edges": [_edge_dict(edge) for edge in self._edges
             ],
         }
 
@@ -757,7 +759,7 @@ def enrich(
 
 def add_uses_edges(
     graph:          NameGraph,
-    call_extractor: "Callable[[str], list[str]]",
+    call_extractor: "Callable[[str], list[tuple[str, int]]]",
 ) -> None:
     """Populate USES edges from statically visible symbol references.
 
@@ -765,6 +767,10 @@ def add_uses_edges(
     SYMBOL node whose content carries source text, calls *call_extractor*
     and adds a ``EdgeKind.USES`` edge for every returned name that resolves
     to a known symbol address.
+
+    Each edge carries ``start_line`` — the absolute .lob file line of the
+    first call site, computed as ``symbol.start_line + (source_line - 1)``.
+    When ``symbol.start_line`` is None the field is omitted.
 
     Both intra-module and cross-module references are handled identically:
     the lookup is name-based across the whole graph.  Unresolved names
@@ -778,21 +784,29 @@ def add_uses_edges(
     for node in graph.nodes(kind=NodeKind.SYMBOL):
         name_index.setdefault(node.label, []).append(node.address)
 
-    seen: set[tuple[str, str]] = set()
+    # first_call: (source_addr, target_addr) → earliest source-relative line
+    first_call: dict[tuple[str, str], int] = {}
     for node in graph.nodes(kind=NodeKind.SYMBOL):
         source = (node.content or {}).get("code")
         if not source:
             continue
-        for ref_name in call_extractor(source):
+        for ref_name, src_line in call_extractor(source):
             for target_addr in name_index.get(ref_name, []):
                 key = (node.address, target_addr)
-                if key not in seen:
-                    graph.add_edge(Edge(
-                        source=node.address,
-                        target=target_addr,
-                        kind=EdgeKind.USES,
-                    ))
-                    seen.add(key)
+                if key not in first_call or src_line < first_call[key]:
+                    first_call[key] = src_line
+
+    for (src_addr, tgt_addr), src_line in first_call.items():
+        src_node = graph.node(src_addr)
+        abs_line: int | None = None
+        if src_node is not None and src_node.start_line is not None:
+            abs_line = src_node.start_line + (src_line - 1)
+        graph.add_edge(Edge(
+            source=src_addr,
+            target=tgt_addr,
+            kind=EdgeKind.USES,
+            start_line=abs_line,
+        ))
 
 
 def _add_symbols(

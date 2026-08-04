@@ -100,19 +100,27 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
     return result
 
 
-def extract_calls(source: str) -> list[str]:
-    """Return bare function call names referenced in *source*.
+def extract_calls(source: str) -> list[tuple[str, int]]:
+    """Return (name, line) pairs for bare function calls in *source*.
 
     Matches identifiers immediately followed by ``(`` that are not
     preceded by ``.`` (method calls).  Method calls require type
     information to resolve and are excluded by design — this is a known
-    ceiling of static analysis without ``tsc``.
+    ceiling of static analysis without ``tsc``.  *line* is 1-indexed
+    within *source*; first occurrence is returned.
 
     >>> sorted(extract_calls("const x = toRoman(n) + fromRoman(s);"))
-    ['fromRoman', 'toRoman']
+    [('fromRoman', 1), ('toRoman', 1)]
     >>> extract_calls("obj.toRoman(n);")
     []
     """
     defined = {info.name for info in extract_symbols(source.splitlines())}
-    calls = set(_TS_CALL_RE.findall(source))
-    return sorted(calls - defined - _TS_BUILTINS)
+    exclude = defined | _TS_BUILTINS
+    first_line: dict[str, int] = {}
+    for m in _TS_CALL_RE.finditer(source):
+        name = m.group(1)
+        if name not in exclude:
+            line = source.count('\n', 0, m.start()) + 1
+            if name not in first_line:
+                first_line[name] = line
+    return sorted(first_line.items())
