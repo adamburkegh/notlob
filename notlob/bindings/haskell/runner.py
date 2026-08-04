@@ -124,9 +124,16 @@ def _run_harness(
         except OSError:
             pass
 
-    fd, tmp_path = tempfile.mkstemp(suffix=".hs")
+    # GHC 9.10 runghc requires the entry-point file to be named Main.hs
+    # (or to carry an explicit `module Main where` declaration) so that
+    # the runtime can locate `main`.  A randomly-named temp file without
+    # a module declaration is treated as a module named after the file,
+    # and runghc then fails with "Not in scope: main".  Writing into a
+    # temp *directory* as Main.hs is the simplest cross-platform fix.
+    tmpdir = tempfile.mkdtemp()
+    tmp_path = str(Path(tmpdir) / "Main.hs")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(source)
 
         cmd = _make_runghc_cmd(tmp_path, extra_packages)
@@ -148,8 +155,9 @@ def _run_harness(
         except FileNotFoundError as exc:
             return "", str(exc), 1
     finally:
+        import shutil
         try:
-            Path(tmp_path).unlink(missing_ok=True)
+            shutil.rmtree(tmpdir, ignore_errors=True)
         except OSError:
             pass
 
@@ -264,7 +272,7 @@ def _build_examples_harness(
         (dep_modules or []) + [module]
     )
 
-    parts: list[str] = ["module NotlobRunner where"]
+    parts: list[str] = []
 
     if import_lines:
         parts.append("\n".join(import_lines))
@@ -304,7 +312,7 @@ def _build_property_harness(
         (dep_modules or []) + [module]
     )
 
-    parts: list[str] = ["module NotlobRunner where"]
+    parts: list[str] = []
     # Import specific names so the harness works with any QuickCheck version
     parts.append(
         "import Test.QuickCheck"

@@ -143,9 +143,11 @@ class TestBuildExamplesHarness:
         m = _module("Test Module", body=[_code(code_text)])
         return _build_examples_harness(m, assertions)
 
-    def test_starts_with_module_decl(self):
+    def test_no_module_decl(self):
+        # Harness has no module declaration — written to Main.hs so runghc
+        # can find main without a matching filename/module-name pair.
         h = self._harness_for("f x = x", [("addr", "f 1 == 1", None)])
-        assert h.startswith("module NotlobRunner where")
+        assert not h.startswith("module ")
 
     def test_not_user_module_name(self):
         # Must NOT be "module TestModule where"
@@ -447,16 +449,6 @@ class TestRunTestsIntegration:
 
 @_RUNNER_SKIP
 class TestRunPropertiesIntegration:
-    def test_skip_without_binding(self):
-        prop = _property_claim(
-            "~property",
-            ["prop_id :: Int -> Bool", "prop_id x = x == x"],
-        )
-        m = _module("Test Module", body=[_code("f x = x"), prop])
-        results = run_properties(m, binding=None)
-        assert len(results) == 1
-        assert results[0].status == Status.SKIP
-
     def test_passing_property(self):
         prop = _property_claim(
             "~property",

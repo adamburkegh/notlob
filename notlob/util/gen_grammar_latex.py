@@ -439,27 +439,23 @@ def _check_priority_tiers(priorities: dict[str, int]) -> None:
     )
 
 
-def _priority_sentence() -> str:
-    """Render the "X, Y (priority 20) outrank A, B (priority 10), which
-    outrank ... (priority 1, the fallback)" sentence fragment from
-    _PRIORITY_TIERS, highest priority first, with verb agreement
-    (outrank/outranks) matching the size of the tier doing the
-    outranking at each step."""
+def _priority_table() -> str:
+    """Render the priority tiers as a LaTeX tabular, highest first."""
     tiers = sorted(_PRIORITY_TIERS, reverse=True)
-
-    def rendered(prio: int) -> str:
+    rows: list[str] = []
+    for prio in tiers:
         names = _PRIORITY_TIERS[prio]
-        text = ", ".join(f"\\synt{{{escape_name(n)}}}" for n in names)
-        note = ", the fallback" if prio == tiers[-1] else ""
-        return f"{text} (priority {prio}{note})"
-
-    pieces = [rendered(tiers[0])]
-    for i in range(1, len(tiers)):
-        verb = "outrank" if len(_PRIORITY_TIERS[tiers[i - 1]]) > 1 \
-            else "outranks"
-        lead = "" if i == 1 else "which "
-        pieces.append(f"{lead}{verb} {rendered(tiers[i])}")
-    return ", ".join(pieces)
+        note = " (fallback)" if prio == tiers[-1] else ""
+        cells = ", ".join(f"\\synt{{{escape_name(n)}}}" for n in names)
+        rows.append(f"    {prio} & {cells}{note} \\\\")
+    body = "\n".join(rows)
+    return (
+        "  \\begin{tabular}{rl}\n"
+        "    \\textbf{Priority} & \\textbf{Terminals} \\\\\n"
+        "    \\hline\n"
+        + body + "\n"
+        "  \\end{tabular}"
+    )
 
 
 def parse_grammar(
@@ -567,9 +563,9 @@ _DISAMBIGUATION_REST = r"""
 
 
 def _disambiguation() -> str:
-    return "\n".join([
+    return "\n\n".join([
         _DISAMBIGUATION_INTRO,
-        "    " + _priority_sentence() + ".",
+        _priority_table(),
         _DISAMBIGUATION_REST,
     ])
 

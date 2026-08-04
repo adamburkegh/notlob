@@ -23,7 +23,7 @@ from notlob.util.gen_grammar_latex import (
     T,
     _check_priority_tiers,
     _convert_string,
-    _priority_sentence,
+    _priority_table,
     escape_name,
     escape_terminal,
     parse_grammar,
@@ -121,17 +121,27 @@ class TestEscaping:
         assert escape_terminal("#Tests") == r"\#Tests"
 
 
-# ── Priority sentence ─────────────────────────────────────────────
+# ── Priority table ────────────────────────────────────────────────
 
-class TestPrioritySentence:
+class TestPriorityTable:
     def test_mentions_test_sigil(self):
         # Regression: the old hand-written disambiguation prose never
         # mentioned TEST_SIGIL's priority tier at all.
-        assert "TEST" in _priority_sentence()
+        assert "TEST" in _priority_table()
 
-    def test_verb_agreement_singleton_tier(self):
-        sentence = _priority_sentence()
-        assert "which outranks" in sentence  # REF tier has one member
+    def test_tabular_structure(self):
+        table = _priority_table()
+        assert r"\begin{tabular}" in table
+        assert r"\end{tabular}" in table
+        assert r"\hline" in table
+
+    def test_fallback_label_on_lowest_tier(self):
+        table = _priority_table()
+        assert "fallback" in table
+        # fallback should be on the lowest priority (1), not on 20 or 10
+        lines = table.splitlines()
+        fallback_line = next(l for l in lines if "fallback" in l)
+        assert fallback_line.strip().startswith("1 &")
 
 
 # ── Render pipeline (unchanged from the hand-written model) ──────

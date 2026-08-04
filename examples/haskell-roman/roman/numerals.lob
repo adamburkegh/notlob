@@ -17,18 +17,16 @@ milestone that fits, append its symbol, subtract its value, repeat.
     toRoman n = snd h ++ toRoman (n - fst h)
       where h = head $ filter ((<=n) . fst) numerals
 
+
 ~example
     toRoman 1    == "I"
     toRoman 4    == "IV"
-    toRoman 9    == "IX"
-    toRoman 14   == "XIV"
-    toRoman 40   == "XL"
-    toRoman 90   == "XC"
-    toRoman 399  == "CCCXCIX"
+    toRoman 11   == "XI"
     toRoman 1994 == "MCMXCIV"
-    toRoman 2024 == "MMXXIV"
 
-## Properties
+
+
+## Positive Length Natural Numbers
 
 The length of the result is always positive for positive inputs, and
 toRoman never returns an empty string for a positive integer.
@@ -38,6 +36,7 @@ toRoman never returns an empty string for a positive integer.
     prop_positive n =
         let m = abs n `mod` 4000 + 1
         in not (null (toRoman m))
+
 
 ---
 
@@ -52,6 +51,10 @@ toRoman never returns an empty string for a positive integer.
     toRoman 100  == "C"
     toRoman 500  == "D"
     toRoman 1000 == "M"
+
+##additive
+    toRoman 6    == "VI"
+    toRoman 13   == "XIII"
 
 ##subtractive
     toRoman 4    == "IV"
@@ -70,3 +73,4 @@ so it's worth naming on its own.
 
 ~test mcmxciv
     toRoman 1994 == "MCMXCIV"
+

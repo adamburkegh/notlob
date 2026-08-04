@@ -23,10 +23,9 @@ name resolution.
 
 ## Property & unit testing
 
-- `~property-testing quickcheck` — `~property` claims run in their own
-  `runghc` subprocess with `Test.QuickCheck` loaded; the first top-level
-  function in the block is the property. Without this declaration,
-  `~property` claims report `SKIP`.
+- `~property` claims run in their own `runghc` subprocess with
+  `Test.QuickCheck` loaded; the first top-level function in the block
+  is the property.
 - `#Tests` assertions are Boolean Haskell expressions.
 
 ## Claims
