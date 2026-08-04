@@ -20,6 +20,21 @@ same way. `fast-check` is located as a package directory rather than a
 binary. On Windows the `.cmd` shim is preferred for executables (the
 extensionless shim is not directly executable).
 
+## Static call analysis
+
+`extract_calls` scans each symbol's source text for bare function calls
+— identifiers immediately followed by `(` that are not preceded by `.`
+(which would indicate a method call).  The matched names minus the
+symbol's own defined names and a set of TypeScript built-ins are used by
+`add_uses_edges` to add `USES` edges in the name-graph.
+
+Fidelity ceiling: method calls (`.foo()`) require type information that
+is unavailable without running `tsc`, so they are excluded by design.
+Higher-order calls through variables and dynamic dispatch are also
+invisible.  The ceiling is real but bounded: bare function calls —
+the dominant call form in functional-style TypeScript — are reliably
+captured.
+
 ## Linting
 
 `tsc --noEmit` — type-checking. Because `tsx` strips types and runs

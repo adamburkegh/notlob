@@ -12,6 +12,7 @@ column-0 invariant is established inside the function.
 """
 
 from notlob.bindings.haskell import extract_symbols
+from notlob.bindings.haskell.symbols import extract_calls
 
 
 def _names(lines):
@@ -376,3 +377,37 @@ class TestEdgeCases:
         # could hit this.)
         assert _syms(["        x = 1", "            y = 2"]) != []
         # The dedented version would be "x = 1\n    y = 2" — x extracted.
+
+
+# ── extract_calls ────────────────────────────────────────────
+
+class TestExtractCalls:
+    def test_finds_callee(self):
+        src = "toRoman 0 = \"\"\ntoRoman n = snd h\n  where h = head (filter ((<=n) . fst) numerals)"
+        refs = extract_calls(src)
+        assert "numerals" in refs
+
+    def test_excludes_defined_name(self):
+        src = "toRoman 0 = \"\"\ntoRoman n = snd h"
+        assert "toRoman" not in extract_calls(src)
+
+    def test_excludes_keywords(self):
+        src = "f x = if x > 0 then x else 0"
+        refs = extract_calls(src)
+        assert "if" not in refs
+        assert "then" not in refs
+        assert "else" not in refs
+
+    def test_finds_multiple_refs(self):
+        src = "pipeline x = encode (decode x)"
+        refs = extract_calls(src)
+        assert "encode" in refs
+        assert "decode" in refs
+
+    def test_empty_source_returns_empty(self):
+        assert extract_calls("") == []
+
+    def test_qualified_name_contributes_leaf(self):
+        # "sort" is the leaf of Data.List.sort
+        src = "f xs = Data.List.sort xs"
+        assert "sort" in extract_calls(src)

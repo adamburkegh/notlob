@@ -23,6 +23,7 @@ from notlob.commands import (
     cmd_run, cmd_test, cmd_weave,
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
+    cmd_query_callers, cmd_query_callees,
 )
 from notlob.project import find_project_root, resolve_module_path
 
@@ -267,6 +268,16 @@ def main() -> None:
     )
     qib.add_argument("address")
 
+    qcallers = qsub.add_parser(
+        "callers", help="list symbols that call a given address"
+    )
+    qcallers.add_argument("address")
+
+    qcallees = qsub.add_parser(
+        "callees", help="list symbols called by a given address"
+    )
+    qcallees.add_argument("address")
+
     qcont = qsub.add_parser(
         "content", help="show source content at an address"
     )
@@ -346,6 +357,10 @@ def main() -> None:
             sys.exit(cmd_query_imports(args.address))
         elif op == "imported-by":
             sys.exit(cmd_query_imported_by(args.address))
+        elif op == "callers":
+            sys.exit(cmd_query_callers(args.address))
+        elif op == "callees":
+            sys.exit(cmd_query_callees(args.address))
         elif op == "content":
             sys.exit(cmd_query_content(args.address))
         else:

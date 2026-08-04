@@ -20,10 +20,13 @@ extraction is not attempted.  The caller receives an empty list.
 from __future__ import annotations
 
 import ast
+import builtins as _builtins_mod
 import textwrap
 from typing import Sequence
 
 from notlob.bindings import SymbolInfo
+
+_PYTHON_BUILTINS = frozenset(dir(_builtins_mod))
 
 
 def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
@@ -72,3 +75,26 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
                     SymbolInfo(name=node.target.id, source=node_src)
                 )
     return result
+
+
+def extract_calls(source: str) -> list[str]:
+    """Return names statically referenced in *source* but not defined there.
+
+    Walks the AST for all Name loads and subtracts Python builtins.
+    Dynamic calls (eval, getattr, __getattr__) are invisible by design.
+    Returns an empty list on syntax errors.
+
+    >>> sorted(extract_calls("def f(x):\\n    return g(x) + h(x)"))
+    ['g', 'h', 'x']
+    >>> extract_calls("def f():\\n    return len([1, 2, 3])")
+    []
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            names.add(node.id)
+    return sorted(names - _PYTHON_BUILTINS)

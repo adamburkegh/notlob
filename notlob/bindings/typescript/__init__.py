@@ -32,7 +32,7 @@ from notlob.bindings.typescript.runner import (
     _build_module_source,
     run_examples, run_properties, run_tests,
 )
-from notlob.bindings.typescript.symbols import extract_symbols
+from notlob.bindings.typescript.symbols import extract_calls, extract_symbols
 from notlob.model import Module
 
 
@@ -78,6 +78,7 @@ def build_typescript(module: Module, file_path: Path | None = None) -> str:
 #: The assembled TypeScript binding kit.
 kit = BindingKit(
     extract_symbols=extract_symbols,
+    extract_calls=extract_calls,
     assemble=assemble,
     run_examples=run_examples,
     run_properties=run_properties,

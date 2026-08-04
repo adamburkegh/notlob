@@ -20,6 +20,18 @@ names resolve (suppressing false-positive undefined-name reports). If
 `ruff` is somehow absent, `notlob test` fails rather than silently
 skipping.
 
+## Static call analysis
+
+`extract_calls` performs an AST walk over each symbol's source text and
+returns the names of all `Name` nodes with a `Load` context, minus
+Python builtins.  These are used by `add_uses_edges` to add `USES` edges
+between SYMBOL nodes in the name-graph.
+
+Fidelity ceiling: parameters appear as `Name` loads and are included
+(the graph resolves them away — parameters rarely match another
+top-level symbol).  Dynamic dispatch (`getattr`, `eval`, string-based
+calls) is invisible to static analysis and produces no USES edge.
+
 ## Property & unit testing
 
 - `~property-testing hypothesis` — `~property` claims receive `@given`

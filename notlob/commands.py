@@ -509,11 +509,11 @@ def cmd_test(
     if path is None:
         if json_mode:
             from notlob.check import has_errors, run_checks
+            _kit, _extr = _get_binding_kit(
+                binding.get("language") if binding else None,
+            )
             graph = build_package(
-                root,
-                _get_binding_kit(
-                    binding.get("language") if binding else None,
-                )[1],
+                root, _extr, call_extractor=_kit.extract_calls,
             )
             findings, _ = run_checks(graph)
             check_findings = [
@@ -554,10 +554,10 @@ def _run_check_advisory(root: Path, binding: dict) -> bool:
     """
     from notlob.check import has_errors, run_checks
 
-    _, extract_symbols = _get_binding_kit(
+    kit, extract_symbols = _get_binding_kit(
         binding.get("language") if binding else None,
     )
-    graph = build_package(root, extract_symbols)
+    graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
     findings, _ = run_checks(graph)
     for f in findings:
         prefix = "ERROR" if f.severity == "error" else "CHECK"
@@ -1000,10 +1000,10 @@ def cmd_graph(
             return 1
 
     language = (binding or {}).get("language")
-    _, extract_symbols = _get_binding_kit(language)
+    kit, extract_symbols = _get_binding_kit(language)
 
     if root is not None:
-        graph = build_package(root, extract_symbols)
+        graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
     else:
         # standalone file — only reachable via an explicit path arg
         try:
@@ -1064,10 +1064,10 @@ def _require_graph(hint: Path | None = None):
     root, binding = _require_root(hint)
     if root is None:
         return None
-    _, extract_symbols = _get_binding_kit(
+    kit, extract_symbols = _get_binding_kit(
         binding.get("language") if binding else None
     )
-    return build_package(root, extract_symbols)
+    return build_package(root, extract_symbols, call_extractor=kit.extract_calls)
 
 
 # ── Query commands ────────────────────────────────────────────
@@ -1133,6 +1133,26 @@ def cmd_query_imported_by(address: str) -> int:
     if graph is None:
         return 1
     results = list(graph.parents(address, EdgeKind.IMPORTS))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+def cmd_query_callers(address: str) -> int:
+    """Print symbols with a USES edge pointing at *address*."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    results = list(graph.parents(address, EdgeKind.USES))
+    print(json.dumps([_node_dict(n) for n in results], indent=2))
+    return 0
+
+
+def cmd_query_callees(address: str) -> int:
+    """Print symbols that *address* has a USES edge to."""
+    graph = _require_graph()
+    if graph is None:
+        return 1
+    results = list(graph.children(address, EdgeKind.USES))
     print(json.dumps([_node_dict(n) for n in results], indent=2))
     return 0
 

@@ -171,7 +171,8 @@ class EdgeKind(Enum):
     CONTAINS = auto()   # module → subheading
     DEFINES  = auto()   # module/subheading → symbol
     IMPORTS  = auto()   # module → module
-    USES     = auto()   # binding module → external file
+    USES_EXTERNAL = auto()   # binding module → external file
+    USES          = auto()   # symbol → symbol (statically visible reference)
 
 
 @dataclass(frozen=True)
@@ -752,6 +753,46 @@ def enrich(
                             graph, sub_item, sub_addr, sub_prop_n,
                             extractor,
                         )
+
+
+def add_uses_edges(
+    graph:          NameGraph,
+    call_extractor: "Callable[[str], list[str]]",
+) -> None:
+    """Populate USES edges from statically visible symbol references.
+
+    Builds a name → address index from all SYMBOL nodes, then for each
+    SYMBOL node whose content carries source text, calls *call_extractor*
+    and adds a ``EdgeKind.USES`` edge for every returned name that resolves
+    to a known symbol address.
+
+    Both intra-module and cross-module references are handled identically:
+    the lookup is name-based across the whole graph.  Unresolved names
+    (builtins, parameters, dynamic calls) produce no edge and no error.
+
+    Must be called after all ``enrich()`` passes so the full symbol index
+    is available.
+    """
+    # Build name → [address] index over all known symbols.
+    name_index: dict[str, list[str]] = {}
+    for node in graph.nodes(kind=NodeKind.SYMBOL):
+        name_index.setdefault(node.label, []).append(node.address)
+
+    seen: set[tuple[str, str]] = set()
+    for node in graph.nodes(kind=NodeKind.SYMBOL):
+        source = (node.content or {}).get("code")
+        if not source:
+            continue
+        for ref_name in call_extractor(source):
+            for target_addr in name_index.get(ref_name, []):
+                key = (node.address, target_addr)
+                if key not in seen:
+                    graph.add_edge(Edge(
+                        source=node.address,
+                        target=target_addr,
+                        kind=EdgeKind.USES,
+                    ))
+                    seen.add(key)
 
 
 def _add_symbols(

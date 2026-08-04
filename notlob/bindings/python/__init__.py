@@ -21,7 +21,7 @@ from notlob.bindings.python.lint import lint_python
 from notlob.bindings.python.runner import (
     _load_dep_modules, run_examples, run_tests, run_properties,
 )
-from notlob.bindings.python.symbols import extract_symbols
+from notlob.bindings.python.symbols import extract_calls, extract_symbols
 from notlob.model import Claim, Module, Subheading
 
 
@@ -60,6 +60,7 @@ def build_python(
 #: The assembled Python binding kit.
 kit = BindingKit(
     extract_symbols=extract_symbols,
+    extract_calls=extract_calls,
     assemble=assemble,
     run_examples=run_examples,
     run_properties=run_properties,

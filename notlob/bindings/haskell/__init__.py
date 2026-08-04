@@ -24,7 +24,7 @@ from notlob.bindings.haskell.lint import lint_haskell
 from notlob.bindings.haskell.runner import (
     _load_dep_modules, run_examples, run_tests, run_properties,
 )
-from notlob.bindings.haskell.symbols import extract_symbols
+from notlob.bindings.haskell.symbols import extract_calls, extract_symbols
 from notlob.model import Module
 
 
@@ -45,6 +45,7 @@ def build_haskell(
 #: The assembled Haskell binding kit.
 kit = BindingKit(
     extract_symbols=extract_symbols,
+    extract_calls=extract_calls,
     assemble=assemble,
     run_examples=run_examples,
     run_properties=run_properties,

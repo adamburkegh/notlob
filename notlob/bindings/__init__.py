@@ -90,6 +90,13 @@ class SymbolInfo:
 #: Callable that maps indented code lines to SymbolInfo objects.
 Extractor = Callable[[Sequence[str]], list[SymbolInfo]]
 
+#: Callable that returns statically visible symbol references from source text.
+#: Takes dedented source text (a single definition or whole block); returns
+#: bare names that are referenced but not defined within that text.
+#: Builtins and stdlib names should be excluded where detectable.
+#: Returns an empty list when static analysis is not possible.
+CallExtractor = Callable[[str], list[str]]
+
 #: Callable that assembles a Module into one executable string.
 Assembler = Callable[[Module], str]
 
@@ -115,6 +122,11 @@ class BindingKit:
     Fields
     ------
     extract_symbols  Symbol extraction: code lines → names.
+    extract_calls    Call extraction: source text → referenced names.
+                     Returns statically visible references only; dynamic
+                     calls (eval, getattr, method dispatch) are invisible
+                     by design.  ``None`` when the binding does not
+                     implement static call analysis.
     assemble         Code assembly: Module → executable string.
     run_examples     (module, *, file_path=None) -> list[ClaimResult]
     run_properties   (module, *, file_path=None) -> list[ClaimResult]
@@ -134,6 +146,7 @@ class BindingKit:
     run_properties:  Callable[..., list]
     run_tests:       Callable[..., list]
     lint:            Callable[..., list] | None = None
+    extract_calls:   CallExtractor       | None = None
     extension:       str                        = "py"
     comment_prefix:  str                        = "#"
     build:           Callable[..., str]  | None = None

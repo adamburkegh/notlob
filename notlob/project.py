@@ -24,7 +24,7 @@ from typing import Callable
 
 from .graph import (
     module_address,
-    build, enrich,
+    add_uses_edges, build, enrich,
     Edge, EdgeKind, Node, NodeKind, NameGraph,
 )
 from .model import Module, ReferencesSection
@@ -157,8 +157,9 @@ def transitive_lob_refs(module: Module, root: Path) -> list[str]:
 
 
 def build_package(
-    root:      Path,
-    extractor: Callable | None = None,
+    root:            Path,
+    extractor:       Callable | None = None,
+    call_extractor:  Callable | None = None,
 ) -> NameGraph:
     """Build a package-level NameGraph.
 
@@ -184,6 +185,11 @@ def build_package(
         Optional language-specific symbol extractor for symbol enrichment.
         Pass ``notlob.bindings.python.extract_symbols`` for Python
         projects.
+    call_extractor:
+        Optional language-specific call extractor for USES edge population.
+        Pass ``notlob.bindings.python.extract_calls`` for Python projects.
+        Requires *extractor* to also be set (symbols must exist before
+        USES edges can be resolved).
 
     Returns
     -------
@@ -229,6 +235,10 @@ def build_package(
     # Third pass: add EXTERNAL nodes from binding.lob declarations.
     _add_external_nodes(graph, root)
 
+    # Fourth pass: add USES edges from statically visible call references.
+    if call_extractor is not None:
+        add_uses_edges(graph, call_extractor)
+
     return graph
 
 
@@ -237,7 +247,7 @@ def _add_external_nodes(graph: NameGraph, root: Path) -> None:
 
     Reads ``~external`` declarations from the project's ``binding.lob``
     and adds a ``NodeKind.EXTERNAL`` node for each declared file, with a
-    ``EdgeKind.USES`` edge from the binding module (whose address is
+    ``EdgeKind.USES_EXTERNAL`` edge from the binding module (whose address is
     derived from the ``binding.lob`` title) to the external node.
 
     Files declared with ``~on-build`` are also added as EXTERNAL nodes
@@ -283,5 +293,5 @@ def _add_external_nodes(graph: NameGraph, root: Path) -> None:
         graph.add_edge(Edge(
             source=binding_addr,
             target=addr,
-            kind=EdgeKind.USES,
+            kind=EdgeKind.USES_EXTERNAL,
         ))

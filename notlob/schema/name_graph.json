@@ -108,7 +108,8 @@
             "CONTAINS",
             "DEFINES",
             "IMPORTS",
-            "USES"
+            "USES",
+            "USES_EXTERNAL"
           ]
         }
       }

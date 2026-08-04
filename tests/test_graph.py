@@ -14,6 +14,8 @@ from notlob import (
     NameGraph, NodeKind, Edge, EdgeKind,
     module_address, subheading_address,
 )
+from notlob.graph import add_uses_edges, enrich
+from notlob.bindings.python.symbols import extract_calls, extract_symbols
 
 
 def graph_of(source: str) -> NameGraph:
@@ -262,3 +264,76 @@ class TestExampleFiles:
         )))
         assert g.node("pricing") is not None
         assert g.node("pricing").kind == NodeKind.MODULE
+
+
+# ── add_uses_edges ────────────────────────────────────────────
+
+def _enriched(source: str) -> NameGraph:
+    """Build and enrich a single-module graph from lob source."""
+    module = from_tree(parse(source))
+    g = build(module)
+    enrich(g, module, extract_symbols)
+    return g
+
+
+def _uses_edges(g: NameGraph) -> list[dict]:
+    return [e for e in g.to_dict()["edges"] if e["kind"] == "USES"]
+
+
+class TestAddUsesEdges:
+    def test_intra_module_uses_edge(self):
+        src = (
+            "#M\n"
+            "    def caller():\n"
+            "        return callee()\n"
+            "\n"
+            "    def callee():\n"
+            "        return 1\n"
+        )
+        g = _enriched(src)
+        add_uses_edges(g, extract_calls)
+        uses = _uses_edges(g)
+        sources = {e["source"] for e in uses}
+        targets = {e["target"] for e in uses}
+        assert "m#caller" in sources
+        assert "m#callee" in targets
+
+    def test_no_edge_for_unresolved_name(self):
+        src = "#M\n    def f():\n        return unknown_external()\n"
+        g = _enriched(src)
+        add_uses_edges(g, extract_calls)
+        assert all(e["target"] != "m#unknown_external" for e in _uses_edges(g))
+
+    def test_deduplicates_multiple_calls(self):
+        src = (
+            "#M\n"
+            "    def caller():\n"
+            "        return callee() + callee()\n"
+            "\n"
+            "    def callee():\n"
+            "        return 1\n"
+        )
+        g = _enriched(src)
+        add_uses_edges(g, extract_calls)
+        uses = [e for e in _uses_edges(g)
+                if e["source"] == "m#caller" and e["target"] == "m#callee"]
+        assert len(uses) == 1
+
+    def test_no_uses_edges_without_call_extractor(self):
+        src = "#M\n    def f():\n        return g()\n    def g():\n        return 1\n"
+        g = _enriched(src)
+        # add_uses_edges not called — no USES edges
+        assert _uses_edges(g) == []
+
+    def test_cross_module_uses_edge(self):
+        mod_a = from_tree(parse("#A\n    def caller():\n        return callee()\n"))
+        mod_b = from_tree(parse("#B\n    def callee():\n        return 1\n"))
+        g = NameGraph()
+        for mod in (mod_a, mod_b):
+            sub = build(mod)
+            enrich(sub, mod, extract_symbols)
+            g.merge(sub)
+        add_uses_edges(g, extract_calls)
+        uses = _uses_edges(g)
+        assert any(e["source"] == "a#caller" and e["target"] == "b#callee"
+                   for e in uses)

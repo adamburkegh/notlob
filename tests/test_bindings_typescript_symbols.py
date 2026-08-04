@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 
-from notlob.bindings.typescript.symbols import extract_symbols
+from notlob.bindings.typescript.symbols import extract_calls, extract_symbols
 
 
 def names(lines):
     return [s.name for s in extract_symbols(lines)]
+
+
+def syms(lines):
+    return extract_symbols(lines)
 
 
 class TestFunctions:
@@ -93,3 +97,76 @@ class TestMultipleLines:
     def test_empty_lines_ignored(self):
         lines = ['    ', '    const x = 1', '    ']
         assert names(lines) == ['x']
+
+
+# ── Source capture ───────────────────────────────────────────
+
+class TestSource:
+    def test_single_line_declaration_has_source(self):
+        result = syms(['    const AXES = []'])
+        assert result[0].source == 'const AXES = []'
+
+    def test_function_body_included_in_source(self):
+        lines = [
+            '    function dist(a, b) {',
+            '        return a + b;',
+            '    }',
+        ]
+        result = syms(lines)
+        assert result[0].name == 'dist'
+        assert 'return a + b' in result[0].source
+
+    def test_source_split_between_declarations(self):
+        lines = [
+            '    function f() { return 1; }',
+            '    function g() { return 2; }',
+        ]
+        result = syms(lines)
+        assert 'return 1' in result[0].source
+        assert 'return 1' not in result[1].source
+        assert 'return 2' in result[1].source
+
+    def test_nested_function_in_source_not_extracted(self):
+        lines = [
+            '    function outer() {',
+            '        function inner() {}',
+            '    }',
+        ]
+        result = syms(lines)
+        assert len(result) == 1
+        assert 'inner' in result[0].source
+
+
+# ── extract_calls ────────────────────────────────────────────
+
+class TestExtractCalls:
+    def test_bare_function_call(self):
+        assert "toRoman" in extract_calls("const x = toRoman(n);")
+
+    def test_multiple_calls(self):
+        refs = extract_calls("const x = encode(decode(s));")
+        assert "encode" in refs
+        assert "decode" in refs
+
+    def test_method_call_excluded(self):
+        # Method calls (.foo()) require type info — excluded by design.
+        assert "toRoman" not in extract_calls("obj.toRoman(n);")
+
+    def test_excludes_defined_name(self):
+        src = "function toRoman(n: number) { return helper(n); }"
+        refs = extract_calls(src)
+        assert "toRoman" not in refs
+        assert "helper" in refs
+
+    def test_excludes_ts_keywords(self):
+        src = "const x = new MyClass();"
+        assert "new" not in extract_calls(src)
+
+    def test_empty_source_returns_empty(self):
+        assert extract_calls("") == []
+
+    def test_chained_call_captures_first(self):
+        # foo(bar()) — both foo and bar are bare calls
+        refs = extract_calls("const r = foo(bar(x));")
+        assert "foo" in refs
+        assert "bar" in refs

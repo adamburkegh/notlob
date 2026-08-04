@@ -337,6 +337,16 @@ information:
   modules via their declared `#References`; the name-graph spans the
   full package.
 
+- *Call graph.* A fourth build pass — `add_uses_edges` — uses each
+  binding's `extract_calls` to scan SYMBOL source text for references to
+  other symbols and emits `USES` edges.  The edges are intra- and
+  cross-module; the distinction is derivable from the address prefixes.
+  Absence of a `USES` edge means the reference was not found by static
+  analysis, not that the call does not exist — see each binding's
+  "Static call analysis" section for fidelity ceilings.  `USES_EXTERNAL`
+  is a separate edge kind connecting a binding module to files declared
+  with `~external`.
+
 The seam between the structural and symbolic layers is the binding
 boundary. The structural layer is the common vocabulary across all
 languages; the symbolic layer is language-specific richness.
@@ -574,7 +584,7 @@ static assets.  Two declarations in `binding.lob` handle this:
 root that `notlob build` should be aware of.  The file is not
 assembled, tested, or owned by notlob; it is passed to the build hook
 and appears as a `NodeKind.EXTERNAL` node in the name-graph (connected
-to the binding module via a `USES` edge, visible via `notlob query`).
+to the binding module via a `USES_EXTERNAL` edge, visible via `notlob query`).
 
 **`~on-build <script>`** — a hook script in the binding's own language
 (TypeScript for TypeScript projects, Python for Python projects).

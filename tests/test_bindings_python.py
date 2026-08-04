@@ -6,6 +6,7 @@ top-level defined name and its dedented source text.
 """
 
 from notlob.bindings.python import extract_symbols
+from notlob.bindings.python.symbols import extract_calls
 
 
 def _names(lines):
@@ -170,6 +171,48 @@ def test_class_source_includes_methods():
     result = extract_symbols(lines)
     assert result[0].name == "Codec"
     assert "encode" in result[0].source
+
+
+# ── extract_calls ────────────────────────────────────────────
+
+class TestExtractCalls:
+    def test_returns_called_names(self):
+        src = "def f():\n    return g() + h()"
+        refs = extract_calls(src)
+        assert "g" in refs
+        assert "h" in refs
+
+    def test_excludes_builtins(self):
+        src = "def f(xs):\n    return len(xs)"
+        assert "len" not in extract_calls(src)
+
+    def test_excludes_print(self):
+        assert "print" not in extract_calls("def f():\n    print('hi')")
+
+    def test_parameter_included_unfiltered(self):
+        # Parameters appear as Name loads; graph resolution will drop them.
+        src = "def f(x):\n    return g(x)"
+        refs = extract_calls(src)
+        assert "x" in refs
+        assert "g" in refs
+
+    def test_cross_function_refs(self):
+        src = "def pipeline(x):\n    return encode(decode(x))"
+        refs = extract_calls(src)
+        assert "encode" in refs
+        assert "decode" in refs
+
+    def test_syntax_error_returns_empty(self):
+        assert extract_calls("def f(") == []
+
+    def test_empty_source_returns_empty(self):
+        assert extract_calls("") == []
+
+    def test_defined_name_still_included_if_called_recursively(self):
+        src = "def fact(n):\n    return n * fact(n - 1)"
+        # fact is defined here but also called — graph handles self-loops
+        refs = extract_calls(src)
+        assert "fact" in refs
 
 
 def test_syntax_error_source_is_not_present():

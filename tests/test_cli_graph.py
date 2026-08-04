@@ -8,6 +8,7 @@ from notlob.commands import (
     cmd_graph,
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
+    cmd_query_callers, cmd_query_callees,
 )
 
 
@@ -329,3 +330,63 @@ class TestCmdQueryContent:
     def test_no_project_returns_1(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         assert cmd_query_content("any/address") == 1
+
+
+# ── cmd_query_callers / cmd_query_callees ─────────────────────
+
+_CALLER_LOB = (
+    "#M\n"
+    "    def caller():\n"
+    "        return callee()\n"
+    "\n"
+    "    def callee():\n"
+    "        return 1\n"
+)
+
+
+class TestCmdQueryCallers:
+    def test_returns_caller_symbol(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "m.lob", _CALLER_LOB)
+        monkeypatch.chdir(root)
+        rc = cmd_query_callers("m#callee")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        labels = [n["label"] for n in data]
+        assert "caller" in labels
+
+    def test_no_callers_returns_empty_array(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "m.lob", _CALLER_LOB)
+        monkeypatch.chdir(root)
+        cmd_query_callers("m#caller")
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
+    def test_no_project_returns_1(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert cmd_query_callers("any#symbol") == 1
+
+
+class TestCmdQueryCallees:
+    def test_returns_callee_symbol(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "m.lob", _CALLER_LOB)
+        monkeypatch.chdir(root)
+        rc = cmd_query_callees("m#caller")
+        data = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        labels = [n["label"] for n in data]
+        assert "callee" in labels
+
+    def test_no_callees_returns_empty_array(self, tmp_path, capsys, monkeypatch):
+        root = _project(tmp_path)
+        _write(root, "m.lob", _CALLER_LOB)
+        monkeypatch.chdir(root)
+        cmd_query_callees("m#callee")
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
+    def test_no_project_returns_1(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert cmd_query_callees("any#symbol") == 1

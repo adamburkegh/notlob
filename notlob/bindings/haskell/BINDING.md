@@ -21,6 +21,20 @@ combinators, etc.). Diagnostics map back to `.lob` section addresses.
 Unlike the Python linter, hlint is style-only and needs no cross-module
 name resolution.
 
+## Static call analysis
+
+`extract_calls` scans each symbol's source text with a regex for
+lowercase identifiers, then subtracts the names defined in the same
+block and a fixed set of Haskell keywords.  The survivors are treated as
+references to other top-level symbols and used by `add_uses_edges` to
+add `USES` edges in the name-graph.
+
+Fidelity ceiling: operator sections, point-free compositions, and
+qualified names contribute only their leaf (e.g. `Data.List.sort` →
+`sort`).  Locally-bound names introduced by `let`/`where` may appear
+as false positives if they happen to match another top-level symbol —
+graph resolution drops them when no matching address exists.
+
 ## Property & unit testing
 
 - `~property` claims run in their own `runghc` subprocess with
