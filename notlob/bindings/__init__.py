@@ -135,6 +135,11 @@ class BindingKit:
                      when the binding does not support static analysis.
     extension        File extension for build artifacts (e.g. ``"py"``,
                      ``"hs"``, ``"ts"``).
+    comment_prefix   Location-comment prefix used in assembled/build
+                     output (e.g. ``"#"``, ``"--"``, ``"//"``).
+    build            (module, file_path=None) -> str, the assembly used
+                     by ``notlob build``, or None when the binding
+                     doesn't support it.
 
     Runner and lint callables are typed as Callable[..., list] to avoid
     a circular import; element types are ClaimResult and LintResult

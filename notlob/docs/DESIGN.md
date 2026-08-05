@@ -433,23 +433,14 @@ An unknown `~language` value is an error at command invocation time, not
 at parse time — the grammar accepts any string; the registry rejects
 unregistered names when the binding kit is actually loaded.
 
-`BindingKit` is a dataclass that composes callables — one per tooling
-concern — so the name-graph and claim runner can ask for exactly the
-capability they need without coupling to a particular language:
-
-```python
-@dataclass
-class BindingKit:
-    extract_symbols: Extractor            # code lines → defined names
-    assemble:        Assembler            # Module → executable string
-    run_examples:    Callable[..., list]  # ~example claims
-    run_properties:  Callable[..., list]  # ~property claims
-    run_tests:       Callable[..., list]  # #Tests assertions
-    lint:            Callable[..., list] | None  # static analysis; None if unsupported
-    extension:       str                  # output file extension ("py", "hs", "ts")
-    comment_prefix:  str                  # location-comment prefix ("#", "--", "//")
-    build:           Callable[..., str] | None   # assembly for notlob build
-```
+`BindingKit` (`notlob.bindings.BindingKit`) is a dataclass that
+composes callables — one per tooling concern (symbol/call extraction,
+assembly, the three claim runners, linting, build) — so the name-graph
+and claim runner can ask for exactly the capability they need without
+coupling to a particular language. See the class's own docstring for
+the full field list and each callable's signature; duplicating that
+list here would just be a second copy to keep in sync with the actual
+dataclass.
 
 The declarations in a `#Binding` section (`~language python`,
 `~external`, `~on-build`, `~keep-generated-src`) map to submodule
