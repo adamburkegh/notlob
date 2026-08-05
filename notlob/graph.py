@@ -841,6 +841,9 @@ def add_uses_edges(
     for node in (
         *graph.nodes(kind=NodeKind.SYMBOL),
         *graph.nodes(kind=NodeKind.RUN),
+        *graph.nodes(kind=NodeKind.TEST),
+        *graph.nodes(kind=NodeKind.EXAMPLE),
+        *graph.nodes(kind=NodeKind.PROPERTY),
     ):
         source = (node.content or {}).get("code")
         if not source:

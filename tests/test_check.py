@@ -478,6 +478,32 @@ class TestCheckImports:
         assert len(findings) == 1
         assert "unused import" in findings[0].message
 
+    def test_symbol_used_in_tests_not_flagged(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): return 1\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    def main_fn(): return 0\n\n"
+                    "---\n\n#Tests\n\n    helper() == 1\n\n"
+                    "#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols, call_extractor=extract_calls)
+        findings = check_imports(graph)
+        assert findings == []
+
+    def test_symbol_used_in_example_not_flagged(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): return 1\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    def main_fn(): return 0\n\n"
+                    "~example\n    helper() == 1\n\n"
+                    "---\n\n#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols, call_extractor=extract_calls)
+        findings = check_imports(graph)
+        assert findings == []
+
     def test_hash_ref_in_prose_not_flagged(self, tmp_path):
         # #Name notation in prose is explicit module usage — should satisfy
         # the unused import checker even when no symbol names appear in text.

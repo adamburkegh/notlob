@@ -21,9 +21,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   `list[tuple[str, int]]` (name, 1-indexed line within the source block)
   instead of `list[str]`.  The line is used to compute `start_line` on
   USES edges.
-- `add_uses_edges` now walks `~run` blocks in addition to symbol
-  definitions, so calls inside entry-point blocks are tracked in the
-  call graph.
+- `add_uses_edges` now walks `~run`, `~example`, `~property`, and
+  `#Tests` claim blocks in addition to symbol definitions, so calls
+  inside any claim are tracked in the call graph and satisfy
+  `check_imports`.
 - `check_imports` rewritten to use USES and REFERENCES edges rather
   than a regex scan over raw text. Consequences: (1) a bare word mention
   of a symbol in prose no longer satisfies the check — only a `#Label`
