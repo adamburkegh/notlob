@@ -326,10 +326,13 @@ validates references against the doc-node graph.
 ## Tooling Architecture
 
 The literate layer (parser, name-graph, claim runner, diagnostics) is
-independent of the execution substrate. Code blocks are currently Python
-for ecosystem access (Hypothesis for property testing, Pandas for data
-experiments). The plan is to support Haskell blocks when the type safety
-story needs proper exploration.
+independent of the execution substrate. Three language bindings exist
+today — Python (the original target, ecosystem access via Hypothesis
+and the rest of PyPI), Haskell (the type safety exploration this
+architecture was built to eventually support), and TypeScript (browser-
+and Node-targeted code) — each realizing the same claim model through
+its own toolchain. See each binding's own `BINDING.md` for what it
+supports and how.
 
 **Parser:** Lark grammar (`notlob/grammar.lark`) for the `.lob` format,
 using Lark's own native lexer — every structural line-type is a real
@@ -544,13 +547,15 @@ address via `-m` (resolved from CWD against the nearest `binding.lob`).
 package as a human-readable document — the complement of execution.
 Target formats:
 
-- *Markdown* — near-term target.  Module heading becomes `# Title`;
-  subheadings become `## Subheading`; prose blocks become paragraphs;
-  code blocks become fenced ` ```python ` blocks; inline refs become
-  anchor links backed by the name-graph (no dead links).  Claims render
-  as labelled blocks — `~example` as a numbered example, `~property` as
-  a named invariant — distinct from plain code.  A package weave
-  produces a linked set of `.md` files.
+- *Markdown* — implemented (`notlob weave`).  Module heading becomes
+  `# Title`; subheadings become `## Subheading`; prose blocks become
+  paragraphs; code blocks become fenced code blocks tagged with the
+  binding's language; inline `##Label` refs become local anchor links.
+  Claims render as labelled blocks (`~example` as `**Example:**`,
+  `~property`/named `~test` as `**Property:**`) distinct from plain
+  code; `~run` claims are omitted.  A package weave (no path given)
+  prints every module in the project, in sorted path order, to
+  stdout, separated by `---` dividers — not separate `.md` files.
 
 - *Typst* — medium-term target for typeset PDF output.  Typst is chosen
   over LaTeX because notlob source uses `#` heavily; generating LaTeX
