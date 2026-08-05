@@ -383,32 +383,16 @@ languages; the symbolic layer is language-specific richness.
 
 **Binding kit architecture:** A binding is not a single function; it is a
 kit of cooperating tools that share a language substrate. The binding
-layer is organised language-first:
-
-```
-notlob/bindings/
-    __init__.py          ← BindingKit dataclass + shared result types
-    python/
-        __init__.py      ← assembles the Python kit; exposes `kit`
-        assemble.py      ← Module → executable Python with # <addr> markers
-        symbols.py       ← extract_symbols for stage-2 name-graph
-        runner.py        ← run_examples, run_properties, run_tests
-        lint.py          ← lint_python via ruff; source-map translation
-        loader.py        ← ModuleCache for cross-file dep resolution
-    haskell/
-        __init__.py      ← Haskell kit; requires runghc or stack on PATH
-        assemble.py      ← Module → Haskell source with -- <addr> markers
-        symbols.py       ← extract_symbols (top-level type signatures)
-        runner.py        ← subprocess harness; CLAIM/PASS/FAIL protocol
-        lint.py          ← lint_haskell via hlint
-    typescript/
-        __init__.py      ← TypeScript kit; requires tsx on PATH or in node_modules
-        assemble.py      ← Module → TypeScript source with // <addr> markers
-        symbols.py       ← extract_symbols (function/const/class/interface/type/enum)
-        runner.py        ← tsx harness; CLAIM/PASS/FAIL protocol; lhs/rhs extraction
-        tokenizer.py     ← bracket-counting scanner for claim completion + === split
-        lint.py          ← lint_typescript via `tsc --noEmit`; source-map translation
-```
+layer is organised language-first: each binding lives in its own
+`notlob/bindings/<language>/` directory, with an `__init__.py` that
+assembles the kit and exposes `kit: BindingKit` plus `extract_symbols`.
+The three built-in bindings broadly share a shape — `assemble.py`,
+`symbols.py`, `runner.py`, `lint.py` — with binding-specific extras
+where a language's toolchain needs them (TypeScript's `tokenizer.py`
+for claim-completion scanning, Python's `loader.py` for cross-file
+dependency caching). See each directory directly for its current file
+layout, rather than a listing here that only one of us remembers to
+update.
 
 Each binding directory carries a `BINDING.md` documenting its toolchain,
 linter, and supported claims — the binding is the unit that determines
