@@ -5,7 +5,37 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `REFERENCES` edge kind: a fourth `build_package` pass walks prose
+  `#Label` mentions and emits `REFERENCES` edges (MODULE/SUBHEADING →
+  target node) with `start_line`. Enables `notlob query references
+  <addr>` and `notlob query referenced-by <addr>`.
+- `start_line` on `USES` edges — the absolute `.lob` line of the first
+  call site within the source symbol, enabling precise navigation from
+  the call graph to the source location.
+- `start_line` on `IMPORTS` and `USES_EXTERNAL` edges, taken from Lark
+  token positions at parse time.
+
 ### Changed
+- `extract_calls` in all three language bindings now returns
+  `list[tuple[str, int]]` (name, 1-indexed line within the source block)
+  instead of `list[str]`.  The line is used to compute `start_line` on
+  USES edges.
+- `add_uses_edges` now walks `~run` blocks in addition to symbol
+  definitions, so calls inside entry-point blocks are tracked in the
+  call graph.
+- `check_imports` rewritten to use USES and REFERENCES edges rather
+  than a regex scan over raw text. Consequences: (1) a bare word mention
+  of a symbol in prose no longer satisfies the check — only a `#Label`
+  reference does; (2) imports of prose-only modules are now flagged
+  unless a `#Label` reference exists; (3) calls inside `~run` blocks now
+  satisfy the check.
+- TypeScript `extract_symbols` now captures the full source block for
+  each declaration (header line plus continuation lines), fixing a
+  regression where `source` was always `None` and no USES edges were
+  emitted for TypeScript projects.
+
+### Fixed
 - `#Appendix` no longer uses a colon (`#Appendix: Title` → `#Appendix
   Title`), matching every other `#`/`##` heading convention in the
   language. The old colon form still parses (it's just ordinary title

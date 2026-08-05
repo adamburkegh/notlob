@@ -14,7 +14,7 @@ from notlob.check import (
 )
 from notlob import from_tree, parse
 from notlob.project import build_package
-from notlob.bindings.python.symbols import extract_symbols
+from notlob.bindings.python.symbols import extract_symbols, extract_calls
 
 
 def _sym(module: str, name: str) -> tuple[Node, Edge]:
@@ -410,7 +410,7 @@ class TestCheckImports:
         self._write(tmp_path, "main.lob",
                     "#Main\n\n    x = helper()\n"
                     "---\n\n#References\n    #Util\n")
-        graph = build_package(tmp_path, extract_symbols)
+        graph = build_package(tmp_path, extract_symbols, call_extractor=extract_calls)
         findings = check_imports(graph)
         assert findings == []
 
@@ -423,13 +423,28 @@ class TestCheckImports:
         findings = check_imports(graph)
         assert findings == []
 
-    def test_import_with_no_symbols_skipped(self, tmp_path):
+    def test_import_with_no_symbols_flagged_if_unreferenced(self, tmp_path):
+        # Importing a prose-only module with no #Label reference is unused.
         self._write(tmp_path, "binding.lob",
                     "#P\n\n---\n\n#Binding\n    ~language python\n")
         self._write(tmp_path, "notes.lob",
                     "#Notes\n\nJust prose, no code.\n")
         self._write(tmp_path, "main.lob",
                     "#Main\n\n    x = 42\n"
+                    "---\n\n#References\n    #Notes\n")
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_imports(graph)
+        assert len(findings) == 1
+        assert "unused import" in findings[0].message
+
+    def test_import_with_no_symbols_prose_ref_satisfies(self, tmp_path):
+        # A #Label prose reference to the dep is sufficient even if it has no symbols.
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "notes.lob",
+                    "#Notes\n\nJust prose, no code.\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\nSee #Notes for background.\n\n    x = 42\n"
                     "---\n\n#References\n    #Notes\n")
         graph = build_package(tmp_path, extract_symbols)
         findings = check_imports(graph)
@@ -443,11 +458,13 @@ class TestCheckImports:
         self._write(tmp_path, "main.lob",
                     "#Main\n\n~run\n    helper()\n"
                     "---\n\n#References\n    #Util\n")
-        graph = build_package(tmp_path, extract_symbols)
+        graph = build_package(tmp_path, extract_symbols, call_extractor=extract_calls)
         findings = check_imports(graph)
         assert findings == []
 
-    def test_symbol_mentioned_in_prose_not_flagged(self, tmp_path):
+    def test_symbol_mentioned_in_prose_flagged(self, tmp_path):
+        # Plain text mention of a symbol name is not semantic usage;
+        # only a USES edge (code call) or REFERENCES edge (#Label) counts.
         self._write(tmp_path, "binding.lob",
                     "#P\n\n---\n\n#Binding\n    ~language python\n")
         self._write(tmp_path, "util.lob",
@@ -458,7 +475,8 @@ class TestCheckImports:
                     "---\n\n#References\n    #Util\n")
         graph = build_package(tmp_path, extract_symbols)
         findings = check_imports(graph)
-        assert findings == []
+        assert len(findings) == 1
+        assert "unused import" in findings[0].message
 
     def test_hash_ref_in_prose_not_flagged(self, tmp_path):
         # #Name notation in prose is explicit module usage — should satisfy

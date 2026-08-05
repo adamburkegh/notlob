@@ -377,50 +377,27 @@ def check_style(graph: NameGraph) -> list[Finding]:
 # ── Check: imports ───────────────────────────────────────────
 
 def check_imports(graph: NameGraph) -> list[Finding]:
-    """Flag modules that import another module but use none of its symbols.
+    """Flag modules that import another module but make no use of it.
 
-    A symbol counts as "used" if it appears in code **or** prose — in a
-    literate project, referencing a concept in prose is a legitimate
-    reason to import its module.
+    "Use" means a ``USES`` edge (code call) or ``REFERENCES`` edge (prose
+    ``#Label`` mention) whose source is within the importing module's subtree
+    and whose target is within the imported module's subtree.
 
     Findings have ``severity="error"`` — unused imports block the build.
     """
     findings: list[Finding] = []
 
     for mod_node in graph.nodes(kind=NodeKind.MODULE):
-        text_parts: list[str] = []
-        if mod_node.content:
-            for key in ("code", "prose"):
-                if mod_node.content.get(key):
-                    text_parts.append(mod_node.content[key])
-        for child in graph.children(mod_node.address):
-            if child.kind == NodeKind.SUBHEADING and child.content:
-                for key in ("code", "prose"):
-                    if child.content.get(key):
-                        text_parts.append(child.content[key])
-        code = "\n".join(text_parts)
-
-        for dep in graph.children(mod_node.address, EdgeKind.IMPORTS):
-            dep_symbols = [
-                n.label for n in
-                graph.children(dep.address, EdgeKind.DEFINES)
-                if n.kind == NodeKind.SYMBOL
-            ]
-            for sub in graph.children(dep.address):
-                if sub.kind == NodeKind.SUBHEADING:
-                    dep_symbols.extend(
-                        n.label for n in
-                        graph.children(sub.address, EdgeKind.DEFINES)
-                        if n.kind == NodeKind.SYMBOL
-                    )
-            if not dep_symbols:
-                continue
-            # A #Name prose reference to the dep module is explicit usage —
-            # check this before the symbol-name scan.
-            dep_ref = '#' + dep.label
-            used = (dep_ref in code) or any(
-                re.search(r"\b" + re.escape(sym) + r"\b", code)
-                for sym in dep_symbols
+        mod_root    = mod_node.address
+        mod_prefix  = mod_root + "#"
+        for dep in graph.children(mod_root, EdgeKind.IMPORTS):
+            dep_root   = dep.address
+            dep_prefix = dep_root + "#"
+            used = any(
+                (e.source == mod_root or e.source.startswith(mod_prefix))
+                and (e.target == dep_root or e.target.startswith(dep_prefix))
+                for e in graph._edges
+                if e.kind in (EdgeKind.USES, EdgeKind.REFERENCES)
             )
             if not used:
                 findings.append(Finding(

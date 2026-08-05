@@ -838,7 +838,10 @@ def add_uses_edges(
 
     # first_call: (source_addr, target_addr) → earliest source-relative line
     first_call: dict[tuple[str, str], int] = {}
-    for node in graph.nodes(kind=NodeKind.SYMBOL):
+    for node in (
+        *graph.nodes(kind=NodeKind.SYMBOL),
+        *graph.nodes(kind=NodeKind.RUN),
+    ):
         source = (node.content or {}).get("code")
         if not source:
             continue
