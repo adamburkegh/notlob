@@ -140,7 +140,7 @@ class TestPriorityTable:
         assert "fallback" in table
         # fallback should be on the lowest priority (1), not on 20 or 10
         lines = table.splitlines()
-        fallback_line = next(l for l in lines if "fallback" in l)
+        fallback_line = next(line for line in lines if "fallback" in line)
         assert fallback_line.strip().startswith("1 &")
 
 

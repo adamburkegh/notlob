@@ -46,7 +46,7 @@ calls) is invisible to static analysis and produces no USES edge.
 | `~example`  | yes — boolean expressions, `==` for equality          |
 | `~property` | yes — Hypothesis (`~property-testing hypothesis`)     |
 | `#Tests`    | yes — `~unit-testing pytest` enriches the namespace   |
-| `~run`      | yes — included in `notlob build` output (entry point) |
+| `~run`      | yes — bare/`on-invocation` wrapped in `if __name__ == "__main__":`; `on-load` unconditional (legal, unusual) |
 
 Equality assertions use `==`; the runner reports concrete left/right
 values on failure for `a == b`.

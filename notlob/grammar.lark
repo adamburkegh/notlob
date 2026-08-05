@@ -144,7 +144,17 @@ SUBHEAD.10:  "##" REST_OF_LINE
 // `~word` outside this list simply fails to lex, since
 // PROSE_TEXT/LINE_START_TEXT exclude `~` at line-start; there is no
 // silent fallback.
-SIGIL.10: "~example\n" | "~run\n" | "~property\n" | "~property " REST_OF_LINE
+//
+// `~run`'s optional mode (`on-load` / `on-invocation`) is a closed,
+// grammar-enforced pair -- unlike `~property`'s name, which is
+// genuinely open/author-chosen text, `~run`'s mode is a fixed small
+// set of real values, not something an author invents, so it gets the
+// same "typo fails to lex" treatment as the rest of the sigil
+// vocabulary rather than `~property`'s free-text REST_OF_LINE form.
+// Bare `~run` (no mode) means `on-invocation` -- see the binding
+// kits' build() functions for what each mode means per language.
+SIGIL.10: "~example\n" | "~run\n" | "~run on-load\n" | "~run on-invocation\n"
+        | "~property\n" | "~property " REST_OF_LINE
 
 // ~test <name>: requires a name (unlike ~property, where the name is
 // optional) -- an unnamed ~test wouldn't do anything a bare assertion

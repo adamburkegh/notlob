@@ -15,6 +15,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   the call graph to the source location.
 - `start_line` on `IMPORTS` and `USES_EXTERNAL` edges, taken from Lark
   token positions at parse time.
+- `~run` takes an optional mode: `~run on-load` (fires unconditionally
+  whenever the built artifact is loaded) or `~run on-invocation` (fires
+  only when the artifact is the program's entry point — the default for
+  bare `~run`). The notlob equivalent of `if __name__ == "__main__":`.
+  Python wraps `on-invocation` bodies in exactly that guard; TypeScript
+  wraps them in a verified ESM Node entry-point guard; Haskell has no
+  meaningful "on-load" (importing a module never runs `IO` actions
+  there), so `on-load` is a build/run-time error for that binding —
+  bare `~run` and `~run on-invocation` are equivalent for Haskell.
 
 ### Changed
 - `extract_calls` in all three language bindings now returns
@@ -37,6 +46,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   emitted for TypeScript projects.
 
 ### Fixed
+- `notlob run` on a Haskell module now includes the module's `~run`
+  claim bodies — where `main` is conventionally defined — in the
+  assembled source. Previously they were silently dropped, so any
+  module relying on `~run` for its entry point (rather than a bare
+  top-level `main` code block) failed with `Not in scope: 'main'`.
 - `#Appendix` no longer uses a colon (`#Appendix: Title` → `#Appendix
   Title`), matching every other `#`/`##` heading convention in the
   language. The old colon form still parses (it's just ordinary title

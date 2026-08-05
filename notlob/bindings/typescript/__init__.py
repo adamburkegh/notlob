@@ -25,7 +25,7 @@ absent.  See ``lint.py``.
 
 from pathlib import Path
 
-from notlob.bindings import BindingKit
+from notlob.bindings import BindingKit, collect_run_bodies
 from notlob.bindings.typescript.assemble import assemble
 from notlob.bindings.typescript.lint import lint_typescript
 from notlob.bindings.typescript.runner import (
@@ -44,35 +44,62 @@ def build_typescript(module: Module, file_path: Path | None = None) -> str:
 
     Unlike ``assemble``, which is used for testing and excludes all
     claims, ``build_typescript`` appends ``~run`` claim bodies at the
-    end of the assembled source.  ``~run`` is the program entry point —
-    it wires up event listeners, calls ``main()``, etc. — and must be
-    present in the build artifact for the program to do anything when
-    loaded by a browser or runtime.
+    end of the assembled source, since a build artifact needs its
+    entry point present to do anything once loaded.
+
+    ``~run on-load`` bodies are appended unconditionally, at module
+    scope — the natural choice for browser-target code (DOM wiring,
+    event listeners): a page loading the script *is* the deliberate
+    execution moment, there's no meaningful "imported vs run" split to
+    guard against there.
+
+    ``~run`` (bare) and ``~run on-invocation`` bodies are appended
+    together afterwards, wrapped in a Node/ESM entry-point guard (only
+    added when at least one such block exists, so browser-only modules
+    get no Node-specific code at all) so those side effects fire only
+    when the artifact is executed directly, not merely imported by
+    other Node code.
     """
-    import textwrap
-    from notlob.model import Claim, Subheading
     from notlob.project import find_project_root
 
-    root       = find_project_root(file_path) if file_path else None
-    source     = _build_module_source(module, root)
+    root   = find_project_root(file_path) if file_path else None
+    source = _build_module_source(module, root)
 
-    run_blocks: list[str] = []
-
-    def _collect_run(body: list) -> None:
-        for item in body:
-            if isinstance(item, Claim) and item.sigil == '~run':
-                block = textwrap.dedent('\n'.join(item.lines)).strip()
-                if block:
-                    run_blocks.append(block)
-            elif isinstance(item, Subheading):
-                _collect_run(item.body)
-
-    _collect_run(module.body)
-
-    if run_blocks:
-        source = source + '\n\n' + '\n\n'.join(run_blocks)
-
+    on_load, on_invocation = collect_run_bodies(module)
+    if on_load:
+        source = source + '\n\n' + '\n\n'.join(on_load)
+    if on_invocation:
+        source = _wrap_on_invocation(source, on_invocation)
     return source
+
+
+def _wrap_on_invocation(source: str, on_invocation: list[str]) -> str:
+    """Append *on_invocation* bodies wrapped in an ESM Node entry-point
+    guard, prepending the ``node:url`` import the guard needs.
+
+    ``import.meta.url === pathToFileURL(process.argv[1]).href`` is true
+    only when this module is the one Node was asked to run directly —
+    false when it's imported by other code. Using ``pathToFileURL``
+    (rather than manual string comparison against ``process.argv[1]``)
+    matters on Windows: raw paths use backslashes and aren't
+    URL-encoded, so a naive string-template comparison against
+    ``import.meta.url`` fails there; ``pathToFileURL`` handles the
+    platform-correct
+    conversion. Verified against a real ``tsx`` run in both directions
+    (direct execution and import) before relying on it.
+    """
+    import textwrap
+
+    guard_body = textwrap.indent('\n\n'.join(on_invocation), '  ')
+    guard = (
+        "if (import.meta.url === pathToFileURL(process.argv[1]).href) {\n"
+        + guard_body
+        + '\n}'
+    )
+    return (
+        "import { pathToFileURL } from 'node:url';\n\n"
+        + source + '\n\n' + guard
+    )
 
 
 #: The assembled TypeScript binding kit.

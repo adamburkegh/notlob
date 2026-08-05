@@ -15,14 +15,14 @@ from pathlib import Path
 
 import textwrap
 
-from notlob.bindings import BindingKit, ClaimResult, Status
+from notlob.bindings import BindingKit, ClaimResult, Status, collect_run_bodies
 from notlob.bindings.python.assemble import assemble, assemble_with_deps
 from notlob.bindings.python.lint import lint_python
 from notlob.bindings.python.runner import (
     _load_dep_modules, run_examples, run_tests, run_properties,
 )
 from notlob.bindings.python.symbols import extract_calls, extract_symbols
-from notlob.model import Claim, Module, Subheading
+from notlob.model import Module
 
 
 def build_python(
@@ -34,26 +34,25 @@ def build_python(
     Loads lob-ref dependencies from the project tree rooted at
     *file_path*, inlines their code before the module's own code (see
     ``assemble_with_deps``), and returns a single self-contained Python
-    source string. ``~run`` claim bodies are appended after the
-    module's own code so the artifact is directly executable — only
-    the target module's ``~run`` claims fire, never a dependency's.
+    source string — only the target module's ``~run`` claims are
+    appended, never a dependency's.
+
+    ``~run on-load`` bodies are appended unconditionally, at module
+    scope. ``~run`` (bare) and ``~run on-invocation`` bodies -- Python
+    treats these as equivalent, since there's only ever one meaningful
+    choice for a Python process -- are appended together afterwards,
+    wrapped in ``if __name__ == "__main__":`` so those side effects
+    fire when the artifact is run directly but not when it's merely
+    imported as a module.
     """
     dep_modules = _load_dep_modules(module, file_path)
     source = assemble_with_deps(module, dep_modules)
-    run_parts: list[str] = []
-    for item in module.body:
-        if isinstance(item, Claim) and item.sigil == "~run":
-            run_parts.append(
-                textwrap.dedent("\n".join(item.lines)).strip()
-            )
-        elif isinstance(item, Subheading):
-            for sub in item.body:
-                if isinstance(sub, Claim) and sub.sigil == "~run":
-                    run_parts.append(
-                        textwrap.dedent("\n".join(sub.lines)).strip()
-                    )
-    if run_parts:
-        source = source + "\n\n" + "\n\n".join(run_parts)
+    on_load, on_invocation = collect_run_bodies(module)
+    if on_load:
+        source = source + "\n\n" + "\n\n".join(on_load)
+    if on_invocation:
+        run_body = textwrap.indent("\n\n".join(on_invocation), "    ")
+        source = source + '\n\n\nif __name__ == "__main__":\n' + run_body
     return source
 
 

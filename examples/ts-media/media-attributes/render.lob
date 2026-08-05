@@ -172,7 +172,7 @@ and are not claimed — they require a live browser environment.
       renderClusterLegend(assignments, k);
     }
 
-~run
+~run on-load
     (document.getElementById('kSlider') as HTMLInputElement)
       .addEventListener('input', runAll);
     renderAxisLegend();

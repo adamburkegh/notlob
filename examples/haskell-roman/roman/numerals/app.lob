@@ -3,6 +3,7 @@
 Print the Roman numeral representation of the integers 1 through 20.
 This module is the executable entry point for the Roman project.
 
+~run
     main :: IO ()
     main = mapM_ (putStrLn . toRoman) [1..20]
 

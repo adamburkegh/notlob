@@ -60,7 +60,7 @@ import json
 import textwrap
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Iterator
+from typing import Callable, Iterator
 
 from .bindings import Extractor
 from .model import (
@@ -811,7 +811,7 @@ def add_references_edges(
 
 def add_uses_edges(
     graph:          NameGraph,
-    call_extractor: "Callable[[str], list[tuple[str, int]]]",
+    call_extractor: Callable[[str], list[tuple[str, int]]],
 ) -> None:
     """Populate USES edges from statically visible symbol references.
 

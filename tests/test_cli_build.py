@@ -235,6 +235,80 @@ class TestCmdBuildPython:
         exec(source, ns)  # must not raise NameError for to_roman
         assert ns["RESULT"] == "III"
 
+    def test_bare_run_wrapped_in_main_guard(self, tmp_path):
+        root = _py_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n    x = 1\n\n~run\n    print(x)\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "thing.py").read_text()
+        assert 'if __name__ == "__main__":' in source
+        guard_pos = source.index('if __name__ == "__main__":')
+        body_pos = source.index("print(x)")
+        assert body_pos > guard_pos
+
+    def test_on_invocation_same_as_bare(self, tmp_path):
+        root = _py_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n    x = 1\n\n~run on-invocation\n    print(x)\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "thing.py").read_text()
+        assert 'if __name__ == "__main__":' in source
+
+    def test_on_load_unconditional_no_guard(self, tmp_path):
+        root = _py_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n    x = 1\n\n~run on-load\n    print(x)\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "thing.py").read_text()
+        assert 'if __name__ == "__main__":' not in source
+        assert "print(x)" in source
+
+    def test_on_load_and_on_invocation_coexist(self, tmp_path):
+        root = _py_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n    x = 1\n\n"
+            "~run on-load\n    print('load')\n\n"
+            "~run on-invocation\n    print('invocation')\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "thing.py").read_text()
+        guard_pos = source.index('if __name__ == "__main__":')
+        load_pos = source.index("print('load')")
+        invocation_pos = source.index("print('invocation')")
+        assert load_pos < guard_pos < invocation_pos
+
+    def test_execution_regression_run_vs_import(self, tmp_path):
+        """The generated guard must actually discriminate run-vs-import,
+        not just look plausible as text."""
+        root = _py_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n    x = 1\n\n"
+            "~run on-load\n    LOAD_FIRED.append(1)\n\n"
+            "~run on-invocation\n    INVOCATION_FIRED.append(1)\n"
+        ))
+        out = tmp_path / "dist"
+        cmd_build(lob, out)
+        source = (out / "thing.py").read_text()
+
+        imported_ns = {"__name__": "not_main",
+                        "LOAD_FIRED": [], "INVOCATION_FIRED": []}
+        exec(source, imported_ns)
+        assert imported_ns["LOAD_FIRED"] == [1]
+        assert imported_ns["INVOCATION_FIRED"] == []
+
+        run_ns = {"__name__": "__main__",
+                   "LOAD_FIRED": [], "INVOCATION_FIRED": []}
+        exec(source, run_ns)
+        assert run_ns["LOAD_FIRED"] == [1]
+        assert run_ns["INVOCATION_FIRED"] == [1]
+
     def test_dep_run_claim_not_inlined(self, tmp_path):
         """Only the target module's own ~run fires -- a dependency's
         ~run claim must not be pulled into the artifact."""
@@ -338,6 +412,54 @@ class TestCmdBuildHaskell:
         # Dep code should be present in the single output file.
         assert "toRoman" in source
         assert "main" in source
+
+    def test_bare_run_body_included(self, tmp_path):
+        root = _hs_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n"
+            "    greet :: String\n"
+            "    greet = \"hi\"\n\n"
+            "~run\n"
+            "    main :: IO ()\n"
+            "    main = putStrLn greet\n"
+        ))
+        out = tmp_path / "dist"
+        assert cmd_build(lob, out) == 0
+        source = (out / "thing.hs").read_text()
+        assert "main = putStrLn greet" in source
+
+    def test_on_invocation_same_as_bare(self, tmp_path):
+        root = _hs_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n"
+            "    greet :: String\n"
+            "    greet = \"hi\"\n\n"
+            "~run on-invocation\n"
+            "    main :: IO ()\n"
+            "    main = putStrLn greet\n"
+        ))
+        out = tmp_path / "dist"
+        assert cmd_build(lob, out) == 0
+        source = (out / "thing.hs").read_text()
+        assert "main = putStrLn greet" in source
+
+    def test_on_load_errors_without_writing_artifact(self, tmp_path, capsys):
+        root = _hs_project(tmp_path)
+        lob = _write(root, "thing.lob", (
+            "#Thing\n\n"
+            "    greet :: String\n"
+            "    greet = \"hi\"\n\n"
+            "~run on-load\n"
+            "    main :: IO ()\n"
+            "    main = putStrLn greet\n"
+        ))
+        out = tmp_path / "dist"
+        assert cmd_build(lob, out) == 1
+        assert not (out / "thing.hs").exists()
+        err = capsys.readouterr().err
+        assert "ERROR" in err
+        assert "on-load" in err
+        assert "equivalent for this binding" in err
 
 
 # ── Project-mode build (no path arg) ─────────────────────────

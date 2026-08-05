@@ -32,7 +32,8 @@ class TestExtractKeywords:
         _, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         keywords = extract_keywords(terminals)
         assert set(keywords) == {
-            "~example", "~run", "~property", "~test", "---",
+            "~example", "~run", "~run on-load", "~run on-invocation",
+            "~property", "~test", "---",
         }
 
     def test_hash_prefixed_heads_excluded(self):

@@ -49,7 +49,7 @@ graph resolution drops them when no matching address exists.
 | `~example`  | yes — Boolean expressions, `==` for equality             |
 | `~property` | yes — QuickCheck (`~property-testing quickcheck`)        |
 | `#Tests`    | yes                                                      |
-| `~run`      | yes — assembled source must define `main :: IO ()`       |
+| `~run`      | yes — bare/`on-invocation` included literally, must define `main :: IO ()`; `on-load` errors at build/run time (unrepresentable in Haskell) |
 
 ## Runner
 

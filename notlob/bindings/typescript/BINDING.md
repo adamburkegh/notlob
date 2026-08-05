@@ -53,7 +53,7 @@ The scaffolded `tsconfig.json` mirrors the linter's flags (target
 |-------------|----------------------------------------------------------|
 | `~example`  | yes — boolean expressions, `===` for equality            |
 | `#Tests`    | yes                                                      |
-| `~run`      | yes — included in `notlob build` output (entry point)    |
+| `~run`      | yes — `on-invocation` (default) wrapped in an ESM Node entry-point guard; `on-load` unconditional (for browser DOM-wiring code) |
 | `~property` | yes — fast-check; `fc` is injected into the claim scope automatically |
 
 Equality assertions use `===`; the runner reports concrete left/right

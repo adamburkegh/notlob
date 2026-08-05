@@ -198,10 +198,19 @@ class TestUnknownSigils:
         for src in (
             "#T\n~example\n    x == 1\n",
             "#T\n~run\n    x = 1\n",
+            "#T\n~run on-load\n    x = 1\n",
+            "#T\n~run on-invocation\n    x = 1\n",
             "#T\n~property\n    x > 0\n",
             "#T\n~property named\n    x > 0\n",
         ):
             parse(src)   # must not raise
+
+    def test_run_bogus_mode_raises(self):
+        # Only on-load / on-invocation are legal -- this is a closed
+        # vocabulary, not free text like ~property's name.
+        src = "#T\n~run on-bogus\n    x = 1\n"
+        with pytest.raises((UnexpectedCharacters, UnexpectedToken)):
+            parse(src)
 
     def test_test_sigil_legal_inside_tests_section(self):
         src = "#T\n---\n#Tests\n##group\n~test named\n    x == 1\n"

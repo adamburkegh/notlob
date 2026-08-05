@@ -89,17 +89,56 @@ the `#Tests` appendix's job. The inline example illuminates; the appendix
 exhausts.
 
 **`~run` is the program entry point.** A `~run` claim marks code that
-executes only when the module is *run* (`notlob run` / `lob`), not when
-it is *tested* (`notlob test`).  It is the notlob equivalent of
-`if __name__ == "__main__"` — but expressed as a claim, keeping the
-entry point visible in the document structure rather than buried in a
-guard.
+executes only when the module is *run* (`notlob run` / `lob` / a build
+artifact executed directly), not when it is *tested* (`notlob test`).
+Bare `~run` means `~run on-invocation` — the notlob equivalent of
+`if __name__ == "__main__"` — expressed as a claim, keeping the entry
+point visible in the document structure rather than buried in a guard.
 
 Side-effecting code (printing, writing files, making requests) belongs
 in a function defined in the essay body; the `~run` claim calls it.
 This keeps the function testable — its behaviour can be verified with
 `~example` or `#Tests` — while confining the side effects to the run
-path.  Multiple `~run` claims in a module execute in document order.
+path.
+
+**`~run`'s optional mode: `on-load` vs `on-invocation`.** `~run` takes
+an optional trailing mode, a closed pair rather than free text — unlike
+`~property`'s name, `on-load`/`on-invocation` are a fixed vocabulary,
+not something an author invents, so a typo fails to lex the same way
+an unrecognised sigil would, instead of silently misparsing.
+
+- `on-invocation` (the default for bare `~run`) fires only when the
+  artifact is the thing actually being executed, not when something
+  else merely imports it as a module. This is the common case: CLI
+  tools, library modules with a demo entry point — anywhere an
+  unwanted side effect on import would be a real bug.
+- `on-load` fires unconditionally, the moment the artifact is loaded at
+  all. The natural fit is browser-target code — DOM wiring, event
+  listeners — where being loaded by the page *is* the deliberate
+  execution moment; there's no meaningful "imported vs run" distinction
+  to guard against there.
+
+Both modes can appear in the same module — code that should always
+wire up on load, plus a heavier entry point that should only fire when
+directly invoked, are not mutually exclusive. Multiple `~run` claims of
+the same mode execute in document order.
+
+Support is binding-dependent, since the distinction is only fully
+meaningful where a runtime actually has both an import mechanism and a
+direct-execution mechanism that behave differently:
+
+- **Python** — only `on-invocation` is normally useful (Python code
+  essentially never wants unconditional-on-import side effects), but
+  `on-load` is legal, if unusual.
+- **TypeScript** — both modes are meaningful: `on-invocation` for
+  Node-targeted code, `on-load` for browser-targeted code.
+- **Haskell** — `on-load` is a build-time error. Haskell's `import`
+  never executes `IO` actions merely by loading a module (only `main`,
+  invoked by the compiled binary when it actually runs, ever does), so
+  the language itself already guarantees on-invocation semantics for
+  anything in the build, and `on-load` has no meaningful translation
+  there at all. Bare `~run` and `~run on-invocation` are equivalent for
+  this binding.
 
 **`~property` syntax is binding-determined.** The body of a `~property`
 block uses the real syntax of the declared property-testing library. For
@@ -432,8 +471,10 @@ the tool components are secondary. A package that declares
 **Claim runner:**
 - `~example` claims run as inline assertions in the assembled namespace
 - `~run` claims execute only during `notlob run`; they are ignored by
-  `notlob test`.  All `~run` bodies in a module execute in document
-  order, in the assembled namespace, after the module code has run.
+  `notlob test`.  `~run` bodies of the same mode (`on-load` /
+  `on-invocation`, see "`~run`'s optional mode" above) execute in
+  document order, in the assembled namespace, after the module code
+  has run.
 - `~property` claims are executed using the declared property-testing
   library. The binding assembles the module into a namespace, then
   exec's each `~property` block into a *fresh copy* of that namespace

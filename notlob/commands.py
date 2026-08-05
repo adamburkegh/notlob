@@ -236,17 +236,17 @@ def _build_ref_graph(module, root, extract_symbols):
 # ── Commands ──────────────────────────────────────────────────
 
 def _collect_run_claims(module) -> list[Claim]:
-    """Return all ~run claims from the module body and subheadings,
-    in document order.
+    """Return all ~run claims (bare, ``on-load``, or ``on-invocation``)
+    from the module body and subheadings, in document order.
     """
     claims = []
     for item in module.body:
-        if isinstance(item, Claim) and item.sigil == "~run":
+        if isinstance(item, Claim) and item.sigil.startswith("~run"):
             claims.append(item)
         elif isinstance(item, Subheading):
             for sub_item in item.body:
                 if (isinstance(sub_item, Claim)
-                        and sub_item.sigil == "~run"):
+                        and sub_item.sigil.startswith("~run")):
                     claims.append(sub_item)
     return claims
 
@@ -278,20 +278,25 @@ def _cmd_run_haskell(
 ) -> int:
     """Assemble a Haskell module (with inlined deps) and run with runghc.
 
-    The assembled source must define ``main :: IO ()``.  If no ``main``
-    is present GHC will report a link error, which surfaces here as a
-    non-zero exit code with the compiler message on stderr.
+    Uses :func:`notlob.bindings.haskell.build_haskell` to assemble, so
+    the module's own ``~run`` (bare or ``on-invocation``) claim bodies
+    are included — that's normally where ``main :: IO ()`` is defined.
+    If no ``main`` ends up in scope, GHC reports a link error, which
+    surfaces here as a non-zero exit code with the compiler message on
+    stderr.  ``~run on-load`` is not supported by the Haskell binding
+    and surfaces as an ``ERROR  <run>`` here rather than a crash.
 
     If *keep_dir* is set the assembled source is also written there as
     ``<module-address-slugified>.hs`` before execution.
     """
-    from notlob.bindings.haskell.assemble import assemble_with_deps
-    from notlob.bindings.haskell.runner import (
-        _load_dep_modules, _run_harness,
-    )
+    from notlob.bindings.haskell import build_haskell
+    from notlob.bindings.haskell.runner import _run_harness
 
-    dep_modules = _load_dep_modules(module, path)
-    source      = assemble_with_deps(module, dep_modules)
+    try:
+        source = build_haskell(module, path)
+    except ValueError as exc:
+        print(f"ERROR  <run>  {exc}", file=sys.stderr)
+        return 1
     if not source:
         print("ERROR  <run>  nothing to run — module contains no code blocks",
               file=sys.stderr)
@@ -735,7 +740,11 @@ def _build_one(path: Path, kit, output_dir: Path) -> Path | None:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
         return None
 
-    source = kit.build(module, path)
+    try:
+        source = kit.build(module, path)
+    except Exception as exc:
+        print(f"ERROR  <build>  {exc}", file=sys.stderr)
+        return None
     if not source:
         return None  # prose-only module — skip silently, not an error
 

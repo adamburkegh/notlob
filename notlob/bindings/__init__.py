@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Generator, Sequence
 
-from ..model import CodeBlock, Module
+from ..model import Claim, CodeBlock, Module, Subheading
 
 
 # ── Claim result types ────────────────────────────────────────
@@ -193,6 +193,46 @@ def assemble_section(comment: str, blocks: list[str]) -> str:
     if rest:
         return head + "\n\n" + "\n\n".join(rest)
     return head
+
+
+# ── Shared ~run collection ───────────────────────────────────
+
+def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
+    """Return ``(on_load_bodies, on_invocation_bodies)`` -- dedented,
+    stripped text for each ``~run`` claim in *module* (module body and
+    subheadings), grouped by declared mode and preserving document
+    order within each group.
+
+    Bare ``~run`` defaults to ``on-invocation`` -- the notlob
+    equivalent of ``if __name__ == "__main__":`` (see DESIGN.md).
+    ``~run on-load`` fires unconditionally whenever the built artifact
+    is loaded at all, not just when it's the entry point. What each
+    binding's ``build()`` does with that distinction -- or whether it
+    supports ``on-load`` at all -- is entirely up to that binding.
+    """
+    on_load: list[str] = []
+    on_invocation: list[str] = []
+
+    def _mode(sigil: str) -> str:
+        parts = sigil.split(None, 1)
+        return parts[1] if len(parts) > 1 else "on-invocation"
+
+    def _collect(body: list) -> None:
+        for item in body:
+            if isinstance(item, Claim) and item.sigil.startswith("~run"):
+                text = textwrap.dedent("\n".join(item.lines)).strip()
+                if not text:
+                    continue
+                target = (
+                    on_load if _mode(item.sigil) == "on-load"
+                    else on_invocation
+                )
+                target.append(text)
+            elif isinstance(item, Subheading):
+                _collect(item.body)
+
+    _collect(module.body)
+    return on_load, on_invocation
 
 
 def iter_assertions(
