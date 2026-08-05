@@ -107,38 +107,24 @@ an optional trailing mode, a closed pair rather than free text — unlike
 not something an author invents, so a typo fails to lex the same way
 an unrecognised sigil would, instead of silently misparsing.
 
-- `on-invocation` (the default for bare `~run`) fires only when the
-  artifact is the thing actually being executed, not when something
-  else merely imports it as a module. This is the common case: CLI
-  tools, library modules with a demo entry point — anywhere an
-  unwanted side effect on import would be a real bug.
-- `on-load` fires unconditionally, the moment the artifact is loaded at
-  all. The natural fit is browser-target code — DOM wiring, event
-  listeners — where being loaded by the page *is* the deliberate
-  execution moment; there's no meaningful "imported vs run" distinction
-  to guard against there.
+`on-invocation` (the default for bare `~run`) fires only when the
+artifact is actually being executed, not when something else merely
+imports it. `on-load` fires unconditionally, the moment the artifact
+is loaded at all — the natural fit for browser-target code, where
+being loaded by the page *is* the deliberate execution moment. Both
+can appear in the same module: a module can wire up unconditionally on
+load and still have a heavier entry point that only fires when
+directly invoked — the two triggers nest, they don't conflict.
 
-Both modes can appear in the same module — code that should always
-wire up on load, plus a heavier entry point that should only fire when
-directly invoked, are not mutually exclusive. Multiple `~run` claims of
-the same mode execute in document order.
-
-Support is binding-dependent, since the distinction is only fully
+Support for the distinction is binding-dependent: it's only fully
 meaningful where a runtime actually has both an import mechanism and a
-direct-execution mechanism that behave differently:
-
-- **Python** — only `on-invocation` is normally useful (Python code
-  essentially never wants unconditional-on-import side effects), but
-  `on-load` is legal, if unusual.
-- **TypeScript** — both modes are meaningful: `on-invocation` for
-  Node-targeted code, `on-load` for browser-targeted code.
-- **Haskell** — `on-load` is a build-time error. Haskell's `import`
-  never executes `IO` actions merely by loading a module (only `main`,
-  invoked by the compiled binary when it actually runs, ever does), so
-  the language itself already guarantees on-invocation semantics for
-  anything in the build, and `on-load` has no meaningful translation
-  there at all. Bare `~run` and `~run on-invocation` are equivalent for
-  this binding.
+direct-execution mechanism that behave differently, so each binding
+makes its own call about what the two modes mean there, or whether
+`on-load` is representable at all. See
+`notlob.bindings.collect_run_bodies`'s docstring for the exact
+default/grouping/ordering rules, and each binding's own `build_*()`
+docstring or `BINDING.md` for what that binding specifically does —
+Python, TypeScript, and Haskell each answer differently.
 
 **`~property` syntax is binding-determined.** The body of a `~property`
 block uses the real syntax of whichever property-testing library the
