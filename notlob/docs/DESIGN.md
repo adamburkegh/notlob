@@ -141,10 +141,10 @@ direct-execution mechanism that behave differently:
   this binding.
 
 **`~property` syntax is binding-determined.** The body of a `~property`
-block uses the real syntax of the declared property-testing library. For
-the Python/Hypothesis binding, this is a `@given`-decorated function
-body. The literate processor does not invent a property mini-language;
-the binding owns the syntax entirely.
+block uses the real syntax of whichever property-testing library the
+binding provides. For the Python binding, that's Hypothesis, so this is
+a `@given`-decorated function body. The literate processor does not
+invent a property mini-language; the binding owns the syntax entirely.
 
 **`~property` naming.** A `~property` claim may optionally carry a name
 (`~property commutativity`), which creates a named node in the name-graph
@@ -463,10 +463,11 @@ class BindingKit:
 ```
 
 The declarations in a `#Binding` section (`~language python`,
-`~property-testing hypothesis`, `~unit-testing pytest`) map to submodule
-choices within the language package. The language is the primary axis;
-the tool components are secondary. A package that declares
-`~language python` gets the full Python kit from `bindings.python`.
+`~external`, `~on-build`, `~keep-generated-src`) map to submodule
+choices within the language package. `~language` is the primary axis;
+everything else is secondary configuration. A package that declares
+`~language python` gets the full Python kit from `bindings.python` —
+including its property-testing and unit-testing tools, described below.
 
 **Claim runner:**
 - `~example` claims run as inline assertions in the assembled namespace
@@ -475,32 +476,40 @@ the tool components are secondary. A package that declares
   `on-invocation`, see "`~run`'s optional mode" above) execute in
   document order, in the assembled namespace, after the module code
   has run.
-- `~property` claims are executed using the declared property-testing
-  library. The binding assembles the module into a namespace, then
-  exec's each `~property` block into a *fresh copy* of that namespace
-  (isolating the ephemeral witness function from the module's permanent
-  state). The binding then calls the decorated function; the
-  property-testing library (e.g. Hypothesis) drives the execution.
+- `~property` claims are executed using whichever property-testing
+  library the binding provides. The binding assembles the module into a
+  namespace, then exec's each `~property` block into a *fresh copy* of
+  that namespace (isolating the ephemeral witness function from the
+  module's permanent state). The binding then calls the decorated
+  function; the property-testing library (e.g. Hypothesis) drives the
+  execution.
 - `~proof` claims are reserved for future formal verification integration
 
-**Binding declarations drive namespace injection.** The `~property-testing`
-and `~unit-testing` declarations in `binding.lob` are not just metadata —
-they determine which names are injected into claim execution namespaces:
+**The binding — not a per-project declaration — selects the
+property-testing and unit-testing library.** An earlier design had
+authors write `~property-testing hypothesis` / `~unit-testing pytest`
+in `binding.lob`; this was never actually part of the grammar
+(`#Binding` only ever accepted `~language`, `~external`, `~on-build`,
+`~keep-generated-src`) and was removed as a documented breaking change
+in 0.5.2. Each binding now provides one fixed choice, unconditionally,
+as part of its toolchain:
 
-- `~property-testing hypothesis` → the Python binding injects `given`,
-  `settings`, `assume`, `st`, `HealthCheck`, etc. into every `~property`
-  claim namespace. Authors do not import hypothesis; the binding provides
-  it.
-- `~unit-testing pytest` → the Python binding injects pytest helpers
-  (`pytest.approx`, `pytest.raises`, etc.) into `#Tests` assertion
-  namespaces.
+- The Python binding injects `given`, `settings`, `assume`, `st`,
+  `HealthCheck`, etc. from Hypothesis into every `~property` claim
+  namespace, and pytest helpers (`pytest.approx`, `pytest.raises`, etc.)
+  into `#Tests` assertion namespaces. Authors do not import either;
+  the binding provides them, and no `binding.lob` declaration is needed
+  beyond `~language python`.
+- The Haskell binding runs `~property` claims through QuickCheck, again
+  with no separate declaration beyond `~language haskell`.
 
-This is a uniform mechanism, not hypothesis-specific magic. The pattern
-is: *declaration in `binding.lob` → injection kit prepared by the
-language binding → names available in the relevant claim context*. A
-Haskell binding would respond to `~property-testing quickcheck` by
-preparing a completely different execution strategy; the `~property` sigil
-is language-agnostic, the binding owns the implementation entirely.
+Wanting a *different* property-testing or unit-testing library for a
+language is not a per-project configuration choice — it means writing
+an alternative binding (a hypothetical `haskell-2` using a different
+property-testing library, say), since the binding is the thing that
+owns the choice of tooling and how it wires into claim namespaces. The
+`~property` sigil itself stays language- and library-agnostic; only the
+binding's implementation is tied to a specific library.
 
 **CLI commands.** The notlob command surface:
 

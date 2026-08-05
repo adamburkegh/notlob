@@ -34,18 +34,26 @@ calls) is invisible to static analysis and produces no USES edge.
 
 ## Property & unit testing
 
-- `~property-testing hypothesis` — `~property` claims receive `@given`
-  decoration automatically; authors do not import Hypothesis directly.
-- `~unit-testing pytest` — injects `pytest`, `approx`, and `raises` into
-  the `#Tests` assertion namespace.
+Hypothesis and pytest are always available — no `binding.lob`
+declaration beyond `~language python` is needed (an earlier
+`~property-testing hypothesis` / `~unit-testing pytest` declaration
+syntax existed briefly but was never actually part of the grammar and
+was removed in 0.5.2). Wanting a different property-testing or
+unit-testing library means writing an alternative Python-targeting
+binding, not declaring one in `binding.lob`.
+
+- `~property` claims receive `@given` decoration automatically; authors
+  do not import Hypothesis directly.
+- `#Tests` assertions get `pytest`, `approx`, and `raises` injected into
+  the assertion namespace.
 
 ## Claims
 
 | Claim       | Support                                               |
 |-------------|-------------------------------------------------------|
 | `~example`  | yes — boolean expressions, `==` for equality          |
-| `~property` | yes — Hypothesis (`~property-testing hypothesis`)     |
-| `#Tests`    | yes — `~unit-testing pytest` enriches the namespace   |
+| `~property` | yes — Hypothesis, always available                    |
+| `#Tests`    | yes — pytest helpers always enrich the namespace      |
 | `~run`      | yes — bare/`on-invocation` wrapped in `if __name__ == "__main__":`; `on-load` unconditional (legal, unusual) |
 
 Equality assertions use `==`; the runner reports concrete left/right

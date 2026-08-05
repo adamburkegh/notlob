@@ -37,6 +37,11 @@ graph resolution drops them when no matching address exists.
 
 ## Property & unit testing
 
+QuickCheck is always available — no `binding.lob` declaration beyond
+`~language haskell` is needed. Wanting a different property-testing
+library means writing an alternative Haskell-targeting binding, not
+declaring one in `binding.lob`.
+
 - `~property` claims run in their own `runghc` subprocess with
   `Test.QuickCheck` loaded; the first top-level function in the block
   is the property.
@@ -47,7 +52,7 @@ graph resolution drops them when no matching address exists.
 | Claim       | Support                                                  |
 |-------------|----------------------------------------------------------|
 | `~example`  | yes — Boolean expressions, `==` for equality             |
-| `~property` | yes — QuickCheck (`~property-testing quickcheck`)        |
+| `~property` | yes — QuickCheck, always available                       |
 | `#Tests`    | yes                                                      |
 | `~run`      | yes — bare/`on-invocation` included literally, must define `main :: IO ()`; `on-load` errors at build/run time (unrepresentable in Haskell) |
 
