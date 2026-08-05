@@ -400,22 +400,14 @@ how a language is realized, so it documents itself there rather than in
 the language reference.
 
 **Binding registry.** Bindings are discovered at runtime via Python
-entry points under the `"notlob.bindings"` group.  The entry-point name
-is the language identifier that appears in `~language` declarations; the
-value is a module exposing `kit: BindingKit` and `extract_symbols`.  The
-three built-in bindings are registered in notlob's own `pyproject.toml`
-using the same mechanism a third-party binding would use:
-
-```toml
-[project.entry-points."notlob.bindings"]
-python     = "notlob.bindings.python"
-haskell    = "notlob.bindings.haskell"
-typescript = "notlob.bindings.typescript"
-```
-
-An unknown `~language` value is an error at command invocation time, not
-at parse time — the grammar accepts any string; the registry rejects
-unregistered names when the binding kit is actually loaded.
+entry points under the `"notlob.bindings"` group, keyed by the language
+identifier that appears in `~language` declarations — see `BindingKit`'s
+own docstring (just below) for the exact mechanism, including a
+third-party example and where the three built-in bindings register
+themselves. An unknown `~language` value is an error at command
+invocation time, not at parse time — the grammar accepts any string;
+the registry rejects unregistered names when the binding kit is
+actually loaded.
 
 `BindingKit` (`notlob.bindings.BindingKit`) is a dataclass that
 composes callables — one per tooling concern (symbol/call extraction,
@@ -458,12 +450,12 @@ in `binding.lob`; this was never actually part of the grammar
 in 0.5.2. Each binding now provides one fixed choice, unconditionally,
 as part of its toolchain:
 
-- The Python binding injects `given`, `settings`, `assume`, `st`,
-  `HealthCheck`, etc. from Hypothesis into every `~property` claim
-  namespace, and pytest helpers (`pytest.approx`, `pytest.raises`, etc.)
-  into `#Tests` assertion namespaces. Authors do not import either;
-  the binding provides them, and no `binding.lob` declaration is needed
-  beyond `~language python`.
+- The Python binding injects a Hypothesis namespace into every
+  `~property` claim, and pytest helpers into `#Tests` assertion
+  namespaces — see `_build_property_ns`/`_build_test_ns` in
+  `notlob/bindings/python/runner.py` for the exact names. Authors do
+  not import either; the binding provides them, and no `binding.lob`
+  declaration is needed beyond `~language python`.
 - The Haskell binding runs `~property` claims through QuickCheck, again
   with no separate declaration beyond `~language haskell`.
 
