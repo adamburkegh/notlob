@@ -168,17 +168,14 @@ same addressing rule `~example`/`~property` already use. Unlike
 `~property`, `~test` has no bare (nameless) form; naming is the entire
 reason to reach for it over a plain assertion line.
 
-`~test` is its own grammar terminal (`TEST_SIGIL`), reachable only from
-a `named_test` production nested inside a `#Tests` `##group` — illegal
-everywhere else by construction, not by a semantic check in
-`parser.py`. Bare assertions, `~test <name>` blocks, and prose
-commentary can be freely interleaved within one group, in any order,
-any number of times: `#Tests` groups gained prose support specifically
-so a literate-programming document isn't forced to go silent right
-where it most wants to explain itself. Prose doubles as the grammar's
-separator between adjacent bare/named blocks, too — two
-structurally-identical body lines in a row would otherwise greedily
-merge into a single block.
+`~test` is its own grammar terminal (`TEST_SIGIL`), illegal outside a
+`#Tests` `##group` by construction, not by a semantic check in
+`parser.py` — see `grammar.lark`'s own comments on `TEST_SIGIL` and
+`tests_section` for the exact mechanism, including why prose commentary
+is allowed to interleave freely with assertions there (a
+literate-programming appendix that couldn't explain itself would be a
+strange exception to the rest of the format) and why it doubles as the
+grammar's separator between adjacent bare/named blocks.
 
 **References as bibliography.** Imports at the end acknowledge what the
 argument depends on, after the argument has been made. Code blocks in the
@@ -545,42 +542,21 @@ source text. `notlob/parser.py` is a thin adapter around that parse —
 normalising raw token values (stripping the newline/marker each
 line-terminal consumes) — not a second parsing pass in disguise.
 
-**Disambiguation is explicit, not incidental.** Column-zero structural
-lines (`##Title`) and the identical text occurring inline mid-prose
-(`See ##Title.`) are lexically indistinguishable spans; which one applies
-depends on context, not shape. Lark's contextual lexer narrows candidate
-terminals by parser state, but at a body-item boundary both a fresh
-structural line and continuing prose are valid continuations, so more
-than one terminal can match the same text from the same state. The
-tie-break is terminal **priority** (the `.N` suffix in `grammar.lark`):
-every structural terminal outranks the generic `REF`/`PROSE_TEXT`
-terminals it can collide with. This is the same category of thing as
-lexer generators resolving ambiguous matches by "longest match, first
-rule wins," or a grammar's dangling-`else` convention — a standard,
-named disambiguation strategy sitting alongside the grammar, not folded
-invisibly into it.
-
-**The closed sigil vocabulary is enforced at the lexer, in two
-terminals with different reach.** `SIGIL` enumerates the claim-body
-words (`~example`, `~run`, `~property`, optionally named) as exact
-literals; `~` is excluded from prose only when it starts a genuine
-physical line and is followed by a lowercase letter (a real sigil
-candidate) — not blanket, since `~5` or `~Word` mid-sentence is ordinary
-prose. `TEST_SIGIL` (`~test <name>`) is a separate terminal with a
-narrower grammar reach: it only appears in the `named_test` production,
-which only occurs inside a `#Tests` `##group` — so `~test` outside that
-context isn't a special "reserved word" rejected by a semantic check,
-it is simply not a valid token for `SIGIL`'s position, and fails to lex
-there exactly like any other unrecognised `~word`. A `~word` outside
-the closed vocabulary (in either terminal, wherever it is legal) fails
-to lex entirely, rather than silently misparsing as something else —
-there's nothing more specific to say about a typo than a generic lex
-error.
-
-Code blocks need nothing beyond flat per-line `INDENT`/`BLANK`
-terminals — notlob's indentation is flat/binary (a line either starts
-with whitespace or it doesn't), not a nested indent-stack problem, so no
-custom pre-pass is required there.
+The grammar file carries its own detailed comments, right beside the
+terminals they describe, covering: the disambiguation mechanism (why
+column-zero structural lines like `##Title` and identical text
+occurring inline mid-prose need explicit terminal **priority** as a
+tie-break, not just contextual lexing — the same category of thing as
+"longest match, first rule wins" or a dangling-`else` convention); the
+closed sigil vocabulary (why `SIGIL` and `TEST_SIGIL` together make an
+unrecognised `~word` fail to lex entirely rather than silently
+misparsing as prose, and why `~test` is its own terminal rather than
+part of `SIGIL`); and why flat per-line `INDENT`/`BLANK` terminals are
+sufficient for notlob's binary indentation, with no nested indent-stack
+problem to solve. That's the authoritative account, kept current by
+necessity — restating it here would just be a second copy for the two
+documents to quietly disagree about, which is exactly the trap a
+section titled "the grammar is the specification" shouldn't fall into.
 
 ---
 
