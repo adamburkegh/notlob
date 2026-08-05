@@ -24,7 +24,8 @@ include = ["notlob*"]
 notlob = ["docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "notlob"]
+addopts = "--doctest-modules"
 filterwarnings = ["ignore::pytest.PytestCollectionWarning"]
 
 [build-system]
