@@ -39,6 +39,15 @@ def meaningful(body_node: Tree) -> list[Tree]:
     return result
 
 
+def ref_tokens(tree: Tree) -> list[str]:
+    """Return the text of every REF token found anywhere in *tree*."""
+    return [
+        str(t) for t in tree.scan_values(
+            lambda t: isinstance(t, Token) and t.type == "REF"
+        )
+    ]
+
+
 def post_text(tree: Tree) -> Tree | None:
     """Return the post_text node, or None."""
     m = module(tree)
@@ -91,6 +100,63 @@ class TestProseBlock:
         items = meaningful(body(tree))
         assert len(items) == 2
         assert all(i.data == "prose_block" for i in items)
+
+
+class TestCrossReferenceUnicode:
+    """REF's first character must be Unicode category Lu (uppercase),
+    Lt (titlecase), or Lo (a letter from a script with no case
+    distinction at all -- CJK, Arabic, Hebrew, Thai, Devanagari, etc.)
+    -- see grammar.lark's own comment on REF for the rationale: Title
+    Case discipline is preserved for scripts where it's meaningful,
+    without being imposed on scripts where it isn't."""
+
+    def test_ascii_titlecase_still_matches(self):
+        tree = parse("#T\nSee #Pricing and ##Discounts here.\n")
+        assert ref_tokens(tree) == ["#Pricing", "##Discounts"]
+
+    def test_ascii_lowercase_stays_prose(self):
+        tree = parse("#T\nSee #pricing here.\n")
+        assert ref_tokens(tree) == []
+
+    def test_digit_leading_stays_prose(self):
+        tree = parse("#T\nSee #5 here.\n")
+        assert ref_tokens(tree) == []
+
+    def test_accented_latin_uppercase_matches(self):
+        tree = parse("#T\nSee #Café here.\n")
+        assert ref_tokens(tree) == ["#Café"]
+
+    def test_accented_latin_lowercase_stays_prose(self):
+        tree = parse("#T\nSee #café here.\n")
+        assert ref_tokens(tree) == []
+
+    def test_cyrillic_uppercase_matches(self):
+        tree = parse("#T\nSee #Кириллица here.\n")
+        assert ref_tokens(tree) == ["#Кириллица"]
+
+    def test_cyrillic_lowercase_stays_prose(self):
+        tree = parse("#T\nSee #кириллица here.\n")
+        assert ref_tokens(tree) == []
+
+    def test_japanese_matches_without_case(self):
+        # CJK ideographs are Unicode category Lo (no case distinction),
+        # so no capitalisation requirement applies.
+        tree = parse("#T\nSee #日本語 here.\n")
+        assert ref_tokens(tree) == ["#日本語"]
+
+    def test_arabic_matches_without_case(self):
+        tree = parse("#T\nSee #العربية here.\n")
+        assert ref_tokens(tree) == ["#العربية"]
+
+    def test_multiword_mixed_script_label(self):
+        tree = parse("#T\nSee #Pricing Café here.\n")
+        assert ref_tokens(tree) == ["#Pricing Café"]
+
+    def test_heading_definition_unrestricted_by_ref_rule(self):
+        # MOD_HEAD/SUBHEAD accept any character -- only the *reference*
+        # to a heading is Lu/Lt/Lo-gated, not the heading's own title.
+        tree = parse("#日本語\n\n    x = 1\n")
+        assert title(tree) == "日本語"
 
 
 # ── Code blocks ──────────────────────────────────────────────

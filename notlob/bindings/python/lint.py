@@ -147,6 +147,8 @@ def _run_ruff(
             input=source,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         raise LintToolUnavailable(

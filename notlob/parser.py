@@ -45,6 +45,7 @@ _parser = Lark(
     _GRAMMAR,
     parser="lalr",
     propagate_positions=True,
+    regex=True,
 )
 
 # ── Token normalisation ─────────────────────────────────────

@@ -220,6 +220,26 @@ class TestCmdTestRefValidation:
         # No #References declaration — Lib is not imported
         assert cmd_test(target) == 1
 
+    def test_valid_non_ascii_subheading_ref_does_not_fail(self, tmp_path):
+        target = _write(tmp_path, "thing.lob", (
+            "#Thing\n"
+            "##日本語\n"
+            "    code = 1\n"
+            "See ##日本語 above.\n"
+            "~example\n"
+            "    code == 1\n"
+        ))
+        assert cmd_test(target) == 0
+
+    def test_broken_non_ascii_ref_reports_unresolved(self, tmp_path, capsys):
+        target = _write(tmp_path, "thing.lob", (
+            "#Thing\n"
+            "See ##日本語 here.\n"
+        ))
+        assert cmd_test(target) == 1
+        err = capsys.readouterr().err
+        assert "unresolved reference" in err
+
     def test_broken_ref_skips_claims(self, tmp_path, capsys):
         # Claims are not run when refs are broken: the output
         # should contain no PASS/FAIL lines.

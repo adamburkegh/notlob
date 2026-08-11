@@ -146,6 +146,8 @@ def _run_harness(
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout,
             )
             return proc.stdout, proc.stderr, proc.returncode

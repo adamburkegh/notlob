@@ -28,6 +28,13 @@
 // separate from SIGIL, so the grammar itself — not a semantic check —
 // enforces that it's only legal inside a #Tests named_test, never in
 // the module body.
+//
+// Cross-reference labels (REF) are Unicode-aware, not ASCII-only: see
+// REF's own comment below for the Lu/Lt/Lo rule that keeps the Title
+// Case convention meaningful for scripts that have case, without
+// imposing it on scripts that don't. Sigils themselves stay a fixed
+// ASCII vocabulary regardless — there's no author-facing reason for
+// `~example`/`~run`/etc. to ever be anything but the literal keywords.
 
 start: module
 
@@ -185,18 +192,33 @@ BULLET.8: "*" ("\n" | /[ \t]/ REST_OF_LINE)
 
 // Inline cross-reference: #Label or ##Label mid-prose. Lookbehind
 // prevents matching # inside URLs or identifiers.
-REF.5: /(?<![\w\/])##?[A-Z][A-Za-z0-9_]*(?:[ ][A-Z][A-Za-z0-9_]*)*/
+//
+// A label word's first character must be \p{Lu} (uppercase), \p{Lt}
+// (titlecase -- rare, e.g. Croatian Dž), or \p{Lo} ("letter, other" --
+// the Unicode category for scripts with no case distinction at all:
+// CJK ideographs, Hiragana/Katakana, Arabic, Hebrew, Thai, Devanagari,
+// etc.). This is deliberately not just "any letter": \p{Ll} (lowercase)
+// is excluded so `#pricing`/`#café` (lowercase-first, a script that
+// *does* have case but didn't use it) still fail to match and fall
+// through to ordinary prose -- the Title Case convention is preserved
+// for languages where it's meaningful, and simply doesn't apply as a
+// constraint for languages where it isn't. Requires ``regex=True`` on
+// the Lark instance (stdlib `re` has no \p{} property escapes); see
+// notlob/parser.py.
+REF.5: /(?<![\w\/])##?[\p{Lu}\p{Lt}\p{Lo}][\p{L}\p{Nd}_]*(?:[ ][\p{Lu}\p{Lt}\p{Lo}][\p{L}\p{Nd}_]*)*/
 
 // First prose span of a genuine physical line (lookbehind anchors to
 // true line-start, not "first char of any prose token"). Excludes `~`
 // only when followed by a lowercase letter (a genuine sigil candidate —
 // closed-vocabulary enforcement; `~Word` or `~5` is not sigil-shaped and
-// stays prose) and `#` only when it's actually ref/head-shaped — a bare
-// `#5` or `#hashtag` stays prose too.
-LINE_START_TEXT.1: /(?<=\n)(?:[^#~\n]|#(?!#?[A-Z])|~(?![a-z]))(?:[^#\n]|#(?!#?[A-Z]))*/
+// stays prose -- sigils are a closed ASCII vocabulary, no Unicode
+// concern there) and `#` only when it's actually ref-shaped per REF's
+// own Lu/Lt/Lo rule above — a bare `#5`, `#hashtag`, or lowercase-first
+// `#café` stays prose too.
+LINE_START_TEXT.1: /(?<=\n)(?:[^#~\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}])|~(?![a-z]))(?:[^#\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}]))*/
 
 // Any other prose span (mid-line — e.g. immediately after an inline
 // REF ends). `~` is fully ordinary here; `#` still yields only when
-// ref-shaped, so REF gets a chance to match.
-PROSE_TEXT.1: /(?<!\n)(?:[^#\n]|#(?!#?[A-Z]))+/
+// ref-shaped (see REF above), so REF gets a chance to match.
+PROSE_TEXT.1: /(?<!\n)(?:[^#\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}]))+/
 

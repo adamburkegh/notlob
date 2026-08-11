@@ -252,18 +252,18 @@ _REGEX_OVERRIDES: dict[str, Node] = {
     # REF -- deliberately omits the "not preceded by a word char or /"
     # lookbehind from the formal grammar; that constraint is prose-only
     # (see _DISAMBIGUATION), not expressible with EBNF's own operators.
-    r"(?<![\w\/])##?[A-Z][A-Za-z0-9_]*(?:[ ][A-Z][A-Za-z0-9_]*)*": Seq(
-        Or(T("#"), T("##")), NT("UpperLetter"), Rep(NT("WordChar")),
-        Rep(Seq(NT("Space"), NT("UpperLetter"), Rep(NT("WordChar")))),
+    r"(?<![\w\/])##?[\p{Lu}\p{Lt}\p{Lo}][\p{L}\p{Nd}_]*(?:[ ][\p{Lu}\p{Lt}\p{Lo}][\p{L}\p{Nd}_]*)*": Seq(
+        Or(T("#"), T("##")), NT("RefInitial"), Rep(NT("WordChar")),
+        Rep(Seq(NT("Space"), NT("RefInitial"), Rep(NT("WordChar")))),
     ),
     # LINE_START_TEXT / PROSE_TEXT reference ProseInitial/ProseTail,
     # which are deliberately NOT in _EXTRA_TERMINALS -- their own
     # definitions depend on one-token lookahead, not expressible with
     # EBNF's own operators, so they're described in _DISAMBIGUATION's
     # prose instead of the terminals table.
-    r"(?<=\n)(?:[^#~\n]|#(?!#?[A-Z])|~(?![a-z]))(?:[^#\n]|#(?!#?[A-Z]))*":
+    r"(?<=\n)(?:[^#~\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}])|~(?![a-z]))(?:[^#\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}]))*":
         Seq(NT("ProseInitial"), Rep(NT("ProseTail"))),
-    r"(?<!\n)(?:[^#\n]|#(?!#?[A-Z]))+":
+    r"(?<!\n)(?:[^#\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}]))+":
         RepPlus(NT("ProseTail")),
 }
 
@@ -273,8 +273,13 @@ _REGEX_OVERRIDES: dict[str, Node] = {
 # the rendered table.
 _EXTRA_TERMINALS: list[tuple[str, Node]] = [
     ("NonHashLineChar", Except(NT("LINE_CHAR"), T("#"))),
-    ("UpperLetter", D("an uppercase ASCII letter")),
-    ("WordChar", D("an ASCII letter, digit, or underscore")),
+    ("RefInitial", D(
+        "an uppercase or titlecase letter, or a letter from a script "
+        "with no case distinction (Unicode categories Lu, Lt, Lo -- "
+        "e.g. Latin/Cyrillic/Greek capitals, or any CJK/Arabic/"
+        "Hebrew/Thai/Devanagari letter)"
+    )),
+    ("WordChar", D("any Unicode letter, decimal digit, or underscore")),
     ("Space", D("a space character")),
     ("Tab", D("the tab character")),
     ("NewLine", D("the newline character")),

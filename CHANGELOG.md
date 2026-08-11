@@ -5,6 +5,27 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Cross-reference labels (`#Label`/`##Label`) are Unicode-aware, not
+  ASCII-only. A label word's first character may be an uppercase or
+  titlecase letter (Latin, Cyrillic, Greek, ...) *or* a letter from a
+  script with no case distinction at all — CJK, Arabic, Hebrew, Thai,
+  Devanagari, etc. (Unicode categories Lu/Lt/Lo). Lowercase-first words
+  in scripts that do have case (`#pricing`, `#café`) still stay
+  ordinary prose, exactly as before — the Title Case convention is
+  preserved where it's meaningful, not imposed where it isn't. Requires
+  the new `regex` dependency (stdlib `re` has no Unicode property
+  escapes); the Lark parser now runs with `regex=True`.
+
+### Fixed
+- Python and Haskell linting/running crashed on Windows when a
+  module's assembled source contained non-ASCII characters (e.g. a
+  Unicode heading title embedded in a `# <addr>`/`-- <addr>` location
+  comment) — `subprocess.run(..., text=True)` without an explicit
+  encoding fell back to the console's codepage instead of UTF-8.
+  TypeScript's runner/linter already forced `encoding="utf-8"`; Python's
+  `lint.py` and Haskell's `runner.py`/`lint.py` now do too.
+
 ## [0.5.3] - 2026-08-11
 
 ### Added
