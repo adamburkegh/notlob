@@ -5,7 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-11
+
 ### Added
+- `notlob init --agents`: writes `AGENTS.md` and `notlob-docs/` into an
+  existing project that already has a `binding.lob`. Intended for projects
+  that were started manually and now want agent-friendly documentation.
 - `REFERENCES` edge kind: a fourth `build_package` pass walks prose
   `#Label` mentions and emits `REFERENCES` edges (MODULE/SUBHEADING →
   target node) with `start_line`. Enables `notlob query references
@@ -56,6 +61,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   language. The old colon form still parses (it's just ordinary title
   text now, not a special separator) and renders identically — no
   stray leading colon — but new appendices should drop it.
+- Subheadings inside `#Appendix` sections are now registered as graph
+  nodes and can be resolved by prose `##Label` references from the main
+  module body. Previously they were silently absent from the graph,
+  causing valid references to report as unresolved.
 
 ## [0.5.2] - 2026-07-21
 
