@@ -260,6 +260,20 @@ class TestAppendixRefs:
         assert len(errs) == 1
         assert errs[0].ref.label == "Unknown"
 
+    def test_body_ref_to_appendix_subheading_resolves(self):
+        # A ##Label ref in the main body pointing at a subheading inside
+        # #Appendix should resolve — appendix subheadings are graph nodes.
+        src = (
+            "#T\n"
+            "See ##Notes below.\n"
+            "---\n"
+            "#Appendix\n"
+            "##Notes\n"
+            "Some notes.\n"
+        )
+        g, m = _graph(src)
+        assert validate_refs(g, m) == []
+
 
 # ── Integration: example files ───────────────────────────────
 

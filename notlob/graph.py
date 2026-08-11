@@ -557,6 +557,13 @@ def build(module: Module) -> NameGraph:
         if isinstance(item, Subheading):
             _add_subheading(graph, addr, item)
 
+    if module.post_text:
+        for sec in module.post_text.sections:
+            if isinstance(sec, AppendixSection):
+                for item in sec.body:
+                    if isinstance(item, Subheading):
+                        _add_subheading(graph, addr, item)
+
     _add_tests(graph, module, addr)
 
     return graph
