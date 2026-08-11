@@ -213,6 +213,10 @@ def main() -> None:
         "--bare", action="store_true", default=False,
         help="minimal scaffold only -- no AGENTS.md or docs",
     )
+    init_p.add_argument(
+        "--agents", dest="agents_only", action="store_true", default=False,
+        help="write AGENTS.md and notlob-docs/ into an existing project",
+    )
 
     new_p = sub.add_parser(
         "new",
@@ -350,6 +354,7 @@ def main() -> None:
         sys.exit(cmd_init(
             language=args.language,
             bare=args.bare,
+            agents_only=args.agents_only,
         ))
     elif args.command == "new":
         sys.exit(cmd_new(args.name))

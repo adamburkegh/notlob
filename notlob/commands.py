@@ -1332,8 +1332,9 @@ def cmd_docs(
 
 
 def cmd_init(
-    language: str = "python",
-    bare:     bool = False,
+    language:   str  = "python",
+    bare:       bool = False,
+    agents_only: bool = False,
 ) -> int:
     """Initialise a new notlob project in the current directory.
 
@@ -1341,10 +1342,36 @@ def cmd_init(
     *bare* is True) ``AGENTS.md`` plus the language reference in
     ``notlob-docs/``.
 
-    Fails if ``binding.lob`` already exists.
+    Pass *agents_only* to write only ``AGENTS.md`` and ``notlob-docs/``
+    into an existing project.  Requires ``binding.lob`` to already exist.
+    Fails if ``binding.lob`` is absent (use plain ``init`` for new projects).
     """
     cwd = Path.cwd()
     binding_path = cwd / "binding.lob"
+
+    if agents_only:
+        if not binding_path.exists():
+            print(
+                "ERROR  <init>  binding.lob not found — "
+                "run notlob init (without --agents) to start a new project",
+                file=sys.stderr,
+            )
+            return 1
+        project_title = _address_to_title(cwd.name)
+        agents_path = cwd / "AGENTS.md"
+        agents_path.write_text(
+            _render_agents(project_title), encoding="utf-8"
+        )
+        print("INIT   AGENTS.md")
+        cmd_docs()
+        agents_content = _render_agents(project_title)
+        bar = "-" * 52
+        print()
+        print(bar)
+        print(agents_content.rstrip())
+        print(bar)
+        return 0
+
     if binding_path.exists():
         print(
             "ERROR  <init>  binding.lob already exists — "
