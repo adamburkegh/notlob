@@ -19,7 +19,7 @@ Body — prose and code, organised into subheadings.
 
 ---
 
-Post-text — reserved sections (#Tests, #Binding, #References).
+Post-text — reserved sections (#Tests, #Binding, #References, #Appendix).
 ```
 
 The title line is required. The `---` separator and post-text are
@@ -117,7 +117,12 @@ Run during `notlob test`. Not included in `notlob build` output.
 
 ### ~property
 
-A property-based test using the declared `~property-testing` library. This depends on the binding. This example is from the Python binding, which includes Hypothesis. Receives `@given` decoration automatically; authors do not import the library directly.
+A property-based test using whichever property-testing library the
+binding provides — Hypothesis for Python, QuickCheck for Haskell,
+fast-check for TypeScript. No declaration needed beyond `~language`;
+this example is the Python binding's Hypothesis syntax. Receives
+`@given` decoration automatically; authors do not import the library
+directly.
 
 ```
 ~property
@@ -131,21 +136,55 @@ in the name-graph.
 
 ### ~run
 
-Code that executes during `notlob run` only — not during `notlob test`.
-The notlob equivalent of `if __name__ == "__main__"`. Side-effecting
-code (printing, I/O) belongs here or in a function called from here.
+Code that executes during `notlob run` (and in `notlob build` output)
+only — never during `notlob test`. Side-effecting code (printing, I/O)
+belongs here or in a function called from here.
 
 ```
 ~run
     print(fib(10))
 ```
 
+`~run` takes an optional mode — a closed pair, not free text:
+
+- `~run on-invocation` (the default for bare `~run`) fires only when
+  the built artifact is the thing actually being executed, not when
+  something else merely imports it. The notlob equivalent of
+  `if __name__ == "__main__":`.
+- `~run on-load` fires unconditionally, the moment the artifact is
+  loaded at all — the natural fit for browser-target code (DOM wiring,
+  event listeners), where being loaded by the page *is* the deliberate
+  execution moment.
+
+Both can appear in the same module — code that should always wire up
+on load, plus a heavier entry point that only fires when directly
+invoked, are not mutually exclusive.
+
+```
+~run on-load
+    document.getElementById('run').addEventListener('click', runAll);
+
+~run on-invocation
+    console.log('running standalone');
+```
+
+Support is binding-dependent:
+
+- **Python** — `on-invocation` is the normal case; `on-load` is legal
+  but unusual.
+- **TypeScript** — both are meaningful: `on-invocation` for
+  Node-targeted code, `on-load` for browser-targeted code.
+- **Haskell** — `on-load` is a build-time error (Haskell's `import`
+  never runs `IO` actions merely by loading a module, so it has no
+  meaningful translation there). Bare `~run` and `~run on-invocation`
+  are equivalent.
+
 ---
 
 ## Post-text sections
 
 After the `---` separator, the post-text contains named sections
-(`#SectionName`). Three have reserved meaning:
+(`#SectionName`). Four have reserved meaning:
 
 ### #Tests
 
@@ -199,17 +238,20 @@ Project-level configuration. Appears in `binding.lob` only.
 ```
 #Binding
     ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest
 ```
 
 Available declarations:
 
-| Sigil                | Values                    |
-|----------------------|---------------------------|
-| `~language`          | `python`, `haskell`, `typescript`       |
-| `~property-testing`  | `hypothesis`              |
-| `~unit-testing`      | `pytest`                  |
+| Sigil                  | Values                                                    |
+|------------------------|------------------------------------------------------------|
+| `~language`            | `python`, `haskell`, `typescript`                          |
+| `~external`            | a filename, relative to the project root, that `notlob build` should be aware of but not assemble |
+| `~on-build`            | a script path, in the project's own language, run after `notlob build` assembles artifacts |
+| `~keep-generated-src`  | a directory path for writing generated source alongside the normal build output, for debugging |
+
+Property-testing (Hypothesis, QuickCheck, fast-check) and unit-testing
+(pytest) tools are provided by the binding itself, not declared here —
+see [Toolchains](#toolchains).
 
 ### #References
 
@@ -230,6 +272,30 @@ Two kinds of entry:
 
 Lob module imports must be declared explicitly. There is no implicit
 package import; each module lists exactly what it uses.
+
+### #Appendix
+
+An open extension point for domain-specific appendices — a glossary,
+references, supplementary notes — that don't fit the claim-driven
+`#Tests` shape. `#Appendix` optionally carries a title (`#Appendix
+Glossary`); its body is a regular body (prose, code, subheadings,
+claims), so `##Subheading` inside it works exactly like a body
+subheading, including being cross-referenceable by `##Name` from the
+main module body.
+
+```
+---
+
+#Appendix Glossary
+
+##Discount Strategy
+
+A multiplier in [0,1] representing the fraction of the price to retain.
+```
+
+```
+See ##Discount Strategy for the definition.
+```
 
 ---
 
@@ -264,6 +330,14 @@ against the name-graph.
 - `##Name` — refers to a subheading in the current module.
 - `#Name` — resolves in order: symbol in current module, subheading in
   current module, module declared in `#References`.
+
+A reference's first letter must be uppercase (or, for scripts with no
+case distinction at all — CJK, Arabic, Hebrew, Thai, Devanagari, etc.
+— any letter). This is what tells `#pricing` (lowercase, stays
+ordinary prose — a casual mention, not a link) apart from `#Pricing`
+(a real cross-reference); `#日本語` needs no capitalisation to count,
+since Japanese has no case to require. Every word in a multi-word
+reference (`#Pricing Discounts`) is checked the same way.
 
 An unresolved reference is a build error. References are
 machine-validated; rendered output cannot contain dead links.
@@ -314,8 +388,6 @@ and 10% yield 72% of the original — not 70%.
 
 #Binding
     ~language python
-    ~property-testing hypothesis
-    ~unit-testing pytest
 
 #References
     #Pricing Base
@@ -359,8 +431,14 @@ findings (and a missing linter) do.
 Each language binding needs its tools available; how they are provided
 differs by ecosystem.
 
-- **Python** — nothing extra. `ruff`, `pytest`, and `hypothesis` ship
-  with notlob's pip install.
+- **Python** — `ruff`, `pytest`, and `hypothesis` ship with notlob and
+  are always available, regardless of your project's own environment.
+  Everything else — the module's own code, and any third-party
+  libraries it imports — runs under whatever `python` your shell's
+  `PATH` resolves (an activated venv, an asdf/mise shim, ...), the same
+  way `ghc`/`tsc`/other external toolchains work: install your own
+  dependencies the normal way (venv, `requirements.txt`,
+  `pyproject.toml`) and notlob picks them up from there.
 - **TypeScript** — `tsx` (runs claims) and `typescript`/`tsc`
   (type-checks) come from npm. `notlob init --language typescript`
   scaffolds `package.json` and `tsconfig.json`; run `npm install` to
@@ -385,7 +463,8 @@ notlob query content <address>  show prose and code at an address
 notlob query children <address> list child nodes
 notlob query imports <address>  modules imported by an address
 notlob query imported-by <addr> modules that import an address
-notlob graph                    export the package name-graph as JSON
+notlob graph [--format json|turtle]  export the package name-graph
+notlob mcp                      start the MCP tool server (stdin/stdout)
 ```
 
 File arguments accept either a filesystem path or a module address via

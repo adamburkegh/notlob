@@ -16,8 +16,41 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   preserved where it's meaningful, not imposed where it isn't. Requires
   the new `regex` dependency (stdlib `re` has no Unicode property
   escapes); the Lark parser now runs with `regex=True`.
+- `tests/test_language_md_currency.py`: extracts enumerable facts
+  (sigil vocabulary, `#Binding` declarations, CLI subcommands,
+  semantic check names) directly from `grammar.lark`/`cli.py` and
+  asserts `notlob/docs/LANGUAGE.md` mentions each one in the right
+  section — a drift detector, not a generator, for the class of
+  staleness that actually kept happening ("we added/removed/renamed a
+  thing and forgot to update the reference").
 
 ### Fixed
+- `notlob/docs/LANGUAGE.md` (the user-facing language reference) was
+  out of date in several places: the removed `~property-testing`/
+  `~unit-testing` declaration syntax was still shown in two worked
+  examples; `#Binding`'s declaration table was missing `~external`,
+  `~on-build`, and `~keep-generated-src`; `~run`'s on-load/on-invocation
+  modes weren't documented at all; `#Appendix` wasn't documented as a
+  post-text section; the cross-reference disambiguation rule (must
+  start uppercase, or any letter for caseless scripts) wasn't
+  mentioned; the Commands list was missing `notlob mcp` and
+  `notlob graph`'s Turtle/RDF output format.
+- Python claims (`~example`, `#Tests`, `~property`) and `notlob run`
+  now execute in a subprocess under an interpreter resolved from
+  `PATH`, instead of `exec()`-ing inside notlob's own process.
+  Previously, any module importing a third-party library only
+  installed in the target project's own environment (a venv, an
+  asdf/mise-managed interpreter) failed with `ModuleNotFoundError`,
+  because notlob's own interpreter — e.g. a pipx-isolated venv — was
+  always used regardless of the caller's shell state. Matches how the
+  Haskell and TypeScript runners already resolve their toolchains.
+  `pytest`/`hypothesis` remain available with no extra setup: the
+  `#Tests`/`~property` harnesses append notlob's own site-packages to
+  `sys.path` as a fallback (searched *after* the target interpreter's
+  own, so a project's own pinned versions still win if present) — see
+  `notlob.bindings.python.runner`'s module docstring. `ruff` is
+  unaffected; it's static analysis and continues running under
+  notlob's own interpreter.
 - Python and Haskell linting/running crashed on Windows when a
   module's assembled source contained non-ASCII characters (e.g. a
   Unicode heading title embedded in a `# <addr>`/`-- <addr>` location

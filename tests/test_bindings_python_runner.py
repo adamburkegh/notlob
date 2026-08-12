@@ -8,8 +8,9 @@ from pathlib import Path
 
 
 from notlob import parse, parse_file, from_tree, claim_address
+from notlob.bindings.python.harness import build_examples_harness
 from notlob.bindings.python.runner import (
-    ClaimResult, Status, run_examples, _build_examples_source,
+    ClaimResult, Status, run_examples,
 )
 
 
@@ -245,12 +246,12 @@ class TestExampleFiles:
 # ── Keep-dir: _examples.py contains assert statements ─────────
 
 class TestKeepDirExamples:
-    def test_examples_py_contains_asserts(self, tmp_path):
+    def test_examples_py_contains_check_call(self, tmp_path):
         src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
         module = from_tree(parse(src))
         run_examples(module, keep_dir=tmp_path)
         content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
-        assert "assert f() == 1" in content
+        assert "'f() == 1'" in content
 
     def test_examples_py_contains_module_code(self, tmp_path):
         src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
@@ -259,19 +260,19 @@ class TestKeepDirExamples:
         content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
         assert "def f()" in content
 
-    def test_examples_py_section_comment(self, tmp_path):
+    def test_examples_py_address_in_check_call(self, tmp_path):
         src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
         module = from_tree(parse(src))
         run_examples(module, keep_dir=tmp_path)
         content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
-        assert "# --- t#example#1 ---" in content
+        assert "'t#example#1'" in content
 
     def test_examples_py_subheading_address(self, tmp_path):
         src = "#T\n##S\n    def f(): return 1\n~example\n    f() == 1\n"
         module = from_tree(parse(src))
         run_examples(module, keep_dir=tmp_path)
         content = (tmp_path / "_examples.py").read_text(encoding="utf-8")
-        assert "# --- t#S#example#1 ---" in content
+        assert "'t#S#example#1'" in content
 
     def test_examples_py_is_executable(self, tmp_path):
         src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
@@ -287,36 +288,36 @@ class TestKeepDirExamples:
         assert not list(tmp_path.iterdir())
 
 
-# ── _build_examples_source unit tests ─────────────────────────
+# ── build_examples_harness unit tests ──────────────────────────
 
-class TestBuildExamplesSource:
-    def _module(self, source):
-        return from_tree(parse(source))
-
-    def test_no_examples_returns_module_source(self):
-        src = "#T\n    x = 1\n"
-        m = self._module(src)
-        from notlob.bindings.python.assemble import assemble
-        module_src = assemble(m)
-        result = _build_examples_source(module_src, m, "t")
+class TestBuildExamplesHarness:
+    def test_no_assertions_no_check_calls(self):
+        result = build_examples_harness("x = 1", [])
         assert "x = 1" in result
-        assert "assert" not in result
+        # _notlob_check's own def is always present; only a *call* to
+        # it (recognisable by the leading string-literal address arg)
+        # should be absent when there are no assertions.
+        assert "_notlob_check('" not in result
 
     def test_single_example(self):
-        src = "#T\n    def f(): return 1\n~example\n    f() == 1\n"
-        m = self._module(src)
-        from notlob.bindings.python.assemble import assemble
-        result = _build_examples_source(assemble(m), m, "t")
-        assert "assert f() == 1" in result
-
-    def test_ordinal_in_comment(self):
-        src = (
-            "#T\n    def f(): return 1\n"
-            "~example\n    f() == 1\n"
-            "~example\n    f() == 1\n"
+        result = build_examples_harness(
+            "def f(): return 1", [("t#example#1", "f() == 1", 1)],
         )
-        m = self._module(src)
-        from notlob.bindings.python.assemble import assemble
-        result = _build_examples_source(assemble(m), m, "t")
-        assert "# --- t#example#1 ---" in result
-        assert "# --- t#example#2 ---" in result
+        assert "_notlob_check('t#example#1', 1, 'f() == 1')" in result
+
+    def test_multiple_assertions_multiple_check_calls(self):
+        result = build_examples_harness(
+            "def f(): return 1",
+            [
+                ("t#example#1", "f() == 1", 1),
+                ("t#example#2", "f() == 1", 2),
+            ],
+        )
+        assert "_notlob_check('t#example#1', 1, 'f() == 1')" in result
+        assert "_notlob_check('t#example#2', 2, 'f() == 1')" in result
+
+    def test_harness_is_syntactically_valid(self):
+        result = build_examples_harness(
+            "def f(): return 1", [("t#example#1", "f() == 1", 1)],
+        )
+        compile(result, "_examples.py", "exec")  # must not raise

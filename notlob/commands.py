@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
 from functools import lru_cache
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -36,6 +36,7 @@ from notlob.bindings import (
     ClaimResult, LintResult, LintToolUnavailable, Status,
 )
 from notlob.bindings.python.loader import ModuleCache
+from notlob.bindings.python.runner import _resolve_python_interpreter
 from notlob.graph import module_address
 from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (
@@ -340,38 +341,52 @@ def cmd_run(
         keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
         return _cmd_run_haskell(module, path, keep_dir=keep_dir, args=args)
 
-    root = find_project_root(path)
-
     addr_err = _check_address(module, path, root)
     if addr_err:
         print(f"ERROR  <address>  {addr_err}", file=sys.stderr)
         return 1
 
     py_kit, _ = _get_binding_kit(language)
-    cache = ModuleCache(root) if root else None
-    ns: dict = {"__file__": str(path.resolve())}
-    old_argv = sys.argv
-    sys.argv = [str(path)] + list(args or [])
     try:
-        if cache is not None:
-            for dep_addr in module_lob_refs(module):
-                ns.update(cache.load(dep_addr))
-        exec(py_kit.assemble(module), ns)
+        source = py_kit.build(module, path)
     except Exception as exc:
-        sys.argv = old_argv
         print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
         return 1
+    if not source:
+        print("ERROR  <run>  nothing to run — module contains no code",
+              file=sys.stderr)
+        return 1
 
+    interpreter = _resolve_python_interpreter()
+    if interpreter is None:
+        print("ERROR  <run>  no Python interpreter found on PATH",
+              file=sys.stderr)
+        return 1
+
+    tmpdir = tempfile.mkdtemp()
     try:
-        for claim in _collect_run_claims(module):
-            try:
-                exec(textwrap.dedent("\n".join(claim.lines)), ns)
-            except Exception as exc:
-                print(f"ERROR  <run>  {exc}", file=sys.stderr)
-                return 1
+        tmp_path = Path(tmpdir) / f"{path.stem}.py"
+        tmp_path.write_text(source, encoding="utf-8")
+        # PYTHONIOENCODING forces the child interpreter's own stdout to
+        # UTF-8 -- without it, a module printing non-ASCII content
+        # (e.g. from a Unicode heading title) crashes inside the child
+        # on Windows, where the default is the console codepage.
+        child_env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        proc = subprocess.run(
+            [interpreter, str(tmp_path), *(args or [])],
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            env=child_env,
+        )
     finally:
-        sys.argv = old_argv
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
+    if proc.stdout:
+        print(proc.stdout, end="")
+    if proc.returncode != 0:
+        if proc.stderr:
+            print(proc.stderr, end="", file=sys.stderr)
+        return 1
     return 0
 
 

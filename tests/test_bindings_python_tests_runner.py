@@ -7,8 +7,9 @@ assertion in the #Tests post-text section and returns ClaimResults.
 from pathlib import Path
 
 from notlob import parse, parse_file, from_tree
+from notlob.bindings.python.harness import build_tests_harness
 from notlob.bindings.python.runner import (
-    ClaimResult, Status, run_tests, _build_tests_source,
+    ClaimResult, Status, run_tests,
 )
 
 
@@ -173,11 +174,11 @@ class TestKeepDirTests:
     def _src(self):
         return "#T\n    x = 1\n---\n#Tests\n    x == 1\n"
 
-    def test_tests_py_contains_asserts(self, tmp_path):
+    def test_tests_py_contains_check_call(self, tmp_path):
         module = from_tree(parse(self._src()))
         run_tests(module, keep_dir=tmp_path)
         content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
-        assert "assert x == 1" in content
+        assert "'x == 1'" in content
 
     def test_tests_py_contains_module_code(self, tmp_path):
         module = from_tree(parse(self._src()))
@@ -185,18 +186,18 @@ class TestKeepDirTests:
         content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
         assert "x = 1" in content
 
-    def test_tests_py_bare_section_comment(self, tmp_path):
+    def test_tests_py_bare_address(self, tmp_path):
         module = from_tree(parse(self._src()))
         run_tests(module, keep_dir=tmp_path)
         content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
-        assert "# --- t#Tests ---" in content
+        assert "'t#Tests'" in content
 
-    def test_tests_py_group_section_comment(self, tmp_path):
+    def test_tests_py_group_address(self, tmp_path):
         src = "#T\n    x = 1\n---\n#Tests\n##basics\n    x == 1\n"
         module = from_tree(parse(src))
         run_tests(module, keep_dir=tmp_path)
         content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
-        assert "# --- t#Tests#basics ---" in content
+        assert "'t#Tests#basics'" in content
 
     def test_tests_py_is_executable(self, tmp_path):
         module = from_tree(parse(self._src()))
@@ -210,41 +211,55 @@ class TestKeepDirTests:
         assert not list(tmp_path.iterdir())
 
 
-# ── _build_tests_source unit tests ───────────────────────────
+# ── build_tests_harness unit tests ───────────────────────────
 
-class TestBuildTestsSource:
-    def _module(self, source):
-        return from_tree(parse(source))
-
-    def _section(self, source):
-        from notlob.model import TestsSection
-        m = self._module(source)
-        return next(
-            s for s in m.post_text.sections if isinstance(s, TestsSection)
-        )
-
+class TestBuildTestsHarness:
     def test_bare_assertion(self):
-        src = "#T\n    x = 1\n---\n#Tests\n    x == 1\n"
-        m = self._module(src)
-        from notlob.bindings.python.assemble import assemble
-        result = _build_tests_source(assemble(m), self._section(src), "t")
-        assert "assert x == 1" in result
+        result = build_tests_harness(
+            "x = 1", [("t#Tests", "x == 1", 1)],
+        )
+        assert "_notlob_check('t#Tests', 1, 'x == 1')" in result
 
     def test_grouped_assertion(self):
-        src = "#T\n    x = 1\n---\n#Tests\n##grp\n    x == 1\n"
-        m = self._module(src)
-        from notlob.bindings.python.assemble import assemble
-        result = _build_tests_source(assemble(m), self._section(src), "t")
-        assert "# --- t#Tests#grp ---" in result
-        assert "assert x == 1" in result
+        result = build_tests_harness(
+            "x = 1", [("t#Tests#grp", "x == 1", 1)],
+        )
+        assert "_notlob_check('t#Tests#grp', 1, 'x == 1')" in result
+
+    def test_pytest_import_present(self):
+        result = build_tests_harness("x = 1", [("t#Tests", "x == 1", 1)])
+        assert "import pytest" in result
+
+    def test_no_fallback_path_by_default(self):
+        result = build_tests_harness("x = 1", [("t#Tests", "x == 1", 1)])
+        assert "sys.path.append" not in result
+
+    def test_fallback_path_appended_when_given(self):
+        result = build_tests_harness(
+            "x = 1", [("t#Tests", "x == 1", 1)],
+            notlob_site_packages="/fake/site-packages",
+        )
+        assert "_notlob_sys.path.append('/fake/site-packages')" in result
+
+    def test_fallback_path_before_pytest_import(self):
+        # Must be set up before `import pytest` runs, or the fallback
+        # is useless.
+        result = build_tests_harness(
+            "x = 1", [("t#Tests", "x == 1", 1)],
+            notlob_site_packages="/fake/site-packages",
+        )
+        fallback_pos = result.index("sys.path.append")
+        pytest_pos = result.index("import pytest as _notlob_pytest")
+        assert fallback_pos < pytest_pos
 
     def test_bare_before_group(self):
-        src = (
-            "#T\n    x = 1\n    y = 2\n"
-            "---\n#Tests\n    x == 1\n##grp\n    y == 2\n"
+        result = build_tests_harness(
+            "x = 1\ny = 2",
+            [("t#Tests", "x == 1", 1), ("t#Tests#grp", "y == 2", 2)],
         )
-        m = self._module(src)
-        from notlob.bindings.python.assemble import assemble
-        result = _build_tests_source(assemble(m), self._section(src), "t")
-        assert "# --- t#Tests ---" in result
-        assert "# --- t#Tests#grp ---" in result
+        assert "_notlob_check('t#Tests', 1, 'x == 1')" in result
+        assert "_notlob_check('t#Tests#grp', 2, 'y == 2')" in result
+
+    def test_harness_is_syntactically_valid(self):
+        result = build_tests_harness("x = 1", [("t#Tests", "x == 1", 1)])
+        compile(result, "_tests.py", "exec")  # must not raise

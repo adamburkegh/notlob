@@ -9,6 +9,7 @@ injected automatically — no binding declaration needed.
 from pathlib import Path
 
 from notlob import parse, parse_file, from_tree
+from notlob.bindings.python.harness import build_properties_harness
 from notlob.bindings.python.runner import ClaimResult, Status, run_properties
 
 
@@ -150,6 +151,34 @@ class TestNamespaceIsolation:
         results = ran(src)
         assert len(results) == 2
         assert all(r.status == Status.PASS for r in results)
+
+
+# ── build_properties_harness fallback-path unit tests ─────────
+
+class TestBuildPropertiesHarnessFallback:
+    def test_no_fallback_path_by_default(self):
+        result = build_properties_harness(
+            "x = 1", [("t#property#1", "~property", 1, "def _(): pass")],
+        )
+        assert "sys.path.append" not in result
+
+    def test_fallback_path_appended_when_given(self):
+        result = build_properties_harness(
+            "x = 1", [("t#property#1", "~property", 1, "def _(): pass")],
+            notlob_site_packages="/fake/site-packages",
+        )
+        assert "_notlob_sys.path.append('/fake/site-packages')" in result
+
+    def test_fallback_path_before_hypothesis_import(self):
+        # Must be set up before `import hypothesis` runs, or the
+        # fallback is useless.
+        result = build_properties_harness(
+            "x = 1", [("t#property#1", "~property", 1, "def _(): pass")],
+            notlob_site_packages="/fake/site-packages",
+        )
+        fallback_pos = result.index("sys.path.append")
+        hyp_pos = result.index("import hypothesis as _notlob_hyp")
+        assert fallback_pos < hyp_pos
 
 
 # ── Integration: example files ────────────────────────────────
