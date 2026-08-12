@@ -275,13 +275,20 @@ package import; each module lists exactly what it uses.
 
 ### #Appendix
 
-An open extension point for domain-specific appendices — a glossary,
-references, supplementary notes — that don't fit the claim-driven
-`#Tests` shape. `#Appendix` optionally carries a title (`#Appendix
-Glossary`); its body is a regular body (prose, code, subheadings,
-claims), so `##Subheading` inside it works exactly like a body
-subheading, including being cross-referenceable by `##Name` from the
-main module body.
+An open extension point for content that doesn't belong in the main
+narrative — a glossary, supporting helper code, supplementary notes —
+without being test-support specifically. `#Appendix` optionally
+carries a title (`#Appendix Glossary`); its body is a regular body
+(prose, code, subheadings, claims), so `##Subheading` inside it works
+exactly like a body subheading, including being cross-referenceable by
+`##Name` from the main module body.
+
+Code blocks in `#Appendix` are assembled exactly like main-body code —
+in scope for `~example`/`#Tests`/`~property` claims, and included in
+`notlob build`/`notlob run` output. There's no test-only special case:
+an author might move a shared test fixture there, or just as easily a
+supporting helper that the main argument's code genuinely calls at
+runtime — both need to actually work, not just parse.
 
 ```
 ---

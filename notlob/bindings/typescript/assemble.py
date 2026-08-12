@@ -11,6 +11,9 @@ Assembly order
   2. Module-level code blocks  (preceded by ``// <module_address>``)
   3. Subheading code blocks in document order
      (each group preceded by ``// <subheading_address>``)
+  4. #Appendix code blocks, if any -- same status as main-body code,
+     not test-only or build-only.  See notlob.bindings.python.assemble's
+     module docstring for the reasoning (identical here).
 
 Lob-ref lines in #References (those whose stripped form starts with
 ``#``) are dropped; only real TypeScript ``import`` statements are
@@ -26,7 +29,9 @@ import textwrap
 
 from notlob.bindings import assemble_section, collect_blocks
 from notlob.graph import module_address, subheading_address
-from notlob.model import Module, ReferencesSection, Subheading
+from notlob.model import (
+    AppendixSection, Module, ReferencesSection, Subheading,
+)
 
 
 def assemble(module: Module) -> str:
@@ -59,6 +64,25 @@ def assemble(module: Module) -> str:
             sub_blocks = collect_blocks(item.body)
             if sub_blocks:
                 chunks.append(assemble_section(f'// {sub_addr}', sub_blocks))
+
+    # ── 4. #Appendix code blocks ─────────────────────────────────
+    if module.post_text is not None:
+        for section in module.post_text.sections:
+            if not isinstance(section, AppendixSection):
+                continue
+            appendix_blocks = collect_blocks(section.body)
+            if appendix_blocks:
+                chunks.append(assemble_section(
+                    f'// {mod_addr}#Appendix', appendix_blocks,
+                ))
+            for item in section.body:
+                if isinstance(item, Subheading):
+                    sub_addr   = subheading_address(mod_addr, item.title)
+                    sub_blocks = collect_blocks(item.body)
+                    if sub_blocks:
+                        chunks.append(assemble_section(
+                            f'// {sub_addr}', sub_blocks,
+                        ))
 
     return '\n\n'.join(chunks)
 

@@ -10,6 +10,9 @@ Assembly order
   3. Module-level code blocks  (preceded by ``-- <module_address>``)
   4. Subheading code blocks in document order
      (each group preceded by ``-- <subheading_address>``)
+  5. ``#Appendix`` code blocks, if any -- same status as main-body code,
+     not test-only or build-only.  See notlob.bindings.python.assemble's
+     module docstring for the reasoning (identical here).
 
 The module name is derived from the module title by capitalising each
 word and joining: ``"Roman Numerals"`` → ``"RomanNumerals"``.
@@ -30,7 +33,9 @@ import re
 
 from notlob.bindings import assemble_section, collect_blocks
 from notlob.graph import module_address, subheading_address
-from notlob.model import Module, ReferencesSection, Subheading
+from notlob.model import (
+    AppendixSection, Module, ReferencesSection, Subheading,
+)
 
 
 # ── Module-name derivation ────────────────────────────────────
@@ -118,6 +123,24 @@ def _assemble_body(
             sub_blocks = collect_blocks(item.body)
             if sub_blocks:
                 code_chunks.append(assemble_section(f"-- {sub_addr}", sub_blocks))
+
+    if module.post_text is not None:
+        for section in module.post_text.sections:
+            if not isinstance(section, AppendixSection):
+                continue
+            appendix_blocks = collect_blocks(section.body)
+            if appendix_blocks:
+                code_chunks.append(assemble_section(
+                    f"-- {mod_addr}#Appendix", appendix_blocks,
+                ))
+            for item in section.body:
+                if isinstance(item, Subheading):
+                    sub_addr = subheading_address(mod_addr, item.title)
+                    sub_blocks = collect_blocks(item.body)
+                    if sub_blocks:
+                        code_chunks.append(assemble_section(
+                            f"-- {sub_addr}", sub_blocks,
+                        ))
 
     return import_lines, code_chunks
 

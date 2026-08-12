@@ -236,3 +236,56 @@ class TestIntegration:
         ns: dict = {}
         exec(code, ns)
         assert ns["result"] is not None
+
+
+# ── #Appendix code ───────────────────────────────────────────
+
+class TestAppendixCode:
+    def test_appendix_code_included(self):
+        src = (
+            "#T\n"
+            "    x = 1\n"
+            "---\n"
+            "#Appendix\n"
+            "    def fixture_helper():\n"
+            "        return 42\n"
+        )
+        assert "fixture_helper" in assembled(src)
+
+    def test_appendix_location_comment(self):
+        src = "#T\n    x = 1\n---\n#Appendix\n    y = 2\n"
+        assert "# t#Appendix" in assembled(src)
+
+    def test_appendix_subheading_uses_module_level_address(self):
+        # Matches graph.py's own addressing for appendix subheadings
+        # (mod_addr#Title, not nested under #Appendix) so a ##Name
+        # reference from the main body resolves to the same address
+        # this location comment names.
+        src = (
+            "#T\n    x = 1\n---\n"
+            "#Appendix\n##Glossary\n    y = 2\n"
+        )
+        assert "# t#Glossary" in assembled(src)
+
+    def test_appendix_code_usable_from_main_body_test(self):
+        # The actual reported scenario: a helper defined in #Appendix
+        # must be callable from #Tests/~example/~property, not just
+        # present in the assembled text.
+        src = (
+            "#T\n"
+            "    def target(n):\n"
+            "        return n * 2\n"
+            "---\n"
+            "#Appendix\n"
+            "    def fixture_helper():\n"
+            "        return 42\n"
+        )
+        code = assembled(src)
+        ns: dict = {}
+        exec(code, ns)
+        assert ns["fixture_helper"]() == 42
+        assert ns["target"](3) == 6
+
+    def test_no_appendix_no_change(self):
+        src = "#T\n    x = 1\n"
+        assert assembled(src) == "# t\nx = 1"

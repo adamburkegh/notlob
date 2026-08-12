@@ -25,6 +25,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   thing and forgot to update the reference").
 
 ### Fixed
+- `#Appendix` code blocks are now assembled and included in the
+  executable namespace (all three bindings), exactly like a main-body
+  subheading — previously they parsed fine but were silently dropped
+  from assembly entirely, so anything defined there (a shared test
+  fixture, a supporting helper) was invisible to `~example`/`#Tests`/
+  `~property` claims and absent from `notlob build`/`notlob run`
+  output, with no error or warning. Included unconditionally, not
+  test-only: `#Appendix` isn't structurally test-support-only, so
+  scoping inclusion to `notlob test` would just move the "looks the
+  same, silently behaves differently" problem rather than close it.
 - `notlob/docs/LANGUAGE.md` (the user-facing language reference) was
   out of date in several places: the removed `~property-testing`/
   `~unit-testing` declaration syntax was still shown in two worked

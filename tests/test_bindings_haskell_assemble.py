@@ -21,6 +21,7 @@ from notlob.bindings.haskell.assemble import (
     assemble,
 )
 from notlob.model import (
+    AppendixSection,
     CodeBlock,
     Module,
     PostText,
@@ -257,6 +258,50 @@ class TestAssembleSubheadings:
         m = _module("Numerals", body=body)
         src = assemble(m)
         assert "Empty" not in src
+
+
+# ── #Appendix code ───────────────────────────────────────────
+
+class TestAppendixCode:
+    def test_appendix_code_included(self):
+        m = Module(
+            title="Numerals",
+            body=[_code("f x = x")],
+            post_text=PostText(sections=[
+                AppendixSection(title="#Appendix", body=[
+                    _code("fixtureHelper = 42"),
+                ]),
+            ]),
+        )
+        src = assemble(m)
+        assert "fixtureHelper = 42" in src
+
+    def test_appendix_location_comment(self):
+        m = Module(
+            title="Numerals",
+            body=[_code("f x = x")],
+            post_text=PostText(sections=[
+                AppendixSection(title="#Appendix", body=[_code("y = 2")]),
+            ]),
+        )
+        src = assemble(m)
+        assert "-- numerals#Appendix" in src
+
+    def test_appendix_subheading_uses_module_level_address(self):
+        sub = Subheading(title="Glossary", body=[_code("y = 2")])
+        m = Module(
+            title="Numerals",
+            body=[_code("f x = x")],
+            post_text=PostText(sections=[
+                AppendixSection(title="#Appendix", body=[sub]),
+            ]),
+        )
+        src = assemble(m)
+        assert "-- numerals#Glossary" in src
+
+    def test_no_appendix_no_change(self):
+        m = _module("Numerals", body=[_code("f x = x")])
+        assert assemble(m) == "module Numerals where\n\n-- numerals\nf x = x"
 
 
 # ── assemble — full example ───────────────────────────────────

@@ -77,3 +77,24 @@ class TestCodeBlocks:
         result = assembled(src)
         assert '// t#A\nconst a = 1' in result
         assert '// t#B\nconst b = 2' in result
+
+
+class TestAppendixCode:
+    def test_appendix_code_included(self):
+        src = '#T\n    const x = 1\n---\n#Appendix\n    const y = 2\n'
+        assert 'const y = 2' in assembled(src)
+
+    def test_appendix_location_comment(self):
+        src = '#T\n    const x = 1\n---\n#Appendix\n    const y = 2\n'
+        assert '// t#Appendix' in assembled(src)
+
+    def test_appendix_subheading_uses_module_level_address(self):
+        src = (
+            '#T\n    const x = 1\n---\n'
+            '#Appendix\n##Glossary\n    const y = 2\n'
+        )
+        assert '// t#Glossary' in assembled(src)
+
+    def test_no_appendix_no_change(self):
+        src = '#T\n\n    const x = 1\n'
+        assert assembled(src) == '// t\nconst x = 1'
