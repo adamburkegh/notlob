@@ -187,16 +187,23 @@ def collect_blocks(body: list) -> list[str]:
     return result
 
 
-def assemble_section(comment: str, blocks: list[str]) -> str:
+def assemble_section(
+    comment: str, blocks: list[str], blank_lines: int = 1,
+) -> str:
     """Join a location comment and its code blocks.
 
     The comment is glued to the first block (no blank line between
-    them); subsequent blocks are separated by blank lines.
+    them); subsequent blocks are separated by *blank_lines* blank
+    lines (default 1). Python's assembler passes 2 to match PEP8/
+    isort's "two blank lines between top-level definitions"
+    convention; Haskell and TypeScript have no equivalent convention
+    and use the default.
     """
     first, *rest = blocks
     head = f"{comment}\n{first}"
     if rest:
-        return head + "\n\n" + "\n\n".join(rest)
+        sep = "\n" * (blank_lines + 1)
+        return head + sep + sep.join(rest)
     return head
 
 

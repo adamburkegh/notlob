@@ -4,6 +4,8 @@ assemble() collects code blocks from a Module in document order,
 prepends #References imports, and inserts source-location comments.
 """
 
+import subprocess
+import sys
 
 from notlob import parse, from_tree
 from notlob.bindings.python.assemble import assemble
@@ -94,7 +96,15 @@ class TestLocationComments:
 # ── Blank line separation ─────────────────────────────────────
 
 class TestBlankLineSeparation:
-    def test_blank_line_between_refs_and_code(self):
+    """Two blank lines at every assembler-inserted separator, matching
+    PEP8/isort's convention for top-level definitions -- verified
+    against a real ruff run (see notlob.bindings.python.assemble's
+    module docstring). Blank-line spacing *within* a single continuous
+    code block (no dedent, so one CodeBlock) is the author's own
+    choice and isn't touched by the assembler -- these tests are only
+    about separators the assembler itself inserts."""
+
+    def test_two_blank_lines_between_refs_and_code(self):
         src = (
             "#T\n"
             "    x = 1\n"
@@ -103,25 +113,25 @@ class TestBlankLineSeparation:
             "    import os\n"
         )
         result = assembled(src)
-        # refs chunk ends, blank line, then module location comment
-        assert "import os\n\n# t\n" in result
+        # refs chunk ends, two blank lines, then module location comment
+        assert "import os\n\n\n# t\n" in result
 
-    def test_blank_line_between_module_and_subheading(self):
+    def test_two_blank_lines_between_module_and_subheading(self):
         src = "#T\n    x = 1\n##S\n    y = 2\n"
         result = assembled(src)
-        assert "x = 1\n\n# t#S\ny = 2" in result
+        assert "x = 1\n\n\n# t#S\ny = 2" in result
 
-    def test_blank_line_between_consecutive_blocks(self):
-        # Two code blocks separated by prose → blank line between them.
+    def test_two_blank_lines_between_consecutive_blocks(self):
+        # Two code blocks separated by prose (a real dedent, so two
+        # CodeBlock nodes) -- an assembler-inserted separator.
         src = "#T\n    x = 1\nprose\n    y = 2\n"
         result = assembled(src)
-        # Both blocks under the module comment; blank line between.
-        assert "x = 1\n\ny = 2" in result
+        assert "x = 1\n\n\ny = 2" in result
 
-    def test_blank_line_between_subheading_blocks(self):
+    def test_two_blank_lines_between_subheading_blocks(self):
         src = "#T\n##S\n    x = 1\nprose\n    y = 2\n"
         result = assembled(src)
-        assert "x = 1\n\ny = 2" in result
+        assert "x = 1\n\n\ny = 2" in result
 
 
 # ── Ordering ──────────────────────────────────────────────────
@@ -289,3 +299,45 @@ class TestAppendixCode:
     def test_no_appendix_no_change(self):
         src = "#T\n    x = 1\n"
         assert assembled(src) == "# t\nx = 1"
+
+
+# ── Real-ruff regression: I001 (isort blank lines) ─────────────
+
+class TestNoSpuriousI001:
+    """Reported bug: a module with a single, correctly-formed
+    `#References` import and a module body starting with a top-level
+    `def` was flagged `I001` ("Import block is un-sorted or
+    un-formatted") -- not because the import itself was wrong, but
+    because the assembler only put one blank line between the import
+    block and the following code, where isort wants two.
+
+    `I` (isort) isn't in ruff's default rule set, so this only ever
+    fires for projects whose own ruff config selects it (or explicit
+    `--select`) -- reproduced here by asking for it explicitly, since
+    that's the actual condition that made the bug real for the
+    reporting project, not an artifact of this repo's own lint
+    invocation happening not to select `I` by default.
+    """
+
+    def test_no_i001_after_references_import(self):
+        src = (
+            "#Example\n\n"
+            "    def double(n: int) -> int:\n"
+            "        return n * 2 + math.trunc(0.0)\n\n"
+            "~example\n"
+            "    double(21) == 42\n\n"
+            "---\n\n"
+            "#References\n"
+            "    import math\n"
+        )
+        source = assembled(src)
+        proc = subprocess.run(
+            [sys.executable, "-m", "ruff", "check",
+             "--select=E,F,I", "--output-format=json",
+             "--stdin-filename=module.py", "-"],
+            input=source, capture_output=True, text=True,
+        )
+        assert proc.stdout.strip() == "[]", (
+            f"ruff found issues in assembled source:\n{proc.stdout}\n"
+            f"assembled source was:\n{source}"
+        )

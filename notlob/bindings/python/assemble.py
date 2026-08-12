@@ -18,10 +18,14 @@ Assembly order
      only during `notlob test` -- so there's no special-casing here,
      it's included exactly like a main-body subheading would be.
 
-All top-level chunks are separated by a single blank line.
-Code blocks within a section are also separated by blank lines.
-A location comment is joined directly to its first code block
-with no intervening blank line.
+All top-level chunks -- and all code blocks within one chunk -- are
+separated by two blank lines, matching PEP8/isort's convention for
+top-level definitions (verified against a real ruff run with `I`
+rules enabled: a single blank line there is reported as ``I001``,
+"Import block is un-sorted or un-formatted", with isort's own
+suggested fix being to add the second blank line). A location comment
+is joined directly to its first code block with no intervening blank
+line.
 """
 
 from __future__ import annotations
@@ -59,7 +63,9 @@ def assemble(module: Module) -> str:
     mod_addr = module_address(module.title)
     mod_blocks = collect_blocks(module.body)
     if mod_blocks:
-        chunks.append(assemble_section(f"# {mod_addr}", mod_blocks))
+        chunks.append(
+            assemble_section(f"# {mod_addr}", mod_blocks, blank_lines=2)
+        )
 
     # ── 3. Subheading code blocks ────────────────────────────────
     for item in module.body:
@@ -67,7 +73,9 @@ def assemble(module: Module) -> str:
             sub_addr = subheading_address(mod_addr, item.title)
             sub_blocks = collect_blocks(item.body)
             if sub_blocks:
-                chunks.append(assemble_section(f"# {sub_addr}", sub_blocks))
+                chunks.append(assemble_section(
+                    f"# {sub_addr}", sub_blocks, blank_lines=2,
+                ))
 
     # ── 4. #Appendix code blocks ─────────────────────────────────
     if module.post_text is not None:
@@ -78,6 +86,7 @@ def assemble(module: Module) -> str:
             if appendix_blocks:
                 chunks.append(assemble_section(
                     f"# {mod_addr}#Appendix", appendix_blocks,
+                    blank_lines=2,
                 ))
             for item in section.body:
                 if isinstance(item, Subheading):
@@ -91,10 +100,10 @@ def assemble(module: Module) -> str:
                     sub_blocks = collect_blocks(item.body)
                     if sub_blocks:
                         chunks.append(assemble_section(
-                            f"# {sub_addr}", sub_blocks,
+                            f"# {sub_addr}", sub_blocks, blank_lines=2,
                         ))
 
-    return "\n\n".join(chunks)
+    return "\n\n\n".join(chunks)
 
 
 def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
@@ -117,6 +126,6 @@ def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
     own = assemble(module)
     if own:
         chunks.append(own)
-    return "\n\n".join(chunks)
+    return "\n\n\n".join(chunks)
 
 

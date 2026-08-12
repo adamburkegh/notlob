@@ -25,6 +25,18 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   thing and forgot to update the reference").
 
 ### Fixed
+- Python's assembler now separates every assembler-inserted boundary
+  (after `#References` imports, between module/subheading/`#Appendix`
+  code, between separate code blocks within one section) with two
+  blank lines instead of one, matching PEP8/isort's convention for
+  top-level definitions. Previously a module with a `#References`
+  import and a top-level `def` immediately following could be flagged
+  `I001` ("Import block is un-sorted or un-formatted") by any ruff
+  config that selects `I` (isort) rules — not ruff's default selection,
+  which is why this went unnoticed here, but a common enough choice
+  that it surfaced as a real false-positive lint failure in a project
+  using notlob. Haskell and TypeScript are unaffected — PEP8's
+  two-blank-line convention has no equivalent there.
 - `#Appendix` code blocks are now assembled and included in the
   executable namespace (all three bindings), exactly like a main-body
   subheading — previously they parsed fine but were silently dropped
