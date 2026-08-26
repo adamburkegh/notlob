@@ -1,6 +1,12 @@
 # Notlob
 
-Notlob is an experiment in literate programming for human and machine agents. 
+Notlob is a language and environment foe literate programming by human and machine agents. 
+
+The ideas and design are most completely described in the paper:
+
+*Burke, A. T. (2026). A Literate Programing Environment for Human and Machine Agents.* [arxiv 2608.24644](https://arxiv.org/pdf/2608.24644)
+
+A quick and dirty intro for impatient programmers can be found below.
 
 
 ## Idea
