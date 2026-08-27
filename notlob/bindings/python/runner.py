@@ -55,7 +55,6 @@ import ast
 import os
 import shutil
 import subprocess
-import sysconfig
 import tempfile
 import textwrap
 from pathlib import Path
@@ -98,17 +97,27 @@ def _resolve_python_interpreter() -> str | None:
 
 
 def _notlob_site_packages() -> str:
-    """Return notlob's own interpreter's site-packages directory.
+    """Return the directory ``pytest`` was actually imported from.
 
-    ``hypothesis`` and ``pytest`` are guaranteed to live here, since
-    they're notlob's own ``pyproject.toml`` dependencies -- this is
-    what ``#Tests``/``~property`` harnesses append to ``sys.path`` as a
-    fallback so those two are available "for free" regardless of the
-    target interpreter, without needing to import either package here
-    (which would be a needless dependency on them being importable in
-    *this* process just to compute a path).
+    ``hypothesis`` and ``pytest`` are guaranteed to be importable here,
+    since they're notlob's own ``pyproject.toml`` dependencies -- this
+    is what ``#Tests``/``~property`` harnesses append to ``sys.path`` as
+    a fallback so those two are available "for free" regardless of the
+    target interpreter.
+
+    Deliberately resolved via the real import machinery
+    (``pytest.__file__``) rather than ``sysconfig.get_paths()``:
+    ``sysconfig`` derives its answer from the running interpreter's
+    install scheme (``sys.prefix``), which is correct for a normal venv
+    or pipx/uvx install but wrong for a zipapp-style bundle (e.g. shiv)
+    that makes packages importable by prepending an extraction-cache
+    directory to ``sys.path`` without ever changing ``sys.prefix`` --
+    under that scheme ``sysconfig`` would point at the base interpreter's
+    own site-packages, which has neither package in it, silently
+    breaking this fallback.
     """
-    return sysconfig.get_paths()["purelib"]
+    import pytest
+    return str(Path(pytest.__file__).resolve().parent.parent)
 
 
 # ── Subprocess execution ────────────────────────────────────────
