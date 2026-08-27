@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-27
+
 ### Added
 - Cross-reference labels (`#Label`/`##Label`) are Unicode-aware, not
   ASCII-only. A label word's first character may be an uppercase or
@@ -80,6 +82,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   encoding fell back to the console's codepage instead of UTF-8.
   TypeScript's runner/linter already forced `encoding="utf-8"`; Python's
   `lint.py` and Haskell's `runner.py`/`lint.py` now do too.
+- The Python binding's `pytest`/`hypothesis` fallback (see above) found
+  their location via `sysconfig.get_paths()["purelib"]`, which derives
+  its answer from the running interpreter's `sys.prefix` — correct for
+  a normal venv or pipx/uvx install, but wrong for a zipapp-style bundle
+  (e.g. one built with `shiv`) that makes packages importable by
+  prepending an extraction-cache directory to `sys.path` without ever
+  changing `sys.prefix`. `_notlob_site_packages` now resolves the path
+  via `pytest.__file__`'s actual import location instead, which is
+  correct under both packaging schemes.
 
 ## [0.5.3] - 2026-08-11
 
