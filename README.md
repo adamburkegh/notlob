@@ -83,17 +83,27 @@ toRoman never returns an empty string for a positive integer.
 
 An extended, runnable version of this example is in [examples/haskell-roman](examples/haskell-roman).
 
-## Installing and Developing 
+## Installing 
 
-Notlob is written in Python. Create a venv, clone and build using pip in the usual way.
+### PYZ archive (zero dependencies)
+
+Notlob is released as a `.pyz` file, runnable with
+
+```
+python notlob.pyz
+```
+
+### Python Dev Environment
+
+Or create a Python venv, clone and build using pip in the usual way.
 
 
 
-## Developing With Notlob
+## Developing Notlob Projects
 
 ### Running
 
-Two basic commands, each with subcommands and help. `notlob` is for build time. `lob` is for runtime.
+Two basic commands, each with subcommands and help. `notlob` is for build time. `lob` is for runtime and is an alias for `notlob run`.
 
 ### Language Reference
 
@@ -104,7 +114,7 @@ A language reference is in [LANGUAGE.md](notlob/docs/LANGUAGE.md).
 
 Notlob is inspired by the insights of [Knuth](https://www.cs.tufts.edu/~nr/cs257/archive/literate-programming/01-knuth-lp.pdf), [Peter Naur](https://pages.cs.wisc.edu/~remzi/Naur.pdf), [Dominic Fox](https://codepoetics.substack.com/p/holding-a-theory), and [Name Oriented Software Development](https://conflatedautomatons.org/tag/name-oriented-software-development/).
 
-Notlob was written at arms length using Claude. This README is completely hand authored. Every other artifact, including [LANGUAGE.md](notlob/docs/LANGUAGE.md) and [DESIGN.md](notlob/docs/DESIGN.md), has been emitted or altered by the language extrusion machine as the result of dialogue.
+Notlob was written at arm's length using Claude Code. This README is completely hand authored. Every other artifact, including [LANGUAGE.md](notlob/docs/LANGUAGE.md) and [DESIGN.md](notlob/docs/DESIGN.md), has been emitted or altered by the language extrusion machine as the result of dialogue.
 
 Notlob is not Python, and is not a palindrome.
 
