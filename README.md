@@ -1,6 +1,6 @@
 # Notlob
 
-Notlob is a language and environment foe literate programming by human and machine agents. 
+Notlob is a language and environment for literate programming by human and machine agents. 
 
 The ideas and design are most completely described in the paper:
 
