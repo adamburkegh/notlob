@@ -37,6 +37,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   that it surfaced as a real false-positive lint failure in a project
   using notlob. Haskell and TypeScript are unaffected — PEP8's
   two-blank-line convention has no equivalent there.
+
+  The gap right after `#References` specifically is dynamic rather
+  than always two, matching isort's own rule for that position: two
+  blank lines before a following `def`/`class` (decorators skipped),
+  but only *one* before a plain top-level statement, e.g. a
+  module-level constant assignment — otherwise that case is flagged
+  `I001` the opposite way, wanting the gap reduced. Every other
+  assembler-inserted boundary stays at two blank lines unconditionally,
+  since isort/pycodestyle only special-case the position immediately
+  after an import block.
 - `#Appendix` code blocks are now assembled and included in the
   executable namespace (all three bindings), exactly like a main-body
   subheading — previously they parsed fine but were silently dropped

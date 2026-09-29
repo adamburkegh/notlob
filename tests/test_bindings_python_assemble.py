@@ -102,12 +102,17 @@ class TestBlankLineSeparation:
     module docstring). Blank-line spacing *within* a single continuous
     code block (no dedent, so one CodeBlock) is the author's own
     choice and isn't touched by the assembler -- these tests are only
-    about separators the assembler itself inserts."""
+    about separators the assembler itself inserts.
 
-    def test_two_blank_lines_between_refs_and_code(self):
+    The gap right after #References is the one exception, covered
+    separately by TestReferencesGapIsDynamic -- these tests use a
+    def-first body so they only exercise the always-two-blank-lines
+    case."""
+
+    def test_two_blank_lines_between_refs_and_def(self):
         src = (
             "#T\n"
-            "    x = 1\n"
+            "    def f(): pass\n"
             "---\n"
             "#References\n"
             "    import os\n"
@@ -132,6 +137,69 @@ class TestBlankLineSeparation:
         src = "#T\n##S\n    x = 1\nprose\n    y = 2\n"
         result = assembled(src)
         assert "x = 1\n\n\ny = 2" in result
+
+
+# ── References-gap blank lines are dynamic ─────────────────────
+
+class TestReferencesGapIsDynamic:
+    """isort's default ``lines_after_imports = -1`` is itself dynamic
+    right after an import block: two blank lines before a following
+    class/function definition, but only *one* before a plain
+    statement. Every other assembler-inserted gap is safely two blank
+    lines regardless of what follows (isort/pycodestyle only special-
+    case the position right after imports) -- verified against a real
+    ruff run in TestNoSpuriousI001 below."""
+
+    def test_one_blank_line_before_plain_statement(self):
+        src = (
+            "#T\n"
+            "    x = 1\n"
+            "---\n"
+            "#References\n"
+            "    import os\n"
+        )
+        result = assembled(src)
+        assert "import os\n\n# t\nx = 1" in result
+
+    def test_two_blank_lines_before_def(self):
+        src = (
+            "#T\n"
+            "    def f(): pass\n"
+            "---\n"
+            "#References\n"
+            "    import os\n"
+        )
+        result = assembled(src)
+        assert "import os\n\n\n# t\ndef f(): pass" in result
+
+    def test_two_blank_lines_before_class(self):
+        src = (
+            "#T\n"
+            "    class Foo: pass\n"
+            "---\n"
+            "#References\n"
+            "    import os\n"
+        )
+        result = assembled(src)
+        assert "import os\n\n\n# t\nclass Foo: pass" in result
+
+    def test_two_blank_lines_before_decorated_def(self):
+        src = (
+            "#T\n"
+            "    @staticmethod\n"
+            "    def f(): pass\n"
+            "---\n"
+            "#References\n"
+            "    import os\n"
+        )
+        result = assembled(src)
+        assert "import os\n\n\n# t\n@staticmethod" in result
+
+    def test_no_references_leaves_other_gaps_untouched(self):
+        # No #References at all -- the dynamic check never applies,
+        # even though the module opens with a plain statement.
+        src = "#T\n    x = 1\n"
+        assert assembled(src) == "# t\nx = 1"
 
 
 # ── Ordering ──────────────────────────────────────────────────
@@ -326,6 +394,35 @@ class TestNoSpuriousI001:
             "        return n * 2 + math.trunc(0.0)\n\n"
             "~example\n"
             "    double(21) == 42\n\n"
+            "---\n\n"
+            "#References\n"
+            "    import math\n"
+        )
+        source = assembled(src)
+        proc = subprocess.run(
+            [sys.executable, "-m", "ruff", "check",
+             "--select=E,F,I", "--output-format=json",
+             "--stdin-filename=module.py", "-"],
+            input=source, capture_output=True, text=True,
+        )
+        assert proc.stdout.strip() == "[]", (
+            f"ruff found issues in assembled source:\n{proc.stdout}\n"
+            f"assembled source was:\n{source}"
+        )
+
+    def test_no_i001_after_references_import_plain_statement(self):
+        # A second, distinct real-world manifestation of the same
+        # rule code: a module body that starts with a *plain*
+        # top-level statement (not a def/class), reported separately
+        # against a project's actual `historical/date.lob`. isort's
+        # dynamic lines-after-imports rule wants only one blank line
+        # here -- always inserting two (as an earlier fix for the
+        # def-first case above did) is flagged the opposite way.
+        src = (
+            "#Example\n\n"
+            "    NAMES = [\n"
+            "        math.trunc(0.0),\n"
+            "    ]\n\n"
             "---\n\n"
             "#References\n"
             "    import math\n"

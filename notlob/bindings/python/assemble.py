@@ -26,6 +26,19 @@ rules enabled: a single blank line there is reported as ``I001``,
 suggested fix being to add the second blank line). A location comment
 is joined directly to its first code block with no intervening blank
 line.
+
+The one exception is the gap right after the `#References` import
+block: isort's default `lines_after_imports = -1` is itself dynamic
+there -- two blank lines before a following `def`/`class` (skipping
+any decorator lines), but only *one* before a plain top-level
+statement. Hard-coding two blank lines there too (as an earlier
+version of this module did) is itself flagged `I001`, wanting the gap
+*reduced* back to one, whenever the first assembled chunk opens with
+something other than a definition -- e.g. a module-level constant
+assignment. So `assemble()` inspects that one boundary and matches
+isort's own rule; every other boundary is unconditionally two blank
+lines, which isort/pycodestyle never object to regardless of what
+follows (only the position immediately after imports is special).
 """
 
 from __future__ import annotations
@@ -40,12 +53,27 @@ from notlob.model import (
 from notlob.project import parse_python_imports
 
 
+def _opens_with_definition(chunk: str) -> bool:
+    """Whether *chunk* -- a location comment glued to code -- opens
+    with a class/function definition once decorator lines are
+    skipped. Determines how many blank lines isort wants right after
+    an import block: two before a definition, one otherwise.
+    """
+    for line in chunk.splitlines()[1:]:  # [0] is the location comment
+        stripped = line.strip()
+        if not stripped or stripped.startswith("@"):
+            continue
+        return stripped.startswith(("def ", "async def ", "class "))
+    return False
+
+
 def assemble(module: Module) -> str:
     """Assemble module code blocks into one executable Python string.
 
     Returns an empty string if the module contains no code.
     """
     chunks: list[str] = []
+    has_references = False
 
     # ── 1. #References ──────────────────────────────────────────
     if module.post_text is not None:
@@ -57,6 +85,7 @@ def assemble(module: Module) -> str:
                 ).strip()
                 if text:
                     chunks.append(text)
+                    has_references = True
                 break
 
     # ── 2. Module-level code blocks ──────────────────────────────
@@ -103,7 +132,16 @@ def assemble(module: Module) -> str:
                             f"# {sub_addr}", sub_blocks, blank_lines=2,
                         ))
 
-    return "\n\n\n".join(chunks)
+    if not chunks:
+        return ""
+    result = chunks[0]
+    for i, chunk in enumerate(chunks[1:], start=1):
+        if i == 1 and has_references:
+            blank_lines = 2 if _opens_with_definition(chunk) else 1
+        else:
+            blank_lines = 2
+        result += "\n" * (blank_lines + 1) + chunk
+    return result
 
 
 def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
