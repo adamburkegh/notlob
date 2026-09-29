@@ -25,6 +25,32 @@ import pytest
 from notlob import from_tree, parse_file
 
 
+class TestSitePackagesResolvesByImportNotPrefix:
+    """Fast unit test for ``_notlob_site_packages`` -- unlike the rest
+    of this file, no venv needed.
+
+    Guards against a regression to resolving the fallback path via
+    ``sysconfig.get_paths()["purelib"]``, which derives its answer from
+    ``sys.prefix``. That's fine for a normal venv/pipx/uvx install
+    (where ``sys.prefix`` and the actual pytest/hypothesis install
+    location agree), but breaks for a zipapp-style bundle such as shiv:
+    those make packages importable by prepending an extraction-cache
+    directory to ``sys.path`` while leaving ``sys.prefix`` pointed at
+    the base interpreter, which has neither package installed. Faking
+    that divergence here (bogus ``sys.prefix``, real ``pytest`` import)
+    without needing an actual shiv build to prove it.
+    """
+
+    def test_ignores_sys_prefix(self, monkeypatch):
+        import pytest as pytest_module
+
+        from notlob.bindings.python.runner import _notlob_site_packages
+
+        monkeypatch.setattr(sys, "prefix", "/nonexistent/fake/prefix")
+        expected = str(Path(pytest_module.__file__).resolve().parent.parent)
+        assert _notlob_site_packages() == expected
+
+
 def _bin_dir(venv_dir: Path) -> Path:
     return venv_dir / ("Scripts" if sys.platform == "win32" else "bin")
 

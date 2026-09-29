@@ -18,10 +18,13 @@ typescript = "notlob.bindings.typescript"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["notlob*"]
+include = ["notlob", "notlob.*"]
 
 [tool.setuptools.package-data]
-notlob = ["docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md"]
+notlob = [
+    "grammar.lark",
+    "docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "notlob"]
