@@ -1,0 +1,15 @@
+#Example
+
+A trivial module whose body is just one function, with its import
+declared in the post-text references section instead of inline in the body.
+
+    def double(n: int) -> int:
+        return n * 2 + math.trunc(0.0)
+
+~example
+    double(21) == 42
+
+---
+
+#References
+    import math

@@ -1,0 +1,15 @@
+#Example2
+
+Same as Example, but the import is moved into the body code block
+instead of the post-text references section, as a workaround. Here the
+author can control blank-line spacing directly, unlike in the
+post-text references section.
+
+    import math
+
+
+    def double(n: int) -> int:
+        return n * 2 + math.trunc(0.0)
+
+~example
+    double(21) == 42
