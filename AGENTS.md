@@ -19,6 +19,10 @@ single document. The format is the experiment.
   today, so one that later grows an MRE never needs renaming. Once
   fixed, add a `**Resolved:** <date>, commit <sha>` note rather than
   deleting the report — the history is the point.
+- `meta/features/` — same convention, for queued feature proposals
+  (`YYYY-MM-DD-slug/`, dated by when filed) that aren't being
+  implemented yet. A design doc that arrives for later work goes here
+  rather than being lost between conversations.
 
   Note: `notlob/docs/` (above) ships with the installed package
   (`pyproject.toml` package-data) and is aimed at notlob *users*;
@@ -39,6 +43,7 @@ notlob/              the Python package
 meta/                project background (not packaged)
   origin.md          founding conversation and intellectual background
   bugs/              investigated bug reports, one dir per bug
+  features/          queued feature proposals, one dir per proposal
 editors/vim/         vim syntax highlighting for .lob files
 examples/            independent example notlob projects
   roman/             Python example project

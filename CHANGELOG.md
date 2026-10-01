@@ -20,13 +20,18 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   an import block.
 - Python lint false positives when a module references another
   module: an import used only inside a claim (`~example`/`#Tests`/
-  `~property`) was flagged unused (`F401`), since claims aren't part
-  of what gets linted; and a dependency's own lint findings were
-  reported against the module referencing it instead of being dropped.
-  See `meta/bugs/2026-10-01-python-lint-cross-module/` for the full
-  investigation. A third, related finding (an import a module
-  correctly re-declares itself flagged as redefining a dependency's
-  import, `F811`) is deferred — same bug report.
+  `~property`) was flagged unused (`F401`); a dependency's own lint
+  findings were reported against the module referencing it instead of
+  being dropped; and an import a module correctly re-declares itself
+  was flagged as redefining a dependency's import (`F811`). The lint
+  path no longer prepends a dependency's source to the module being
+  linted at all — only the module's own source is ever sent to ruff,
+  and a cross-module name lookup (via the same `extract_symbols` the
+  graph builder already uses) suppresses the one real false positive
+  that remains (`F821` "undefined name" for a name a dependency
+  genuinely defines). See
+  `meta/bugs/2026-10-01-python-lint-cross-module/` for the full
+  investigation.
 
 ## [0.5.4] - 2026-08-27
 

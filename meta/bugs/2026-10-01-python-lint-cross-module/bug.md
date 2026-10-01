@@ -47,10 +47,12 @@ LINT   beta  F811: Redefinition of unused `json` from line 1: `json` redefined h
 
 ## Resolution
 
-Adam asked for a split: fix 1 and 2 now, treat 3 as a separate follow-up
-(it needs a different, heavier mechanism — see below).
+Adam asked for a split: fix 1 and 2 first, treat 3 as a separate
+follow-up (it looked like it needed a heavier mechanism — see below).
 
-**Fixed**, 2026-10-01:
+**Fixed**, 2026-10-01, in two passes:
+
+**Pass 1 — 1 and 2:**
 
 - **F401-from-claims (1):** `_claim_text()` collects every claim's raw
   source (every `~example`/`#Tests`/`~property` body the runner actually
@@ -68,12 +70,34 @@ Adam asked for a split: fix 1 and 2 now, treat 3 as a separate follow-up
   module being linted — it silently fell back to the module's own
   address instead of being dropped. Now dropped unconditionally.
 
-**Deferred** — F811 (3): the dependency's own `#References` imports
-shouldn't be part of the prepended context at all; only its top-level
-*names* are needed for cross-module name resolution (suppressing
-false-positive F821). Fixing this properly means generating a lightweight
-stub of a dependency's public names instead of prepending its full
-assembled source (imports included) — a heavier change than 1/2, and one
-that touches the same "don't let a quick fix regress the thing it meant
-to fix" territory as the PEP8 blank-line bug earlier this project
-(see `2026-08-12-py-lint-space`). Not started.
+This pass still prepended each dependency's full assembled source
+(imports included) ahead of the module being linted, for cross-module
+name resolution — initial plan for 3 was to generate a lightweight
+stub of a dependency's public names instead, to stop its imports from
+being part of that prepended text at all.
+
+**Pass 2 — simplified, and fixed 3 as a side effect:** on reflection,
+prepending anything at all was unnecessary complexity for what the
+mechanism was ever actually for — suppressing a false-positive `F821`
+"undefined name" when a module calls something a lob-ref dependency
+defines. `extract_symbols` already extracts a module's own top-level
+`def`/`class`/assignment names (ignoring `import` lines entirely, since
+those aren't AST nodes it handles) — reused here as `_dependency_names`
+to collect what names a dependency defines, and an `F821` finding is now
+dropped by name-match alone, with nothing ever prepended to what ruff
+lints. Only the module's own source is ever sent to ruff. This:
+
+- Makes 2 moot by construction (nothing to misattribute — there's no
+  dependency text in the linted source at all).
+- Fixes 3 as a side effect (the dependency's own `#References` imports
+  are never part of the linted text either, so they can't collide with
+  the referencing module's own).
+- Is simpler than pass 1's own mechanism, not just a fix for 3 —
+  deleted the whole `_prepend_deps`/offset/`adjusted <= 0` apparatus
+  pass 1 added.
+
+Real cross-module reference *correctness* (is this call actually valid,
+not just "is this name spelled the same somewhere") is notlob's own
+`NameGraph`-based `check` command's job, which has the real call graph —
+ruff's F821 was only ever redundant noise for the cross-module case, not
+a check anything relies on for real coverage.

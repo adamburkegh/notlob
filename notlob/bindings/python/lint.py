@@ -23,15 +23,26 @@ import block) are assigned to the first section found once it appears.
 
 Dependency context
 ------------------
-When a project root is available, dep module sources are prepended to
-the combined source before linting.  This gives ruff visibility into
-names imported from other notlob modules, suppressing false-positive
-F821 "undefined name" errors.  The line offset is subtracted from
-ruff's reported line numbers before the source-map lookup; a finding
-whose adjusted line falls at or before 0 is inside the prepended
-dependency text, not the module actually being linted, and is dropped
-rather than misattributed to it (that dependency's own findings are
-reported when *it* is linted directly).
+Only the module's own assembled source is ever sent to ruff -- a
+dependency's source is never prepended. Instead, when a project root
+is available, ``_dependency_names`` collects the top-level names each
+direct lob-ref dependency defines, and an ``F821`` "undefined name"
+finding is dropped when the reported name is one of them: it's a
+genuine cross-module reference, not an actually-undefined name. An
+earlier version of this module prepended each dependency's full
+assembled source (imports included) for this instead, which both
+leaked the dependency's own findings into the referencing module's
+results (needing its own after-the-fact filtering) and could collide
+with a legitimate re-import of the same name in the referencing
+module's own ``#References`` (``F811``). Filtering by name after
+linting only the module's own text avoids both: ruff never sees
+anything but this module's own source, so there's nothing to
+misattribute and nothing for its own imports to collide with. (Real
+cross-module reference *correctness* -- is this call actually valid,
+not just "is this name spelled the same somewhere" -- is notlob's own
+``NameGraph``-based ``check`` command's job, which has the real call
+graph; ruff's F821 was only ever redundant noise for this case, not a
+check anything relies on for real coverage.)
 
 Claims aren't part of what gets linted -- ``assemble()`` only ever
 collects real body code, not ``~example``/``#Tests``/``~property``
@@ -70,11 +81,10 @@ def lint_python(
 ) -> list[LintResult]:
     """Assemble *module* and run ruff; return a list of LintResults.
 
-    When *root* is provided and the module has lob-ref dependencies,
-    their assembled sources are prepended to the source sent to ruff so
-    that cross-module names are visible.  The line offset is adjusted
-    so that source-map lookup addresses the right section in the main
-    module.
+    When *root* is provided and the module has lob-ref dependencies, an
+    ``F821`` finding for a name one of them defines is suppressed (see
+    module docstring) -- otherwise only the module's own source is ever
+    linted.
 
     Raises ``LintToolUnavailable`` when ruff cannot be found (ruff is a
     core notlob dependency, so this should not happen in a correct
@@ -85,53 +95,44 @@ def lint_python(
     if not mod_source:
         return []
 
-    # Prepend dep sources for name-resolution context.
-    dep_offset = _prepend_deps(module, root) if root else ("", 0)
-    dep_source, offset = dep_offset
-
-    combined = (dep_source + "\n\n" + mod_source) if dep_source else mod_source
-
+    dep_names  = _dependency_names(module, root) if root else frozenset()
     source_map = parse_source_map(mod_source)
     mod_addr   = module_address(module.title)
     claim_text = _claim_text(module)
 
-    return _run_ruff(combined, source_map, offset, mod_addr, claim_text)
+    return _run_ruff(mod_source, source_map, mod_addr, claim_text, dep_names)
 
 
 # ── Internals ─────────────────────────────────────────────────
 
-def _prepend_deps(
-    module: Module,
-    root:   Path,
-) -> tuple[str, int]:
-    """Return ``(dep_source, line_offset)`` for cross-module context.
+def _dependency_names(module: Module, root: Path) -> frozenset[str]:
+    """Top-level names defined by *module*'s direct lob-ref dependencies.
 
-    *dep_source* is the concatenated assembled source of all lob-ref
-    dependencies.  *line_offset* is the number of lines to subtract
-    from ruff's reported line numbers to get into the main module's
-    coordinate space.
+    Used only to recognise a cross-module reference so a genuine
+    ``F821`` "undefined name" isn't reported for it; see module
+    docstring. ``extract_symbols`` already ignores ``import`` lines (it
+    only handles ``def``/``class``/assignment nodes), so a dependency's
+    own imported names are never included here -- intentionally: this
+    is about the dependency's *own* name surface, not what it imports.
     """
     from notlob import from_tree, parse_file
+    from notlob.bindings.python.symbols import extract_symbols
     from notlob.project import module_lob_refs, resolve_module_path
 
-    parts: list[str] = []
+    names: set[str] = set()
     for dep_addr in module_lob_refs(module):
         try:
             dep_path = resolve_module_path(dep_addr, root)
             dep_mod  = from_tree(parse_file(dep_path))
             dep_src  = assemble(dep_mod)
             if dep_src:
-                parts.append(dep_src)
+                names.update(
+                    s.name for s in extract_symbols(dep_src.splitlines())
+                )
         except Exception:
             pass  # missing dep — will surface as a claim execution error
 
-    if not parts:
-        return "", 0
-
-    dep_source = "\n\n".join(parts)
-    # +2 for the "\n\n" separator between dep_source and mod_source
-    offset = dep_source.count("\n") + 2
-    return dep_source, offset
+    return frozenset(names)
 
 
 def _claim_text(module: Module) -> str:
@@ -170,6 +171,7 @@ def _claim_text(module: Module) -> str:
 
 
 _UNUSED_IMPORT_RE = re.compile(r"^`([\w.]+)` imported but unused")
+_UNDEFINED_NAME_RE = re.compile(r"^Undefined name `([\w.]+)`$")
 
 
 def _is_unused_import_used_by_claim(message: str, claim_text: str) -> bool:
@@ -183,22 +185,29 @@ def _is_unused_import_used_by_claim(message: str, claim_text: str) -> bool:
     return re.search(rf"\b{re.escape(local_name)}\b", claim_text) is not None
 
 
+def _is_undefined_name_from_dependency(
+    message: str, dep_names: frozenset[str],
+) -> bool:
+    """Whether an F821 *message*'s reported name is a dependency's own."""
+    if not dep_names:
+        return False
+    m = _UNDEFINED_NAME_RE.match(message)
+    return m is not None and m.group(1) in dep_names
+
+
 def _run_ruff(
     source:     str,
     source_map: dict[int, str],
-    offset:     int,
     fallback:   str,
     claim_text: str = "",
+    dep_names:  frozenset[str] = frozenset(),
 ) -> list[LintResult]:
     """Pipe *source* through ``ruff check`` and translate diagnostics.
 
-    *offset* is subtracted from each reported line number before
-    looking up the section address in *source_map*.  *fallback* is the
-    address used when the adjusted line is not in the map. A finding
-    whose adjusted line is at or before 0 falls inside the prepended
-    dependency text (see module docstring) and is dropped rather than
-    attributed to *fallback*. An ``F401`` finding is also dropped when
-    the reported name is used by a claim in *claim_text*.
+    *fallback* is the address used when a finding's line isn't in
+    *source_map*. An ``F401`` finding is dropped when the reported name
+    is used by a claim in *claim_text*; an ``F821`` finding is dropped
+    when the reported name is in *dep_names* (see module docstring).
 
     Raises ``LintToolUnavailable`` if ruff is not importable.  Returns an
     empty list when ruff runs but produces no diagnostics.
@@ -241,15 +250,15 @@ def _run_ruff(
         code    = d.get("code") or ""
         message = d.get("message") or ""
 
-        adjusted = row - offset
-        if adjusted <= 0:
-            # Inside the prepended dependency text, not this module.
-            continue
         if code == "F401" and _is_unused_import_used_by_claim(
             message, claim_text,
         ):
             continue
-        addr = source_map.get(adjusted, fallback)
+        if code == "F821" and _is_undefined_name_from_dependency(
+            message, dep_names,
+        ):
+            continue
+        addr = source_map.get(row, fallback)
 
         results.append(LintResult(
             address=addr,

@@ -258,17 +258,22 @@ class TestClaimOnlyImportNotFlagged:
         assert "F401" not in [r.code for r in results]
 
 
-# ── Dependency findings: not misattributed ─────────────────────
+# ── Cross-module names: F821 suppressed, nothing else leaks ────
 
-class TestDependencyFindingsNotMisattributed:
-    """A finding that belongs to a prepended dependency's own source
-    (offset-adjusted line <= 0) must be dropped, not attributed to the
-    referencing module -- that dependency's own findings surface when
-    it is linted directly, matching the exact bug-report repro in
-    docs/bugs/... (now meta/bugs/2026-08-12-py-lint-space isn't this
-    one; this is the same-day follow-up report)."""
+class TestCrossModuleReferences:
+    """Only a module's own assembled source is ever sent to ruff -- a
+    dependency's source is never prepended (see lint.py's module
+    docstring for why an earlier version that did prepend it was
+    wrong). Instead, an F821 "undefined name" finding is dropped when
+    the name is one a lob-ref dependency defines. This both avoids
+    misattributing a dependency's own findings to the referencing
+    module, and avoids a dependency's own imports ever colliding with
+    the referencing module's (F811) -- neither dependency's source is
+    ever in the linted text at all."""
 
-    def _write_project(self, tmp_path):
+    def _write_project(
+        self, tmp_path, beta_body="return json.dumps(load(value))",
+    ):
         (tmp_path / "binding.lob").write_text(
             "#Lint Repro\n\n---\n\n#Binding\n    ~language python\n"
         )
@@ -286,10 +291,9 @@ class TestDependencyFindingsNotMisattributed:
         )
         (tmp_path / "beta.lob").write_text(
             "#Beta\n\n"
-            "    def dump(value):\n"
-            "        return json.dumps(value)\n\n"
+            f"    def dump(value):\n        {beta_body}\n\n"
             "~example\n"
-            "    dump(load('2')) == '2'\n\n"
+            "    dump('2') == '2'\n\n"
             "---\n\n"
             "#References\n"
             "    #Alpha\n"
@@ -297,16 +301,51 @@ class TestDependencyFindingsNotMisattributed:
         )
         return tmp_path
 
-    def test_dependency_f401_not_reported_against_referencing_module(
-        self, tmp_path,
-    ):
+    def test_cross_module_call_suppressed_with_root(self, tmp_path):
+        """beta's own body calls alpha's load() directly -- the actual
+        case F821 suppression exists for (not exercised by a call that
+        only ever appears inside a claim, since claims aren't linted;
+        see the sibling test below for that distinction)."""
         root = self._write_project(tmp_path)
         beta = _module((root / "beta.lob").read_text())
         results = lint_python(beta, root=root)
-        # alpha's own Path/F401 must not be reported against beta.
-        assert not any(
-            r.code == "F401" and "Path" in r.message for r in results
+        assert "F821" not in [r.code for r in results]
+
+    def test_cross_module_call_flagged_without_root(self, tmp_path):
+        """Regression guard: the same call, with no root/dependency
+        context at all, is a genuine F821 -- confirming the suppression
+        above is really about dependency awareness, not that `load`
+        could never be flagged."""
+        root = self._write_project(tmp_path)
+        beta = _module((root / "beta.lob").read_text())
+        results = lint_python(beta)  # no root
+        assert "F821" in [r.code for r in results]
+
+    def test_unrelated_typo_still_flagged_with_root(self, tmp_path):
+        """A real typo, unrelated to any dependency, must still be
+        reported even when dependency context is available -- this
+        isn't a blanket F821 disable."""
+        root = self._write_project(
+            tmp_path, beta_body="return load(totally_undefined_name())",
         )
+        beta = _module((root / "beta.lob").read_text())
+        results = lint_python(beta, root=root)
+        undefined = [r for r in results if r.code == "F821"]
+        assert len(undefined) == 1
+        assert "totally_undefined_name" in undefined[0].message
+
+    def test_dependency_f401_not_reported_against_referencing_module(
+        self, tmp_path,
+    ):
+        """The exact bug-report repro: beta references alpha (whose
+        own claim-only Path import would be F401) and re-imports json
+        itself. Neither alpha's F401 nor an F811 for json should ever
+        reach beta's results, since alpha's source is never part of
+        what beta's lint call sees."""
+        root = self._write_project(tmp_path)
+        beta = _module((root / "beta.lob").read_text())
+        results = lint_python(beta, root=root)
+        assert results == []
 
     def test_dependency_itself_has_no_findings(self, tmp_path):
         """Sanity check: alpha alone (its own claim uses Path) is clean,
