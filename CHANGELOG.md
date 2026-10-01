@@ -18,6 +18,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   unaffected and stays at two blank lines unconditionally, since
   isort/pycodestyle only special-case the position immediately after
   an import block.
+- Python lint false positives when a module references another
+  module: an import used only inside a claim (`~example`/`#Tests`/
+  `~property`) was flagged unused (`F401`), since claims aren't part
+  of what gets linted; and a dependency's own lint findings were
+  reported against the module referencing it instead of being dropped.
+  See `meta/bugs/2026-10-01-python-lint-cross-module/` for the full
+  investigation. A third, related finding (an import a module
+  correctly re-declares itself flagged as redefining a dependency's
+  import, `F811`) is deferred — same bug report.
 
 ## [0.5.4] - 2026-08-27
 

@@ -171,3 +171,147 @@ class TestLintPython:
         # module_address("My Module") == "my/module"
         f401 = [r for r in results if r.code == "F401"]
         assert all(r.address == "my/module" for r in f401)
+
+
+# ── F401 suppressed when a claim uses the import ───────────────
+
+class TestClaimOnlyImportNotFlagged:
+    """An import used only inside a claim (~example/#Tests/~property),
+    never in the module's own body code, must not be flagged F401 --
+    the claim really does use it, even though claims aren't part of
+    what gets assembled and linted."""
+
+    def test_example_only_use_suppresses_f401(self):
+        src = (
+            "#Alpha\n"
+            "\n"
+            "    def load(text):\n"
+            "        return json.loads(text)\n"
+            "\n"
+            "~example\n"
+            "    load('1') == 1\n"
+            "    Path('x').name == 'x'\n"
+            "\n"
+            "---\n"
+            "#References\n"
+            "    import json\n"
+            "    from pathlib import Path\n"
+        )
+        results = lint_python(_module(src))
+        assert "F401" not in [r.code for r in results]
+
+    def test_unused_with_no_claim_use_still_flagged(self):
+        """Regression guard: an import unused everywhere, including in
+        any claim, is still reported -- the suppression is specific to
+        claim usage, not a blanket F401 disable."""
+        src = (
+            "#Alpha\n"
+            "\n"
+            "    def load(text):\n"
+            "        return json.loads(text)\n"
+            "\n"
+            "~example\n"
+            "    load('1') == 1\n"
+            "\n"
+            "---\n"
+            "#References\n"
+            "    import json\n"
+            "    from pathlib import Path\n"
+        )
+        results = lint_python(_module(src))
+        assert "F401" in [r.code for r in results]
+
+    def test_tests_section_use_suppresses_f401(self):
+        src = (
+            "#Alpha\n"
+            "\n"
+            "    def load(text):\n"
+            "        return json.loads(text)\n"
+            "\n"
+            "---\n"
+            "#Tests\n"
+            "    Path('x').name == 'x'\n"
+            "\n"
+            "#References\n"
+            "    from pathlib import Path\n"
+        )
+        results = lint_python(_module(src))
+        assert "F401" not in [r.code for r in results]
+
+    def test_property_use_suppresses_f401(self):
+        src = (
+            "#Alpha\n"
+            "\n"
+            "    def load(text):\n"
+            "        return json.loads(text)\n"
+            "\n"
+            "~property roundtrips\n"
+            "    @given(x=st.text())\n"
+            "    def _(x):\n"
+            "        assert Path(x).name == x\n"
+            "\n"
+            "---\n"
+            "#References\n"
+            "    from pathlib import Path\n"
+        )
+        results = lint_python(_module(src))
+        assert "F401" not in [r.code for r in results]
+
+
+# ── Dependency findings: not misattributed ─────────────────────
+
+class TestDependencyFindingsNotMisattributed:
+    """A finding that belongs to a prepended dependency's own source
+    (offset-adjusted line <= 0) must be dropped, not attributed to the
+    referencing module -- that dependency's own findings surface when
+    it is linted directly, matching the exact bug-report repro in
+    docs/bugs/... (now meta/bugs/2026-08-12-py-lint-space isn't this
+    one; this is the same-day follow-up report)."""
+
+    def _write_project(self, tmp_path):
+        (tmp_path / "binding.lob").write_text(
+            "#Lint Repro\n\n---\n\n#Binding\n    ~language python\n"
+        )
+        (tmp_path / "alpha.lob").write_text(
+            "#Alpha\n\n"
+            "    def load(text):\n"
+            "        return json.loads(text)\n\n"
+            "~example\n"
+            "    load('1') == 1\n"
+            "    Path('x').name == 'x'\n\n"
+            "---\n\n"
+            "#References\n"
+            "    import json\n"
+            "    from pathlib import Path\n"
+        )
+        (tmp_path / "beta.lob").write_text(
+            "#Beta\n\n"
+            "    def dump(value):\n"
+            "        return json.dumps(value)\n\n"
+            "~example\n"
+            "    dump(load('2')) == '2'\n\n"
+            "---\n\n"
+            "#References\n"
+            "    #Alpha\n"
+            "    import json\n"
+        )
+        return tmp_path
+
+    def test_dependency_f401_not_reported_against_referencing_module(
+        self, tmp_path,
+    ):
+        root = self._write_project(tmp_path)
+        beta = _module((root / "beta.lob").read_text())
+        results = lint_python(beta, root=root)
+        # alpha's own Path/F401 must not be reported against beta.
+        assert not any(
+            r.code == "F401" and "Path" in r.message for r in results
+        )
+
+    def test_dependency_itself_has_no_findings(self, tmp_path):
+        """Sanity check: alpha alone (its own claim uses Path) is clean,
+        confirming the F401 above really would belong to alpha, not to
+        some other cause."""
+        root = self._write_project(tmp_path)
+        alpha = _module((root / "alpha.lob").read_text())
+        assert lint_python(alpha, root=root) == []

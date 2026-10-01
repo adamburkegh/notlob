@@ -27,13 +27,31 @@ When a project root is available, dep module sources are prepended to
 the combined source before linting.  This gives ruff visibility into
 names imported from other notlob modules, suppressing false-positive
 F821 "undefined name" errors.  The line offset is subtracted from
-ruff's reported line numbers before the source-map lookup.
+ruff's reported line numbers before the source-map lookup; a finding
+whose adjusted line falls at or before 0 is inside the prepended
+dependency text, not the module actually being linted, and is dropped
+rather than misattributed to it (that dependency's own findings are
+reported when *it* is linted directly).
+
+Claims aren't part of what gets linted -- ``assemble()`` only ever
+collects real body code, not ``~example``/``#Tests``/``~property``
+bodies -- so an import used solely by a claim looks unused to ruff.
+``_claim_text`` collects every claim's raw source (a flat blob, not
+parsed) so an ``F401`` finding can be suppressed when the reported
+name is referenced anywhere in it. This is a textual, best-effort
+check (consistent with how e.g. ``extract_calls`` is documented as
+best-effort elsewhere in this codebase) rather than real static
+analysis -- a name that only coincidentally appears in a claim (inside
+a string literal, say) would wrongly suppress a genuine finding, but
+that's judged the safer failure mode than the status quo of *always*
+flagging an import a claim genuinely uses.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,7 +61,7 @@ from notlob.bindings import (
 )
 from notlob.bindings.python.assemble import assemble
 from notlob.graph import module_address
-from notlob.model import Module
+from notlob.model import Module, TestsSection
 
 
 def lint_python(
@@ -75,8 +93,9 @@ def lint_python(
 
     source_map = parse_source_map(mod_source)
     mod_addr   = module_address(module.title)
+    claim_text = _claim_text(module)
 
-    return _run_ruff(combined, source_map, offset, mod_addr)
+    return _run_ruff(combined, source_map, offset, mod_addr, claim_text)
 
 
 # ── Internals ─────────────────────────────────────────────────
@@ -115,17 +134,71 @@ def _prepend_deps(
     return dep_source, offset
 
 
+def _claim_text(module: Module) -> str:
+    """Concatenated raw source of every claim in *module*.
+
+    Covers ``~example`` (module body and subheadings), ``#Tests``
+    (bare assertions, named ``~test`` blocks, and groups), and
+    ``~property`` bodies -- every claim type the runner actually
+    executes. Used only to check whether a name ruff considers unused
+    is in fact used by a claim; see the module docstring.
+    """
+    # Local import avoids a hard dependency between the lint and
+    # runner submodules for callers that only need one of them.
+    from notlob.bindings.python.runner import (
+        _collect_example_assertions, _collect_properties,
+        _collect_test_assertions,
+    )
+
+    parts = [expr for _, expr, _ in _collect_example_assertions(module)]
+    parts += [block for _, _, _, block in _collect_properties(module)]
+
+    if module.post_text is not None:
+        tests_section = next(
+            (s for s in module.post_text.sections
+             if isinstance(s, TestsSection)),
+            None,
+        )
+        if tests_section is not None:
+            mod_addr = module_address(module.title)
+            parts += [
+                expr for _, expr, _ in
+                _collect_test_assertions(tests_section, mod_addr)
+            ]
+
+    return "\n".join(parts)
+
+
+_UNUSED_IMPORT_RE = re.compile(r"^`([\w.]+)` imported but unused")
+
+
+def _is_unused_import_used_by_claim(message: str, claim_text: str) -> bool:
+    """Whether an F401 *message*'s reported name appears in *claim_text*."""
+    if not claim_text:
+        return False
+    m = _UNUSED_IMPORT_RE.match(message)
+    if not m:
+        return False
+    local_name = m.group(1).rsplit(".", 1)[-1]
+    return re.search(rf"\b{re.escape(local_name)}\b", claim_text) is not None
+
+
 def _run_ruff(
     source:     str,
     source_map: dict[int, str],
     offset:     int,
     fallback:   str,
+    claim_text: str = "",
 ) -> list[LintResult]:
     """Pipe *source* through ``ruff check`` and translate diagnostics.
 
     *offset* is subtracted from each reported line number before
     looking up the section address in *source_map*.  *fallback* is the
-    address used when the adjusted line is not in the map.
+    address used when the adjusted line is not in the map. A finding
+    whose adjusted line is at or before 0 falls inside the prepended
+    dependency text (see module docstring) and is dropped rather than
+    attributed to *fallback*. An ``F401`` finding is also dropped when
+    the reported name is used by a claim in *claim_text*.
 
     Raises ``LintToolUnavailable`` if ruff is not importable.  Returns an
     empty list when ruff runs but produces no diagnostics.
@@ -169,6 +242,13 @@ def _run_ruff(
         message = d.get("message") or ""
 
         adjusted = row - offset
+        if adjusted <= 0:
+            # Inside the prepended dependency text, not this module.
+            continue
+        if code == "F401" and _is_unused_import_used_by_claim(
+            message, claim_text,
+        ):
+            continue
         addr = source_map.get(adjusted, fallback)
 
         results.append(LintResult(
