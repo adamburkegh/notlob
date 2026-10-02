@@ -321,6 +321,65 @@ def _cmd_run_haskell(
     return 0
 
 
+def _cmd_run_typescript(
+    module,
+    path: Path,
+    keep_dir: Path | None = None,
+    args: list[str] | None = None,
+) -> int:
+    """Assemble a TypeScript module (with inlined deps) and run with
+    tsx/ts-node.
+
+    Uses :func:`notlob.bindings.typescript.build_typescript` to
+    assemble, so the module's own ``~run`` bodies are included --
+    ``on-load`` at module scope unconditionally, bare/``on-invocation``
+    wrapped in a Node entry-point guard (see that function's docstring).
+
+    If *keep_dir* is set the assembled source is also written there as
+    ``<module-address-slugified>.ts`` before execution.
+    """
+    from notlob.bindings.typescript import build_typescript
+    from notlob.bindings.typescript.runner import _run_harness, _tsx_cmd
+    from notlob.project import find_project_root
+
+    root = find_project_root(path)
+    try:
+        source = build_typescript(module, path)
+    except Exception as exc:
+        print(f"ERROR  <run>  {exc}", file=sys.stderr)
+        return 1
+    if not source:
+        print("ERROR  <run>  nothing to run — module contains no code blocks",
+              file=sys.stderr)
+        return 1
+
+    cmd = _tsx_cmd(root)
+    if cmd is None:
+        print(
+            "ERROR  <run>  no tsx/ts-node found on PATH or in "
+            "node_modules/.bin -- install tsx (npm install -D tsx)",
+            file=sys.stderr,
+        )
+        return 1
+
+    if keep_dir is not None:
+        from notlob.graph import module_address as _mod_addr
+        slug = _mod_addr(module.title).replace("/", "_")
+        keep_path = keep_dir / f"{slug}.ts"
+    else:
+        keep_path = None
+
+    stdout, stderr, rc = _run_harness(source, cmd, keep_path=keep_path,
+                                       program_args=args or [])
+    if stdout:
+        print(stdout, end="")
+    if rc != 0:
+        if stderr:
+            print(stderr, end="", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_run(
     path: Path,
     keep_generated_src: str | None = None,
@@ -340,6 +399,10 @@ def cmd_run(
     if language == "haskell":
         keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
         return _cmd_run_haskell(module, path, keep_dir=keep_dir, args=args)
+
+    if language == "typescript":
+        keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
+        return _cmd_run_typescript(module, path, keep_dir=keep_dir, args=args)
 
     addr_err = _check_address(module, path, root)
     if addr_err:

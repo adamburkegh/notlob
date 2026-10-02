@@ -180,16 +180,21 @@ def _fast_check_available(root: Path | None) -> bool:
 # ── Harness execution ─────────────────────────────────────────
 
 def _run_harness(
-    harness:   str,
-    cmd:       list[str],
-    keep_path: Path | None = None,
-    env:       dict | None = None,
+    harness:      str,
+    cmd:          list[str],
+    keep_path:    Path | None = None,
+    env:          dict | None = None,
+    program_args: list[str] | None = None,
 ) -> tuple[str, str, int]:
     """Write *harness* to a temp file, execute with *cmd*, return
     ``(stdout, stderr, returncode)``.
 
     If *keep_path* is set the harness is also written there (for
-    ``--keep-generated-src`` debugging).
+    ``--keep-generated-src`` debugging). *program_args*, when given,
+    are appended after the temp file path -- for ``notlob run``'s own
+    program arguments, not used by the claim runners (run_examples/
+    run_tests/run_properties never take user-supplied args), matching
+    the Haskell runner's equivalent ``program_args`` parameter.
     """
     if keep_path is not None:
         keep_path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +208,7 @@ def _run_harness(
 
     try:
         proc = subprocess.run(
-            cmd + [tmp_path],
+            cmd + [tmp_path] + (program_args or []),
             stdin=subprocess.DEVNULL,   # don't inherit parent stdin
             capture_output=True,
             encoding='utf-8',
