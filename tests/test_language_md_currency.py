@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from notlob.check import CHECK_NAMES
 from notlob.util.gen_grammar_latex import Or, parse_grammar
 from notlob.util.gen_listings_lang import _leading_literal, extract_keywords
 
@@ -83,12 +84,16 @@ def _top_level_commands() -> set[str]:
     ))
 
 
-def _check_only_choices() -> list[str]:
-    """The ``choices=[...]`` list for ``check``'s ``--only`` argument."""
-    src = _cli_source()
-    check_block = src[src.index('"check",'):src.index('"check",') + 500]
-    match = re.search(r"choices=\[([^\]]+)\]", check_block, re.DOTALL)
-    return re.findall(r'"(\w+)"', match.group(1))
+def _check_only_choices() -> tuple[str, ...]:
+    """The real check names ``check --only`` accepts.
+
+    ``notlob.check.CHECK_NAMES`` is cli.py's own ``choices=`` source
+    (see that module -- it stopped hand-duplicating a literal list
+    specifically to avoid drifting from ``run_checks``'s registry), so
+    importing it directly is more robust than scraping cli.py's source
+    text for a list literal that may no longer be one.
+    """
+    return CHECK_NAMES
 
 
 class TestSigilVocabulary:

@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from notlob import __version__
+from notlob.check import CHECK_NAMES
 from notlob.commands import (
     cmd_build, cmd_check, cmd_docs, cmd_graph, cmd_init, cmd_new,
     cmd_run, cmd_test, cmd_weave,
@@ -187,8 +188,7 @@ def main() -> None:
     )
     check_p.add_argument(
         "--only", nargs="+",
-        choices=["imports", "typos", "conventions", "titles", "references",
-                 "style"],
+        choices=list(CHECK_NAMES),
         default=None, metavar="CHECK",
         help="run only the listed checks (default: all)",
     )

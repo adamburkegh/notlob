@@ -9,7 +9,7 @@ from notlob.graph import Edge, EdgeKind, NameGraph, Node, NodeKind
 from notlob.check import (
     Finding, run_checks, has_errors,
     check_imports, check_typos, check_conventions,
-    check_titles, check_references, check_style,
+    check_titles, check_references, check_style, check_quantifier,
     _levenshtein,
 )
 from notlob import from_tree, parse
@@ -277,7 +277,10 @@ class TestRunChecks:
         findings, counts = run_checks(g)
         checks_run = {f.check for f in findings}
         assert "typos" in checks_run
-        assert set(counts) == {"imports", "typos", "conventions", "titles", "references", "style"}
+        assert set(counts) == {
+            "imports", "typos", "conventions", "titles", "references",
+            "style", "quantifier",
+        }
 
     def test_filter_by_name(self):
         g = self._graph_with_typo()
@@ -596,3 +599,129 @@ class TestCheckStyle:
         graph = build_package(tmp_path, extract_symbols)
         findings = check_style(graph)
         assert not has_errors(findings)
+
+
+# ── check_quantifier ─────────────────────────────────────────
+
+class TestCheckQuantifier:
+    def _write(self, tmp_path, name, content):
+        (tmp_path / name).write_text(content, encoding="utf-8")
+
+    def _binding(self, tmp_path):
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+
+    def test_ghost_turn_style_sentence_fires(self, tmp_path):
+        """The design's own motivating case: a universal quantifier
+        governing a behavioural verb, with nothing in the section
+        checking it."""
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\n"
+            "On the turn, each token fires a randomly chosen "
+            "transition.\n\n"
+            "    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_quantifier(graph)
+        assert len(findings) == 1
+        assert findings[0].check == "quantifier"
+        assert findings[0].severity == "advisory"
+        assert "each token fires" in findings[0].message
+
+    def test_structural_quantifier_no_behavioural_verb_silent(
+        self, tmp_path,
+    ):
+        """A quantifier governing a static description, not an
+        action, must not fire -- "all arcs are bipartite" has no
+        behavioural verb."""
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\nAll arcs in this graph are bipartite.\n\n"
+            "    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        assert check_quantifier(graph) == []
+
+    def test_no_quantifier_silent(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\nThe function returns a value.\n\n    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        assert check_quantifier(graph) == []
+
+    def test_coverage_blind_spot_is_deliberate(self, tmp_path):
+        """Documented limit, tested as a guarantee, not just a
+        disclaimer: any ~example in the section silences the check,
+        even one that tests something else entirely. The check finds
+        "no claim present," not "the claim present doesn't cover
+        this.\""""
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\n"
+            "On the turn, each token fires a randomly chosen "
+            "transition.\n\n"
+            "    def unrelated():\n"
+            "        return 1\n\n"
+            "~example\n"
+            "    unrelated() == 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        assert check_quantifier(graph) == []
+
+    def test_scoped_to_subheading_not_whole_module(self, tmp_path):
+        """A subheading with its own unpinned quantified claim fires
+        even though a *different* subheading/the module body has an
+        example -- "co-located" means this section, not anywhere in
+        the module."""
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\n"
+            "    def f():\n        return 1\n\n"
+            "~example\n"
+            "    f() == 1\n\n"
+            "##Ghost Turn\n\n"
+            "Each token fires a randomly chosen transition.\n\n"
+            "    def g():\n        return 2\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_quantifier(graph)
+        assert len(findings) == 1
+        assert findings[0].addresses == ("main#Ghost Turn",)
+
+    def test_phrase_quantifier_at_least(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\nAt least one worker always retries the job.\n\n"
+            "    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        assert len(check_quantifier(graph)) == 1
+
+    def test_quantifier_in_run_checks(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\nEach item always triggers a callback.\n\n"
+            "    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        _, counts = run_checks(graph)
+        assert "quantifier" in counts
+        assert counts["quantifier"] == 1
+
+    def test_advisory_not_error(self, tmp_path):
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\nEvery call never fails silently.\n\n    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        assert not has_errors(check_quantifier(graph))

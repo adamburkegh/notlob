@@ -426,6 +426,7 @@ consistency. One is an error; the rest are advisory nudges:
 | `titles`      | advisory  | near-duplicate module / subheading titles         |
 | `references`  | advisory  | a symbol named in prose without a `#` cross-reference |
 | `style`       | advisory  | more than one bullet list in a section            |
+| `quantifier`  | advisory  | a quantified claim about behaviour ("each token fires...") with no `~example`/`~property` in that section |
 
 `notlob check -v` adds a coverage summary; `--only <names>` runs a
 subset. Advisory findings never fail the build; only error-severity

@@ -29,6 +29,16 @@ class Finding:
     severity: str = "advisory"
 
 
+#: Registered check names, in run order. The single source of truth for
+#: what ``run_checks`` runs and what ``--only`` accepts (``notlob/cli.py``
+#: imports this rather than keeping its own ``choices=`` list, which
+#: otherwise drifts the moment a check is added here and not there).
+CHECK_NAMES: tuple[str, ...] = (
+    "imports", "typos", "conventions", "titles", "references",
+    "style", "quantifier",
+)
+
+
 def run_checks(
     graph: NameGraph,
     enabled: set[str] | None = None,
@@ -45,7 +55,11 @@ def run_checks(
         "titles": lambda: check_titles(graph),
         "references": lambda: check_references(graph),
         "style": lambda: check_style(graph),
+        "quantifier": lambda: check_quantifier(graph),
     }
+    assert set(checkers) == set(CHECK_NAMES), (
+        "CHECK_NAMES has drifted from run_checks's own registry"
+    )
     if enabled is not None:
         checkers = {k: v for k, v in checkers.items() if k in enabled}
     findings: list[Finding] = []
@@ -371,6 +385,130 @@ def check_style(graph: NameGraph) -> list[Finding]:
                 addresses=(node.address,),
                 severity="advisory",
             ))
+    return findings
+
+
+# ── Check: quantifier ────────────────────────────────────────
+#
+# Design: meta/features/2026-10-02-quantifier-check/design.md
+#
+# A structural proxy for a semantic smell, not a semantic judgment:
+# this notices that prose makes a checkable-shaped promise ("each X
+# fires Y") with nothing adjacent checking it, never whether the
+# promise is *true*. It does not check coverage -- any ~example or
+# ~property in the section silences it, even one testing something
+# unrelated to the quantified claim. Closing that gap would mean
+# judging whether a claim's assertions actually relate to the
+# sentence, which is semantic, not structural -- out of scope here by
+# design, same as evaluating whether prose correctly describes code.
+#
+# Deliberately narrower than the design's own trigger definition in
+# one way: the design's verb-gate also widens to "any verb within N
+# tokens of a symbol reference," not just the curated lexicon below.
+# That clause needs something that can tell an arbitrary word is a
+# verb at all, which means reaching for real POS tagging -- exactly
+# the "parser-of-English" the design's own Risks section says this
+# check must not become. Starting with the lexicon-only gate (the
+# narrower, safer half) and widening later only if real cases are
+# missed, per the design's own "prefer false negatives at first"
+# rollout guidance.
+
+_QUANTIFIER_WORDS = frozenset({
+    "each", "every", "all", "any", "always", "never", "no", "none",
+    "only", "exactly", "whenever",
+})
+_QUANTIFIER_PHRASES = (
+    "at least", "at most", "for all",
+)
+
+# Third-person singular ("each token fires") and bare/plural ("all
+# tokens fire") forms both included -- a quantifier can govern either
+# depending on subject number, and this is inflection coverage, not
+# lexicon widening.
+_BEHAVIOURAL_VERBS = frozenset({
+    "fires", "fire", "moves", "move", "returns", "return",
+    "produces", "produce", "consumes", "consume", "advances", "advance",
+    "emits", "emit", "sends", "send", "writes", "write",
+    "updates", "update", "fails", "fail", "throws", "throw",
+    "retries", "retry", "resets", "reset", "increments", "increment",
+    "flushes", "flush", "blocks", "block", "enables", "enable",
+    "triggers", "trigger", "calls", "call", "yields", "yield",
+})
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_WHITESPACE_RE = re.compile(r"\s+")
+_WORD_RE = re.compile(r"[a-z']+")
+
+
+def _sentences(text: str) -> list[str]:
+    """Split *text* into sentences. Crude on purpose -- see module
+    comment above check_quantifier: deterministic and cheap beats
+    accurate-but-complex for this check specifically.
+
+    ``ProseBlock`` preserves original whitespace (hand-wrapped line
+    breaks within a paragraph included), so each sentence is also
+    whitespace-normalised -- this is purely a display concern, not a
+    matching one: _has_quantifier/_has_behavioural_verb tokenise on
+    word characters either way, so a hard-wrapped newline inside a
+    sentence is already invisible to them.
+    """
+    return [
+        _WHITESPACE_RE.sub(" ", s).strip()
+        for s in _SENTENCE_SPLIT_RE.split(text)
+        if s.strip()
+    ]
+
+
+def _has_quantifier(sentence: str) -> bool:
+    lowered = sentence.lower()
+    if any(phrase in lowered for phrase in _QUANTIFIER_PHRASES):
+        return True
+    words = _WORD_RE.findall(lowered)
+    return any(w in _QUANTIFIER_WORDS for w in words)
+
+
+def _has_behavioural_verb(sentence: str) -> bool:
+    words = _WORD_RE.findall(sentence.lower())
+    return any(w in _BEHAVIOURAL_VERBS for w in words)
+
+
+def check_quantifier(graph: NameGraph) -> list[Finding]:
+    """Flag a quantified behavioural claim with no co-located claim.
+
+    Fires when a module or subheading's prose has a sentence
+    containing both a quantifier ("each", "every", "all", ...) and a
+    behavioural verb ("fires", "returns", ...), and that section
+    defines no ``~example``/``~property`` of its own. See the module
+    comment above for what this deliberately does not attempt.
+    """
+    findings: list[Finding] = []
+    for node in graph.nodes():
+        if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
+            continue
+        prose = (node.content or {}).get("prose")
+        if not prose:
+            continue
+        has_claim = any(
+            child.kind in (NodeKind.EXAMPLE, NodeKind.PROPERTY)
+            for child in graph.children(node.address, EdgeKind.DEFINES)
+        )
+        if has_claim:
+            continue
+        for sentence in _sentences(prose):
+            if _has_quantifier(sentence) and _has_behavioural_verb(sentence):
+                findings.append(Finding(
+                    check="quantifier",
+                    message=(
+                        f'"{sentence}" -- quantified claim about '
+                        f"behaviour with no ~example or ~property in "
+                        f"this section to pin it down. This check "
+                        f"verifies presence, not coverage: it cannot "
+                        f"tell whether a claim that is present "
+                        f"actually covers this statement."
+                    ),
+                    addresses=(node.address,),
+                    severity="advisory",
+                ))
     return findings
 
 
