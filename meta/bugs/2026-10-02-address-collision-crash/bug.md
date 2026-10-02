@@ -4,8 +4,7 @@
 via `enrich` → `_add_symbols`).
 **Found by:** notlob-vids (`src/graph.lob`, where the colliding subheading
 was renamed `##Assembly` as a workaround), reported via Adam.
-**Status:** open, not fixed. Root cause confirmed and reproduced
-independently; call-site survey started but not completed.
+**Status:** fixed, 2026-10-02.
 
 ## Summary
 
@@ -107,19 +106,42 @@ with exit code 1, no traceback. Presumably `build` should report it too,
 since the module's addresses are ambiguous regardless of whether tests
 run.
 
-## Investigation so far
+## Resolution
 
-The message text in the `ValueError` is already good — the bug is purely
-in the delivery (uncaught exception, no source lines, no exit-code
-discipline). Call sites that would all need to catch this consistently
-(found by searching `enrich(`/`build_package(` across the codebase, same
-survey technique used earlier for an unrelated `~ignore` feature
-discussion): `commands.py:217` (`_build_ref_graph`, used by `cmd_test`),
-`project.py:234` (`build_package`, used by `cmd_graph`, `cmd_check`, and
-the advisory-check paths inside `cmd_test`/`cmd_build`), and
-`commands.py:1039` (`cmd_graph`'s single-file path). Not yet decided:
-whether to catch at each call site individually, or give `NameGraph` a
-non-raising variant / have `enrich`/`build_package` wrap the call once
-and translate to a structured error type that every caller already knows
-how to print (mirroring the existing `ERROR  <parse>`/`ERROR  <address>`
-conventions elsewhere in `commands.py`). Not started: the actual fix.
+Added `AddressCollisionError` (`notlob/graph.py`) — a `ValueError`
+subclass with structured fields (`address`, `existing_kind`, `new_kind`,
+`existing_line`, `new_line`) — and made `NameGraph.add_node` raise it
+instead of a bare `ValueError`. The message text was already good (per
+the original report); the new version keeps it and adds line numbers
+for both colliding nodes, since `Node.start_line` was already being
+populated for both subheadings and symbols, just never surfaced:
+
+```
+Address collision: 'shapes#Layout' names both a subheading (line 8)
+and a symbol (line 5) -- all named things share one namespace per
+module.
+```
+
+A narrow, dedicated exception type (rather than reusing bare
+`ValueError`) matters here specifically because every call site needs
+to catch *this* condition without also swallowing an unrelated
+`ValueError` from somewhere else in the same call chain.
+
+Caught and reported (`ERROR  <names>  ...`, exit 1, no traceback) at
+every place that builds a graph and could hit this: `_require_graph`
+(covers `cmd_check` and the `cmd_query_*` commands), `_run_check_advisory`
+(covers `cmd_test`'s and `cmd_build`'s advisory-check paths),
+`cmd_test`'s per-file `_build_ref_graph` call (the exact repro's own
+path) and its project-mode `--json` path, and `cmd_graph`'s single-file
+and project-mode `build_package` calls. `build`'s own behaviour
+(succeeding today, since it doesn't construct a full name-graph) is
+left as-is — a separate question from this crash, not addressed here.
+
+Tests in `tests/test_address_collision.py`: the exception's own fields
+and message; `cmd_test` on the exact repro shape (single file, and
+confirming a sibling module's claims still run in project mode);
+`cmd_test --json`'s `check_findings` output; `cmd_graph` (single-file
+and project-mode); `cmd_check`. Sabotage-verified: removing the
+`_build_ref_graph` catch reproduces the original crash exactly (an
+uncaught `AddressCollisionError` propagating through the same call
+chain as the original report's traceback).

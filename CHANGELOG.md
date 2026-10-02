@@ -5,7 +5,28 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `quantifier` check (`notlob check`): flags a prose sentence that
+  makes a quantified claim about behaviour ("each token fires...")
+  with no `~example`/`~property` co-located in the same section to pin
+  it down. A structural proxy for a semantic smell, not a semantic
+  judgment — it notices the *absence* of a nearby runnable claim, never
+  whether the prose or the claim is actually correct. See
+  `meta/features/2026-10-02-quantifier-check/design.md` for the full
+  design and its deliberate limits.
+
 ### Fixed
+- `notlob run` crashed for TypeScript-bound projects: it only
+  special-cased Haskell before falling through to Python-only
+  build/execution logic, so a TypeScript module's correctly-assembled
+  source was written to a `.py` file and handed to a Python
+  interpreter. See `meta/bugs/2026-10-02-notlob-run-typescript/`.
+- A `##Subheading` and a symbol (e.g. a class) sharing one name in the
+  same module crashed `notlob test`/`notlob graph`/`notlob check` with
+  an uncaught traceback instead of a reported error — the rule being
+  enforced (one namespace per module) was already right, only the
+  delivery was a crash. See
+  `meta/bugs/2026-10-02-address-collision-crash/`.
 - The blank-line gap right after `#References` imports is now dynamic
   rather than always two lines, matching isort's own rule for that
   specific position: two blank lines before a following `def`/`class`

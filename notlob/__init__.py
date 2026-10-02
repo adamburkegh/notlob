@@ -15,7 +15,7 @@ from .model import (
 from .graph import (
     build, enrich, validate_refs,
     NameGraph, Node, NodeKind, Edge, EdgeKind,
-    RefError,
+    RefError, AddressCollisionError,
     module_address, subheading_address, symbol_address,
     property_address, claim_address,
 )
@@ -30,7 +30,7 @@ __all__ = [
     "BindingSection", "ReferencesSection", "AppendixSection",
     "build", "enrich", "validate_refs", "build_package",
     "NameGraph", "Node", "NodeKind", "Edge", "EdgeKind",
-    "RefError",
+    "RefError", "AddressCollisionError",
     "module_address", "subheading_address", "symbol_address",
     "property_address", "claim_address",
 ]

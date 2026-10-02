@@ -30,7 +30,7 @@ from pathlib import Path
 
 from notlob import (
     build, enrich, from_tree, parse_file, validate_refs,
-    Edge, EdgeKind, NodeKind,
+    Edge, EdgeKind, NodeKind, AddressCollisionError,
 )
 from notlob.bindings import (
     ClaimResult, LintResult, LintToolUnavailable, Status,
@@ -488,10 +488,15 @@ def _test_module(
     if addr_err:
         doc_errors.append(f"ERROR  <address>  {addr_err}")
 
-    for ref_err in validate_refs(
-        _build_ref_graph(module, root, extract_symbols), module
-    ):
-        doc_errors.append(f"ERROR  <refs>  {ref_err}")
+    try:
+        ref_graph = _build_ref_graph(module, root, extract_symbols)
+    except AddressCollisionError as exc:
+        doc_errors.append(f"ERROR  <names>  {exc}")
+        ref_graph = None
+
+    if ref_graph is not None:
+        for ref_err in validate_refs(ref_graph, module):
+            doc_errors.append(f"ERROR  <refs>  {ref_err}")
 
     if doc_errors:
         for msg in doc_errors:
@@ -595,17 +600,25 @@ def cmd_test(
             _kit, _extr = _get_binding_kit(
                 binding.get("language") if binding else None,
             )
-            graph = build_package(
-                root, _extr, call_extractor=_kit.extract_calls,
-            )
-            findings, _ = run_checks(graph)
-            check_findings = [
-                {"check": f.check, "message": f.message,
-                 "addresses": list(f.addresses),
-                 "severity": f.severity}
-                for f in findings
-            ]
-            check_errors = has_errors(findings)
+            try:
+                graph = build_package(
+                    root, _extr, call_extractor=_kit.extract_calls,
+                )
+            except AddressCollisionError as exc:
+                check_findings = [{
+                    "check": "names", "message": str(exc),
+                    "addresses": [exc.address], "severity": "error",
+                }]
+                check_errors = True
+            else:
+                findings, _ = run_checks(graph)
+                check_findings = [
+                    {"check": f.check, "message": f.message,
+                     "addresses": list(f.addresses),
+                     "severity": f.severity}
+                    for f in findings
+                ]
+                check_errors = has_errors(findings)
         else:
             check_errors = _run_check_advisory(root, binding)
 
@@ -640,7 +653,11 @@ def _run_check_advisory(root: Path, binding: dict) -> bool:
     kit, extract_symbols = _get_binding_kit(
         binding.get("language") if binding else None,
     )
-    graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+    try:
+        graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+    except AddressCollisionError as exc:
+        print(f"ERROR  <names>  {exc}", file=sys.stderr)
+        return True
     findings, _ = run_checks(graph)
     for f in findings:
         prefix = "ERROR" if f.severity == "error" else "CHECK"
@@ -1090,7 +1107,11 @@ def cmd_graph(
     kit, extract_symbols = _get_binding_kit(language)
 
     if root is not None:
-        graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+        try:
+            graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+        except AddressCollisionError as exc:
+            print(f"ERROR  <names>  {exc}", file=sys.stderr)
+            return 1
     else:
         # standalone file — only reachable via an explicit path arg
         try:
@@ -1099,7 +1120,11 @@ def cmd_graph(
             print(f"ERROR  <parse>  {exc}", file=sys.stderr)
             return 1
         graph = build(module)
-        enrich(graph, module, extract_symbols)
+        try:
+            enrich(graph, module, extract_symbols)
+        except AddressCollisionError as exc:
+            print(f"ERROR  <names>  {exc}", file=sys.stderr)
+            return 1
 
     if fmt == "turtle":
         sys.stdout.buffer.write(
@@ -1154,7 +1179,11 @@ def _require_graph(hint: Path | None = None):
     kit, extract_symbols = _get_binding_kit(
         binding.get("language") if binding else None
     )
-    return build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+    try:
+        return build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+    except AddressCollisionError as exc:
+        print(f"ERROR  <names>  {exc}", file=sys.stderr)
+        return None
 
 
 # ── Query commands ────────────────────────────────────────────

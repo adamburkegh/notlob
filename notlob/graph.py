@@ -186,6 +186,45 @@ class Edge:
 
 # ── Graph ────────────────────────────────────────────────────
 
+class AddressCollisionError(ValueError):
+    """Two differently-kinded nodes claim the same address.
+
+    Raised by :meth:`NameGraph.add_node` -- e.g. a ``##Layout``
+    subheading and a ``class Layout`` symbol in the same module both
+    resolve to ``mod#Layout``. All named things share one namespace
+    per module, so this is a real document error, not a crash: a
+    caller should catch it and report a clean ``ERROR`` line (it is a
+    plain exception, with structured fields, specifically so callers
+    don't need to parse the message text to do that) rather than let
+    it propagate as an uncaught traceback.
+    """
+
+    def __init__(
+        self,
+        address:       str,
+        existing_kind: "NodeKind",
+        new_kind:      "NodeKind",
+        existing_line: int | None,
+        new_line:      int | None,
+    ) -> None:
+        self.address       = address
+        self.existing_kind = existing_kind
+        self.new_kind      = new_kind
+        self.existing_line = existing_line
+        self.new_line      = new_line
+
+        def _at(kind: "NodeKind", line: int | None) -> str:
+            name = kind.name.lower()
+            return f"{name} (line {line})" if line is not None else name
+
+        super().__init__(
+            f"Address collision: {address!r} names both a "
+            f"{_at(existing_kind, existing_line)} and a "
+            f"{_at(new_kind, new_line)} -- all named things share "
+            f"one namespace per module."
+        )
+
+
 class NameGraph:
     """A typed graph of named nodes and their relationships.
 
@@ -203,11 +242,9 @@ class NameGraph:
     def add_node(self, node: Node) -> None:
         existing = self._nodes.get(node.address)
         if existing is not None and existing.kind != node.kind:
-            raise ValueError(
-                f"Address collision: {node.address!r} already "
-                f"registered as {existing.kind.name}, "
-                f"cannot add as {node.kind.name}. "
-                f"All named things share one namespace per module."
+            raise AddressCollisionError(
+                node.address, existing.kind, node.kind,
+                existing.start_line, node.start_line,
             )
         self._nodes[node.address] = node
 
