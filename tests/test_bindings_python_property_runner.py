@@ -60,6 +60,27 @@ class TestPassFail:
         assert results[0].status == Status.FAIL
         assert results[0].error is not None
 
+    def test_failed_health_check_reported_not_swallowed(self):
+        """Regression: a Hypothesis FailedHealthCheck (here, a filter
+        that drops every input) must surface as a normal FAIL with the
+        real exception, not as an ERROR quoting Hypothesis's own
+        "@seed(...) to reproduce" hint. That hint is printed to stdout
+        by Hypothesis's own reporting machinery *during* the call,
+        before our own FAIL line -- the parser used to grab it as if
+        it were the one expected result line right after CLAIM."""
+        src = (
+            "#T\n    def f(n): return n\n"
+            "~property\n"
+            "    @given(n=st.integers().filter(lambda x: False))\n"
+            "    def _(n):\n"
+            "        pass\n"
+        )
+        results = ran(src)
+        assert len(results) == 1
+        assert results[0].status == Status.FAIL
+        assert str(results[0].error).startswith("FailedHealthCheck: ")
+        assert "@seed" not in str(results[0].error)
+
     def test_error_in_exec(self):
         src = (
             "#T\n    x = 1\n"

@@ -199,7 +199,15 @@ def _notlob_run_property(_notlob_sigil, _notlob_claim_ns, _notlob_baseline):
         print("ERROR\\tValueError\\t" + repr("no callable found in ~property block"))
         return
     try:
-        _notlob_callable()
+        # Hypothesis's own reporting (e.g. "You can reproduce this
+        # failure by adding @seed(...)") writes straight to stdout
+        # *during* this call, before any exception reaches the
+        # except clause below -- interleaved ahead of the FAIL line
+        # the parser expects right after CLAIM, corrupting the
+        # protocol. Swallowed here so only this function's own
+        # print() calls ever reach it.
+        with _notlob_hyp.reporting.with_reporter(lambda _notlob_msg: None):
+            _notlob_callable()
         print("PASS")
     except Exception as _notlob_exc:
         print(

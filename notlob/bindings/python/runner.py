@@ -336,9 +336,12 @@ def _parse_property_protocol(
                         _deliteral(fparts[2]) if len(fparts) > 2
                         else result_line[5:]
                     )
+                    exc_type = fparts[1] if len(fparts) > 1 else None
                     results.append(ClaimResult(
                         address=addr, line=sigil, status=Status.FAIL,
-                        error=RuntimeError(msg),
+                        error=RuntimeError(
+                            f"{exc_type}: {msg}" if exc_type else msg
+                        ),
                         source_line=sl, file_path=file_path,
                     ))
                 elif result_line.startswith("ERROR\t"):
@@ -347,9 +350,12 @@ def _parse_property_protocol(
                         _deliteral(eparts[2]) if len(eparts) > 2
                         else result_line[6:]
                     )
+                    exc_type = eparts[1] if len(eparts) > 1 else None
                     results.append(ClaimResult(
                         address=addr, line=sigil, status=Status.ERROR,
-                        error=RuntimeError(msg),
+                        error=RuntimeError(
+                            f"{exc_type}: {msg}" if exc_type else msg
+                        ),
                         source_line=sl, file_path=file_path,
                     ))
                 else:

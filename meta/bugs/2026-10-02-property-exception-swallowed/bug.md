@@ -5,8 +5,7 @@
 `_parse_property_protocol`).
 **Found by:** notlob-vids (`src/highlight.lob`, property
 `spans-tile-source`), reported via Adam.
-**Status:** open, not fixed. Root cause confirmed by reading the code;
-no fix implemented yet.
+**Status:** fixed, 2026-10-03.
 
 ## Summary
 
@@ -95,22 +94,55 @@ reports it as `unexpected runner output`, and never looks at the real
 Any `~property` whose strategy is slow on its first draw (e.g. a large
 `st.from_regex(...)` on a cold start) or the machine sleeping mid-run,
 either of which can trigger Hypothesis's `FailedHealthCheck` and its
-verbose reporting. Not yet reproduced from a from-scratch minimal
-example in notlob-lab itself — confirmed only by reading the harness/
-parser code end to end, matching the reported symptom exactly.
+verbose reporting. Reproduced deterministically and quickly, without
+relying on real timing, via `st.integers().filter(lambda x: False)` —
+a filter that drops every input reliably triggers the same
+`FailedHealthCheck` and the same `@seed(...)` stdout interleaving as
+the slow/sleeping-machine case in the original report; confirmed by a
+first-principles check that an *ordinary* `AssertionError`-based
+property failure (a real falsifying example, no health check involved)
+was never affected by this bug in the first place — Hypothesis doesn't
+interleave the same verbose reporting ahead of a plain assertion
+failure, only ahead of exceptions like `FailedHealthCheck` that it
+handles through a different internal path.
 
-## Possible direction (not implemented)
+## Resolution
 
-Suppress Hypothesis's own stdout reporting entirely within the harness,
-so only the harness's own `print()` calls ever reach the parser.
-`hypothesis.reporting.with_reporter(new_reporter)` (confirmed present in
-hypothesis 6.152.9, the version this repo depends on) is a context
-manager built for exactly this — wrapping the call to `_notlob_callable()`
-in `with _notlob_hyp.reporting.with_reporter(lambda msg: None):` would
-swallow Hypothesis's own chatter regardless of which specific setting
-(verbosity, `print_blob`, ...) would otherwise control any one message,
-rather than chasing each diagnostic line Hypothesis might print by name.
-Not implemented or tested yet — picking the right reporter behavior
-(swallow everything vs. capture-and-attach to the FAIL line as extra
-detail, which the original report suggested would help) needs a decision
-before writing the fix.
+`_notlob_run_property` (`harness.py`) now wraps the call to the
+property callable in
+`with _notlob_hyp.reporting.with_reporter(lambda _msg: None):`,
+swallowing Hypothesis's own stdout reporting entirely for the duration
+of that one call — regardless of which specific setting (verbosity,
+`print_blob`, ...) would otherwise control any one message, rather
+than chasing each diagnostic line Hypothesis might print by name. Only
+the harness's own `print()` calls (never touched by `with_reporter`,
+which is specific to Hypothesis's internal reporting channel) reach
+the parser now.
+
+Separately, acting on the original report's own suggestion ("It would
+help if the runner reported the exception type and message"):
+`_parse_property_protocol` (`runner.py`) already received the
+exception's type name over the wire (`FAIL\t<type>\t<message>`) but
+discarded it, keeping only the message. Both the `FAIL` and `ERROR`
+branches now prefix the reported message with the type name (e.g.
+`FailedHealthCheck: It looks like this test is filtering out a lot of
+inputs...`), for every property failure, not just this bug's specific
+trigger.
+
+Not done: capturing Hypothesis's suppressed reporter output and
+reattaching it to the FAIL message as extra detail (the report's "kept
+the seed line as extra detail" suggestion). Swallowing it entirely
+already fixes the actual complaint — the real exception no longer
+disappears — and keeping the message's provenance as a deliberately
+separate, smaller nice-to-have avoids adding complexity (buffering,
+formatting a multi-line extra-detail block) for something that isn't
+needed to close the bug.
+
+Tests in `tests/test_bindings_python_property_runner.py`
+(`test_failed_health_check_reported_not_swallowed`): reproduces the
+exact bug with the deterministic `filter` trick above, asserts the
+result is a normal `FAIL` carrying the real `FailedHealthCheck`
+message (type-prefixed) rather than an `ERROR` quoting the `@seed(...)`
+hint, and asserts the hint itself no longer appears anywhere in the
+reported error. Confirmed failing before the fix (reproduces the
+original bug exactly), passing after. Full suite green.

@@ -16,6 +16,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   design and its deliberate limits.
 
 ### Fixed
+- A failing `~property` could lose its real exception: Hypothesis's
+  own stdout reporting (e.g. "You can reproduce this failure by adding
+  @seed(...)") is interleaved into the harness's output *during* the
+  call, ahead of the runner's own result line, for exceptions like
+  `FailedHealthCheck` — so the parser picked up Hypothesis's own line
+  instead and reported a meaningless `unexpected runner output`. Now
+  suppressed at the source; every property failure's reported message
+  is also now prefixed with the real exception's type name (the
+  protocol already carried it; the parser just wasn't using it). See
+  `meta/bugs/2026-10-02-property-exception-swallowed/`.
 - `notlob run` crashed for TypeScript-bound projects: it only
   special-cased Haskell before falling through to Python-only
   build/execution logic, so a TypeScript module's correctly-assembled
