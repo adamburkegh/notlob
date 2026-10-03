@@ -103,6 +103,15 @@ the only recognised claim sigils. An unrecognised `~word` is a parse
 error, not a silent no-op. (`~test` is a related but separate sigil,
 legal only inside a `#Tests` `##group` — see [#Tests](#tests) below.)
 
+A claim's body ends at the first line that is neither indented nor
+blank. An indented code block that follows a claim directly, even
+across blank lines, is therefore part of the claim, not a code block of
+its own. Always put at least a line of prose between a claim and the
+code that comes next; it keeps the claim and the code apart, and it is
+better literate style anyway, since prose should introduce code. When a
+definition does get absorbed this way, `notlob test` reports the line as
+a statement where an assertion was expected and says why.
+
 ### ~example
 
 One or more boolean expressions, each expected to be true.

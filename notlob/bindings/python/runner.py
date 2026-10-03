@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -203,6 +204,40 @@ def _deliteral(s: str) -> Any:
 
 # ── Protocol parsing ────────────────────────────────────────────
 
+_DEFINITION_START = re.compile(r"(?:async\s+def|def|class|import|from)\b|@")
+
+_SWALLOWED_CODE_HINT = (
+    "this line is a statement, not an assertion -- code placed directly "
+    "after a claim is absorbed into the claim's body, so separate the "
+    "claim from the code with a line of prose"
+)
+
+
+def _is_statement_not_assertion(expr: str) -> bool:
+    """Whether *expr* reads as a statement rather than an assertion.
+
+    A claim body ends only at the first non-indented, non-blank line,
+    so an indented code block straight after an ``~example`` is absorbed
+    into it and then fails as an assertion with a bare "invalid syntax".
+    Definitions and imports are recognised by their leading keyword
+    (they are not valid on a single line, so compiling can't tell);
+    anything else that is not a valid expression but is a valid
+    statement (an assignment, say) counts too.
+    """
+    if _DEFINITION_START.match(expr):
+        return True
+    try:
+        compile(expr, "<claim>", "eval")
+        return False
+    except SyntaxError:
+        pass
+    try:
+        compile(expr, "<claim>", "exec")
+        return True
+    except SyntaxError:
+        return False
+
+
 def _parse_protocol(
     stdout: str,
     stderr: str,
@@ -262,6 +297,9 @@ def _parse_protocol(
                         _deliteral(eparts[2]) if len(eparts) > 2
                         else result_line[6:]
                     )
+                    if (len(eparts) > 1 and eparts[1] == "SyntaxError"
+                            and _is_statement_not_assertion(expr)):
+                        msg = f"{msg} -- {_SWALLOWED_CODE_HINT}"
                     results.append(ClaimResult(
                         address=addr, line=expr, status=Status.ERROR,
                         error=RuntimeError(msg),

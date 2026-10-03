@@ -15,6 +15,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   `meta/features/2026-10-02-quantifier-check/design.md` for the full
   design and its deliberate limits.
 
+### Changed
+- Python: when an `~example` or `#Tests` line fails to parse as an
+  assertion because it is really a statement (a `def`, `class`,
+  `import` or assignment), the error now says why instead of a bare
+  "invalid syntax". A claim body ends only at the first non-indented,
+  non-blank line, so a code block placed directly after a claim is
+  absorbed into it; the new message names that cause and the fix
+  (a line of prose between the claim and the code). `LANGUAGE.md` now
+  states the convention. Other bindings are not changed yet.
+
 ### Fixed
 - A failing `~property` could lose its real exception: Hypothesis's
   own stdout reporting (e.g. "You can reproduce this failure by adding

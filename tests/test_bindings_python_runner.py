@@ -73,6 +73,53 @@ class TestPassFail:
         assert ran(src) == []
 
 
+# ── Code swallowed into a claim body ──────────────────────────
+
+class TestSwallowedCodeHint:
+    """A claim body ends only at the first non-indented, non-blank line,
+    so an indented code block straight after an ~example is absorbed
+    into it. The absorbed line fails as an assertion with an opaque
+    "invalid syntax"; the error should say what actually happened."""
+
+    HINT = "absorbed into the claim"
+
+    def _error_for(self, body: str) -> str:
+        src = (
+            "#T\n    def f(): return 1\n"
+            "~example\n    f() == 1\n\n" + body
+        )
+        results = ran(src)
+        errors = [r for r in results if r.status == Status.ERROR]
+        assert errors, f"expected an ERROR result, got {results}"
+        return str(errors[0].error)
+
+    def test_definition_after_claim_gets_hint(self):
+        msg = self._error_for("    def g():\n        return 2\n")
+        assert self.HINT in msg
+
+    def test_class_after_claim_gets_hint(self):
+        assert self.HINT in self._error_for("    class C:\n        pass\n")
+
+    def test_import_after_claim_gets_hint(self):
+        assert self.HINT in self._error_for("    import os\n")
+
+    def test_assignment_after_claim_gets_hint(self):
+        assert self.HINT in self._error_for("    X = 1\n")
+
+    def test_original_syntax_error_text_is_kept(self):
+        msg = self._error_for("    def g():\n        return 2\n")
+        assert "invalid syntax" in msg
+
+    def test_ordinary_syntax_error_gets_no_hint(self):
+        # A malformed assertion that is not a statement: no hint.
+        msg = self._error_for("    f() ==\n")
+        assert self.HINT not in msg
+
+    def test_ordinary_runtime_error_gets_no_hint(self):
+        msg = self._error_for("    undefined_name == 1\n")
+        assert self.HINT not in msg
+
+
 # ── Left/right extraction on failure ─────────────────────────
 
 class TestFailureValues:
