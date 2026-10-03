@@ -560,6 +560,38 @@ section titled "the grammar is the specification" shouldn't fall into.
 
 ---
 
+## What tools can build on
+
+Notlob is meant to be built on: editors, weavers, visualisers, CI
+summaries, agents. For a language whose premise is that the document is
+the program, the parse tree and the name-graph are the tooling API, in
+the way `go/ast` and Python's `ast` are for those languages, not
+incidental internals. But not everything a tool can reach is something
+worth promising, so there are two tiers.
+
+**Stable.** The commands and their machine-readable output (`--json`,
+`graph --format`), the model types exported from `notlob`, the
+name-graph and its exported schema, and the `BindingKit` contract that
+language bindings register against. Changes here are additive where
+they can be, and a breaking change is called out in the CHANGELOG.
+
+**Unstable.** The Lark parse tree: its rule and terminal names, the
+token values after normalisation, and which position data survives.
+Also anything underscore-prefixed, the runners' wire protocols, and the
+human-readable text output of commands (that is for people, not
+parsers; use the JSON output). A tool that reaches in here pins a
+notlob version and accepts breakage, as tools built on a compiler's
+internals do.
+
+When a tool genuinely needs something from the unstable tier, the answer
+is to promote a narrow, specified wrapper into the stable tier, as
+`go/scanner` gives Go tools a stable way to lex without freezing the
+compiler's own lexer, rather than to freeze the internals. That keeps
+the coupling to grammar names inside notlob, where a test can guard it,
+instead of spread across every consumer.
+
+---
+
 ## External files and build hooks
 
 Some projects need to coordinate with files that are part of the
