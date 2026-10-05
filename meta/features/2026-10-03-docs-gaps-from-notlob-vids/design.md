@@ -31,8 +31,8 @@ that has not been checked against the code.
    fails lint with F821. State the rule and that asymmetry.
 6. **What lint sees.** Only the module's own assembled body code; claims
    are excluded (an unused-import finding is suppressed by name when a
-   claim uses it); `~run` bodies are not covered yet
-   (`bugs/2026-10-03-run-body-imports-flagged-unused`).
+   claim or `~run` body uses it; the `~run` case was fixed in
+   `bugs/2026-10-03-run-body-imports-flagged-unused`).
 7. **`#References` and ruff's import sorting:** a blank line between
    stdlib and third-party groups; a long import may be parenthesised and
    span lines. Both work; neither is documented.

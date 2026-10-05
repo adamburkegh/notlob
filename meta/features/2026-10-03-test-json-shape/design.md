@@ -61,6 +61,45 @@ alongside the old ones for a deprecation period, or as a version bump.
 Per `DESIGN.md`, a breaking change here must be called out in the
 CHANGELOG either way.
 
+## Consumer requirements (notlob-vids, 2026-10-05)
+
+From the notlob-vids session, written against its real use. `src/evidence.lob`
+runs `notlob test petri/marking.lob` in pn-chomper and builds
+`{source line: status}` for that module, to draw a tick beside each source
+line of a listing. It runs with `check=False` and reads the document
+whether or not a claim failed (a failing claim is a result to show, not an
+error).
+
+Needed, in order of importance:
+
+1. `line` as an integer, 1-based: the assertion's own line for `~example`
+   and `#Tests`; the sigil line for a `~property` (as the text output gives
+   today).
+2. `status`: PASS / FAIL / ERROR / SKIP.
+3. `file` relative to the project root (`petri/marking.lob`), so two
+   modules with the same file name can be told apart.
+4. Claims in their own list, separate from lint and check findings.
+5. Stdout is only the JSON document: the `~on-build` warning and any
+   Hypothesis output go to stderr, so `json.loads(stdout)` always works.
+   *Verify first* that this holds today.
+6. Exit codes unchanged.
+
+Useful, not needed: `address` (joining to graph nodes is more robust than
+joining on line numbers, which shift on edit); `kind`
+(EXAMPLE/PROPERTY/TEST); `end_line` for multi-line assertions; a duration
+per claim; a `version` field. Not needed: the assertion's source text, or
+per-run totals.
+
+Behaviour to pin down: when a single file is tested, the document contains
+only that module's claims, though its dependencies are assembled alongside
+(this matches the text output today).
+
+Note that item 1 conflicts with the current names: today `line` is the
+assertion text and `source_line` the number (see "Gaps found"), so meeting
+the consumer's `line` is the breaking rename the open decision above is
+about. Item 3 keeps the name `file` but changes its value (bare name to
+project-relative path).
+
 ## Reference code
 
 notlob-vids `src/evidence.lob`, section `##Claim Results`: `RESULT_LINE`,

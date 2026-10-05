@@ -3,7 +3,7 @@
 **Component:** `notlob/bindings/python/lint.py` (`_claim_text`)
 **Found by:** notlob-vids, reproduced by observation on 2026-10-03, after
 the cross-module lint fix (`2026-10-01-python-lint-cross-module`).
-**Status:** open, not fixed. No regression test yet.
+**Status:** fixed, 2026-10-03.
 
 ## Summary
 
@@ -50,16 +50,30 @@ Expected: no lint finding, since `Path` is used by the `~run` body. It
 bit notlob-vids before (manim's `config`, used only in a `~run`); they
 worked around it by moving the code into a body function.
 
-## Likely fix
+## Resolution
 
-Add the `~run` bodies to the text `_claim_text` collects. A helper
-already exists: `collect_run_bodies(module)` in
-`notlob/bindings/__init__.py` returns `(on_load, on_invocation)` bodies,
-dedented. Add a case to `tests/test_lint.py::TestClaimOnlyImportNotFlagged`
-using the module above.
+`_claim_text` now also collects the `~run` bodies, using the existing
+`collect_run_bodies(module)` helper in `notlob/bindings/__init__.py`
+(both `on-load` and bare/`on-invocation` bodies, module body and
+subheadings). A name used only by a `~run` body is no longer reported as
+an unused import.
+
+Tests: a new `TestRunBodyImportNotFlagged` class in `tests/test_lint.py`
+covers a bare `~run`, `~run on-load`, a `~run` inside a subheading, and a
+guard that an import no `~run` uses is still flagged. The three positive
+cases failed before the change (reproducing the report exactly) and pass
+after.
+
+Confirmed by notlob-vids on 2026-10-05: the minimal repro above now
+passes with no LINT line, and their whole project is at 114 claims
+passing with no lint findings. They had no `~run` instance left to retest
+(the manim `config` use now lives in a body function, which they prefer).
 
 ## Related, not part of this bug
 
 `~run` code is never linted at all, so an undefined name inside a `~run`
 body is not caught by ruff either. Whether it should be is a separate
-question (the claim runners would surface it at run time).
+question (the claim runners would surface it at run time). notlob-vids
+(2026-10-05) doesn't think it needs its own bug, since a `~run` runs on
+first use anyway; linting it would be a nice consistency ("everything
+indented is linted") but lower priority than the documentation gaps.
