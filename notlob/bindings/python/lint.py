@@ -45,8 +45,9 @@ graph; ruff's F821 was only ever redundant noise for this case, not a
 check anything relies on for real coverage.)
 
 Claims aren't part of what gets linted -- ``assemble()`` only ever
-collects real body code, not ``~example``/``#Tests``/``~property``
-bodies -- so an import used solely by a claim looks unused to ruff.
+collects real body code, not ``~example``/``#Tests``/``~property``/
+``~run`` bodies -- so an import used solely by one of them looks unused
+to ruff.
 ``_claim_text`` collects every claim's raw source (a flat blob, not
 parsed) so an ``F401`` finding can be suppressed when the reported
 name is referenced anywhere in it. This is a textual, best-effort
@@ -68,7 +69,7 @@ import sys
 from pathlib import Path
 
 from notlob.bindings import (
-    LintResult, LintToolUnavailable, parse_source_map,
+    LintResult, LintToolUnavailable, collect_run_bodies, parse_source_map,
 )
 from notlob.bindings.python.assemble import assemble
 from notlob.graph import module_address
@@ -139,10 +140,11 @@ def _claim_text(module: Module) -> str:
     """Concatenated raw source of every claim in *module*.
 
     Covers ``~example`` (module body and subheadings), ``#Tests``
-    (bare assertions, named ``~test`` blocks, and groups), and
-    ``~property`` bodies -- every claim type the runner actually
-    executes. Used only to check whether a name ruff considers unused
-    is in fact used by a claim; see the module docstring.
+    (bare assertions, named ``~test`` blocks, and groups), ``~property``
+    bodies, and ``~run`` bodies (any mode) -- every claim-like block
+    whose code ``assemble()`` leaves out of the linted source. Used only
+    to check whether a name ruff considers unused is in fact used by
+    one of them; see the module docstring.
     """
     # Local import avoids a hard dependency between the lint and
     # runner submodules for callers that only need one of them.
@@ -153,6 +155,8 @@ def _claim_text(module: Module) -> str:
 
     parts = [expr for _, expr, _ in _collect_example_assertions(module)]
     parts += [block for _, _, _, block in _collect_properties(module)]
+    on_load, on_invocation = collect_run_bodies(module)
+    parts += on_load + on_invocation
 
     if module.post_text is not None:
         tests_section = next(

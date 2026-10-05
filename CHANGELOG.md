@@ -26,6 +26,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   states the convention. Other bindings are not changed yet.
 
 ### Fixed
+- Python lint flagged an import used only by a `~run` body as unused
+  (`F401`): `~run` code is not part of the linted source, and the
+  by-name suppression that already covered `~example`, `#Tests` and
+  `~property` didn't include it. See
+  `meta/bugs/2026-10-03-run-body-imports-flagged-unused/`.
 - A failing `~property` could lose its real exception: Hypothesis's
   own stdout reporting (e.g. "You can reproduce this failure by adding
   @seed(...)") is interleaved into the harness's output *during* the

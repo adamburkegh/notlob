@@ -258,6 +258,57 @@ class TestClaimOnlyImportNotFlagged:
         assert "F401" not in [r.code for r in results]
 
 
+class TestRunBodyImportNotFlagged:
+    """An import used only by a `~run` body must not be flagged F401
+    either: `assemble()` leaves `~run` bodies out of the linted source
+    (only a build appends them), so ruff can't see the use. See
+    meta/bugs/2026-10-03-run-body-imports-flagged-unused."""
+
+    _BODY = (
+        "#Gamma\n\n"
+        "Doubles a number.\n\n"
+        "    def double(n):\n"
+        "        return n * 2\n\n"
+        "~example\n"
+        "    double(2) == 4\n\n"
+    )
+    _REFS = "---\n#References\n    from pathlib import Path\n"
+
+    def test_bare_run_use_suppresses_f401(self):
+        src = (
+            self._BODY
+            + "~run\n    print(Path('x').name, double(2))\n\n"
+            + self._REFS
+        )
+        assert "F401" not in [r.code for r in lint_python(_module(src))]
+
+    def test_on_load_run_use_suppresses_f401(self):
+        src = (
+            self._BODY
+            + "~run on-load\n    print(Path('x').name)\n\n"
+            + self._REFS
+        )
+        assert "F401" not in [r.code for r in lint_python(_module(src))]
+
+    def test_run_in_subheading_suppresses_f401(self):
+        src = (
+            self._BODY
+            + "##Entry\n\nRuns it.\n\n"
+            + "~run\n    print(Path('x').name)\n\n"
+            + self._REFS
+        )
+        assert "F401" not in [r.code for r in lint_python(_module(src))]
+
+    def test_unused_everywhere_still_flagged(self):
+        """Guard: a `~run` that doesn't use the import doesn't silence it."""
+        src = (
+            self._BODY
+            + "~run\n    print(double(2))\n\n"
+            + self._REFS
+        )
+        assert "F401" in [r.code for r in lint_python(_module(src))]
+
+
 # ── Cross-module names: F821 suppressed, nothing else leaks ────
 
 class TestCrossModuleReferences:
