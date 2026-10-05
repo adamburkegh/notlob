@@ -4,8 +4,24 @@
 **Found by:** notlob-vids, listed under "Smaller observations" in its
 backport report (copied to `meta/features/2026-10-03-notlob-vids-backport/`);
 the reporter hits it on every render.
-**Status:** open, not fixed. Behaviour confirmed by reading the code, not
-yet reproduced here.
+**Status:** closed 2026-10-05, not a notlob bug (see Resolution).
+
+## Resolution
+
+A build hook running on a build is correct. A single-file build is a
+build; the hook is passed a manifest listing that one artifact. The
+failure is the hook script's own: pn-chomper's `inject-bundle.ts` expects
+the whole artifact set and exits 1 on a one-artifact manifest, and notlob
+relays that exit code as a warning. The script should handle a
+one-artifact manifest itself (for example exit 0 quietly), since a hook
+can see how many artifacts it was given.
+
+Considered and dropped: skipping the hook on single-file builds (changes
+behaviour for hooks that want it), a `--no-on-build` flag, and a manifest
+field saying whether the build was whole-project or single-module. Nobody
+has asked for them. Reopen if a hook turns up that genuinely cannot tell.
+
+The original report follows.
 
 ## Summary
 
@@ -36,4 +52,3 @@ and notlob exits 0. Noise, not a failure.
    running after a single-file build, so call it out in the CHANGELOG if
    chosen.
 
-Decision needed from Adam before any change.

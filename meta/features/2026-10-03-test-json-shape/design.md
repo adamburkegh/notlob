@@ -79,9 +79,11 @@ Needed, in order of importance:
 3. `file` relative to the project root (`petri/marking.lob`), so two
    modules with the same file name can be told apart.
 4. Claims in their own list, separate from lint and check findings.
-5. Stdout is only the JSON document: the `~on-build` warning and any
-   Hypothesis output go to stderr, so `json.loads(stdout)` always works.
-   *Verify first* that this holds today.
+5. Stdout is only the JSON document: any Hypothesis output goes to
+   stderr, so `json.loads(stdout)` always works. *Verify first* that this
+   holds today. (The `~on-build` warning the reporter mentioned is not a
+   concern: only `notlob build` runs the hook, and its warning goes to
+   stderr.)
 6. Exit codes unchanged.
 
 Useful, not needed: `address` (joining to graph nodes is more robust than
