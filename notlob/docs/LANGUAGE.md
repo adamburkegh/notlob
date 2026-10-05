@@ -282,6 +282,9 @@ Two kinds of entry:
 Lob module imports must be declared explicitly. There is no implicit
 package import; each module lists exactly what it uses.
 
+Exactly which names a lob-ref brings into scope depends on the binding;
+see [Toolchains](#toolchains).
+
 ### #Appendix
 
 An open extension point for content that doesn't belong in the main
@@ -335,6 +338,14 @@ it carries only the `#Binding` post-text section.
 
 **Module address** — the file path relative to the project root,
 without the `.lob` extension. Forward slashes on all platforms.
+
+**Discovery** — whole-project commands (`test`, `check`, `build`,
+`graph`) take every `**/*.lob` under the project root, including any
+nested project's modules. There is no ignore mechanism yet.
+
+**One namespace per module** — a subheading and a symbol in the same
+module cannot share a name. The collision is reported as an error naming
+both lines.
 
 ---
 
@@ -446,7 +457,9 @@ findings (and a missing linter) do.
 ## Toolchains
 
 Each language binding needs its tools available; how they are provided
-differs by ecosystem.
+differs by ecosystem. Binding-specific behaviour (how claims run, what
+the linter sees) is in each binding's doc, written beside this file as
+`BINDING-<language>.md` by `notlob docs`.
 
 - **Python** — `ruff`, `pytest`, and `hypothesis` ship with notlob and
   are always available, regardless of your project's own environment.
@@ -486,3 +499,6 @@ notlob mcp                      start the MCP tool server (stdin/stdout)
 
 File arguments accept either a filesystem path or a module address via
 `-m` (e.g. `notlob test -m pricing/discounts`).
+
+`notlob build` (`--output DIR`) and `notlob docs` write relative to the
+current directory, not the project root.

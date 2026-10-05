@@ -394,7 +394,10 @@ update.
 Each binding directory carries a `BINDING.md` documenting its toolchain,
 linter, and supported claims — the binding is the unit that determines
 how a language is realized, so it documents itself there rather than in
-the language reference.
+the language reference. `notlob docs` writes the `BINDING.md` of every
+registered binding, third-party ones included, as `BINDING-<language>.md`
+beside `LANGUAGE.md`; a binding opts in by shipping a `BINDING.md` in its
+package directory (and listing it in its package data).
 
 **Binding registry.** Bindings are discovered at runtime via Python
 entry points under the `"notlob.bindings"` group, keyed by the language

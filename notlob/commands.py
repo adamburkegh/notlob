@@ -18,8 +18,10 @@ before any claim execution.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -670,6 +672,32 @@ def _run_check_advisory(root: Path, binding: dict) -> bool:
 # ── Init / docs / new helpers ────────────────────────────────
 
 _DOCS_DIR = Path(__file__).parent / "docs"
+
+
+def _binding_docs() -> list[tuple[str, Path]]:
+    """``(language, path)`` for each registered binding that has a doc.
+
+    The doc is the ``BINDING.md`` in the binding package's directory.
+    The package is located with ``find_spec``, not imported, so a binding
+    that fails to import cannot break ``notlob docs``. Bindings that are
+    single modules, cannot be found, or carry no ``BINDING.md`` are
+    skipped.
+    """
+    docs: list[tuple[str, Path]] = []
+    for ep in sorted(entry_points(group="notlob.bindings"),
+                     key=lambda e: e.name):
+        if not re.fullmatch(r"[\w.-]+", ep.name):
+            continue
+        try:
+            spec = importlib.util.find_spec(ep.module)
+        except (ImportError, ValueError):
+            continue
+        if spec is None or not spec.submodule_search_locations:
+            continue
+        doc = Path(next(iter(spec.submodule_search_locations))) / "BINDING.md"
+        if doc.is_file():
+            docs.append((ep.name, doc))
+    return docs
 
 
 def _address_to_title(address: str) -> str:
@@ -1420,19 +1448,27 @@ def cmd_docs(
     directory is created if it does not exist.  Prints
     ``DOCS   <path>`` for each file written.
 
+    ``LANGUAGE.md`` refers readers to each binding's ``BINDING.md``, so
+    the doc of every registered binding (built-in or third-party; see
+    :func:`_binding_docs`) is written too, as ``BINDING-<language>.md``.
+
     Pass *full=True* (``--full``) to also write ``DESIGN.md`` —
     the internal architecture and design rationale.
     """
     out_dir = output_dir or Path("notlob-docs")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for name in (
-        ["LANGUAGE.md", "DESIGN.md", "USER-AGENTS.md"] if full
-        else ["LANGUAGE.md"]
-    ):
-        content  = (_DOCS_DIR / name).read_text(encoding="utf-8")
+    docs = [(_DOCS_DIR / "LANGUAGE.md", "LANGUAGE.md")]
+    docs += [(path, f"BINDING-{language}.md")
+             for language, path in _binding_docs()]
+    if full:
+        docs += [(_DOCS_DIR / name, name)
+                 for name in ("DESIGN.md", "USER-AGENTS.md")]
+
+    for source, name in docs:
         out_path = out_dir / name
-        out_path.write_text(content, encoding="utf-8")
+        out_path.write_text(source.read_text(encoding="utf-8"),
+                            encoding="utf-8")
         print(f"DOCS   {out_path}")
 
     return 0

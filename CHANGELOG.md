@@ -24,6 +24,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   absorbed into it; the new message names that cause and the fix
   (a line of prose between the claim and the code). `LANGUAGE.md` now
   states the convention. Other bindings are not changed yet.
+- Docs: `LANGUAGE.md` now states `**/*.lob` module discovery, the
+  one-namespace-per-module rule, and that `build` and `docs` write
+  relative to the current directory. The Python `BINDING.md` now covers
+  what the linter sees, what a lob-ref brings into scope, the names in a
+  `~property` block, and per-batch module loading.
+- `notlob docs` (and `notlob init`) also write the `BINDING.md` of every
+  registered binding, third-party ones included, as
+  `BINDING-<language>.md`, since `LANGUAGE.md` now points to them. A
+  binding opts in by shipping a `BINDING.md` in its package directory.
+  The built-in `BINDING.md` files are added to the package data; they
+  were not shipped in installs before.
 
 ### Fixed
 - Python lint flagged an import used only by a `~run` body as unused

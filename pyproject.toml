@@ -24,6 +24,8 @@ include = ["notlob", "notlob.*"]
 notlob = [
     "grammar.lark",
     "docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md",
+    "bindings/python/BINDING.md", "bindings/haskell/BINDING.md",
+    "bindings/typescript/BINDING.md",
 ]
 
 [tool.pytest.ini_options]

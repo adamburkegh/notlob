@@ -119,6 +119,10 @@ class BindingKit:
     ``typescript``) are registered the same way in notlob's own
     ``pyproject.toml``.
 
+    A binding documents itself in a ``BINDING.md`` in its package
+    directory; ``notlob docs`` writes it out as ``BINDING-<language>.md``.
+    This is optional and not part of the kit's fields.
+
     Fields
     ------
     extract_symbols  Symbol extraction: code lines → names.

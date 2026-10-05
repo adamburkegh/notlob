@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import tomllib
+from importlib.metadata import EntryPoint
 from pathlib import Path
 
+import pytest
 
+import notlob
+from notlob import commands
 from notlob.commands import cmd_docs, cmd_init, cmd_new, _address_to_title
 
 
@@ -70,6 +75,72 @@ class TestCmdDocs:
     def test_default_does_not_write_design_md(self, tmp_path):
         cmd_docs(tmp_path)
         assert not (tmp_path / "DESIGN.md").exists()
+
+    @pytest.mark.parametrize("language", ["python", "haskell", "typescript"])
+    def test_writes_binding_docs(self, tmp_path, language):
+        """LANGUAGE.md points readers at each binding's BINDING.md, so
+        the default output must include them."""
+        cmd_docs(tmp_path)
+        source = (
+            Path(notlob.__file__).parent / "bindings" / language / "BINDING.md"
+        ).read_text(encoding="utf-8")
+        written = tmp_path / f"BINDING-{language}.md"
+        assert written.read_text(encoding="utf-8") == source
+
+    def test_writes_registered_external_binding_doc(
+        self, tmp_path, monkeypatch,
+    ):
+        """A binding registered under the `notlob.bindings` entry-point
+        group by an outside package is documented too, as long as its
+        package directory carries a BINDING.md."""
+        pkg = tmp_path / "site" / "fake_rust_binding"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("raise RuntimeError('not imported')")
+        (pkg / "BINDING.md").write_text("# Rust Binding\n", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(pkg.parent))
+        monkeypatch.setattr(
+            commands, "entry_points",
+            lambda group: [EntryPoint("rust", "fake_rust_binding", group)],
+        )
+        out = tmp_path / "out"
+        cmd_docs(out)
+        assert (out / "BINDING-rust.md").read_text(
+            encoding="utf-8") == "# Rust Binding\n"
+
+    def test_registered_binding_without_doc_is_skipped(
+        self, tmp_path, monkeypatch,
+    ):
+        """No BINDING.md (or a single-module binding, or an unfindable
+        one) must not break `notlob docs`."""
+        pkg = tmp_path / "site" / "no_doc_binding"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("")
+        (tmp_path / "site" / "single_module.py").write_text("")
+        monkeypatch.syspath_prepend(str(pkg.parent))
+        monkeypatch.setattr(
+            commands, "entry_points",
+            lambda group: [
+                EntryPoint("nodoc", "no_doc_binding", group),
+                EntryPoint("single", "single_module", group),
+                EntryPoint("gone", "no_such_module_anywhere", group),
+            ],
+        )
+        out = tmp_path / "out"
+        assert cmd_docs(out) == 0
+        assert sorted(p.name for p in out.iterdir()) == ["LANGUAGE.md"]
+
+    def test_every_binding_doc_is_packaged(self):
+        """A BINDING.md missing from package-data would be written by
+        `notlob docs` from a source checkout but absent from an install."""
+        root = Path(notlob.__file__).parent.parent
+        listed = tomllib.loads(
+            (root / "pyproject.toml").read_text(encoding="utf-8")
+        )["tool"]["setuptools"]["package-data"]["notlob"]
+        on_disk = {
+            p.relative_to(root / "notlob").as_posix()
+            for p in (root / "notlob" / "bindings").glob("*/BINDING.md")
+        }
+        assert on_disk <= set(listed)
 
 
 # ── cmd_init ──────────────────────────────────────────────────

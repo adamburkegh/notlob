@@ -309,6 +309,52 @@ class TestRunBodyImportNotFlagged:
         assert "F401" in [r.code for r in lint_python(_module(src))]
 
 
+class TestReferencesImportShapes:
+    """`#References` language imports are passed through verbatim, so a
+    blank line between import groups and a parenthesised multi-line
+    import are both legal and produce no lint findings. Documented in
+    LANGUAGE.md (meta/features/2026-10-03-docs-gaps-from-notlob-vids,
+    item 7)."""
+
+    _BODY = (
+        "#Shapes\n\n"
+        "Uses each import.\n\n"
+        "    def f(x):\n"
+        "        return json.dumps(Path(x).name), floor(1.5), ceil(1.5)\n\n"
+        "    def g():\n"
+        "        return st.integers()\n\n"
+        "---\n"
+    )
+
+    def test_blank_line_between_groups(self):
+        src = (
+            self._BODY
+            + "#References\n"
+            "    import json\n"
+            "    from math import ceil, floor\n"
+            "    from pathlib import Path\n"
+            "\n"
+            "    from hypothesis import strategies as st\n"
+        )
+        assert lint_python(_module(src)) == []
+
+    def test_parenthesised_multiline_import(self):
+        src = (
+            self._BODY
+            + "#References\n"
+            "    import json\n"
+            "    from pathlib import Path\n"
+            "    from math import (\n"
+            "        ceil,\n"
+            "        floor,\n"
+            "    )\n"
+            "\n"
+            "    from hypothesis import strategies as st\n"
+        )
+        results = lint_python(_module(src))
+        assert results == []
+
+
 # ── Cross-module names: F821 suppressed, nothing else leaks ────
 
 class TestCrossModuleReferences:
