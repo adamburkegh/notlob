@@ -91,6 +91,13 @@ class TestClaimCall:
         assert '() => (fn(a === b))' in call
         assert '() => (c)' in call
 
+    def test_conjunction_is_one_boolean_lambda(self):
+        """`&&` binds looser than `===`: the line is not an equality, so
+        it must not be split at the `===` (the dropped `&& false` was a
+        false pass)."""
+        call = _claim_call('addr', '0 === 0 && false')
+        assert call.rstrip().endswith('() => (0 === 0 && false), null);')
+
 
 # ── Unit: _iter_assertions ────────────────────────────────────
 
@@ -209,6 +216,34 @@ class TestRunExamplesIntegration:
         )
         results = _run_examples(mod)
         assert results[0].status == Status.PASS
+
+    @_RUNNER_SKIP
+    def test_equality_combined_with_and_is_one_boolean(self):
+        """The pn-chomper report (meta/bugs/2026-10-12-claim-equality-
+        precedence): a line mixing `===` with `&&` is a conjunction, not
+        an equality. True conjunctions used to FAIL and `0 === 0 &&
+        false` used to PASS."""
+        lines = [
+            ('1 === 1 && 2 === 2',      Status.PASS),
+            ('a === 1 && b === 0',      Status.PASS),
+            ('a === 1 && true',         Status.PASS),
+            ('(a === 1) && (b === 0)',  Status.PASS),
+            ('true && b === 0',         Status.PASS),
+            ('0 === 0 && false',        Status.FAIL),
+            ('(0 === 0) && false',      Status.FAIL),
+            ('a === 1 || false',        Status.PASS),
+            ('a === 2 || b === 0',      Status.PASS),
+            ('a === 1 ? b === 0 : false', Status.PASS),
+            ('a === 1 === true',        Status.PASS),
+        ]
+        body = '\n'.join(f'    {expr}' for expr, _ in lines)
+        mod = _module(
+            '#T\n\n    const a = 1;\n    const b = 0;\n\n'
+            f'~example\n{body}\n'
+        )
+        results = _run_examples(mod)
+        assert [r.line for r in results] == [e for e, _ in lines]
+        assert [r.status for r in results] == [s for _, s in lines]
 
     @_RUNNER_SKIP
     def test_runtime_error_in_claim(self):

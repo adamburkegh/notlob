@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from notlob.bindings.typescript.tokenizer import find_split, is_complete
 
@@ -113,6 +114,111 @@ class TestFindSplit:
         assert op == '==='
         lhs = expr[:pos].rstrip()
         assert 'kmeans' in lhs
+
+
+class TestFindSplitPrecedence:
+    """A line is an equality claim only when `===` is its root operator.
+
+    `&&`, `||`, `??`, a ternary, a comma, an arrow, an assignment and the
+    bitwise operators all bind more loosely than `===`, so a line with one
+    at the top level is a boolean expression, not an equality: splitting
+    it at the `===` compares the wrong things (false failures) and can
+    drop the other operand entirely (false passes). See
+    meta/bugs/2026-10-12-claim-equality-precedence.
+    """
+
+    @pytest.mark.parametrize("expr", [
+        '1 === 1 && 2 === 2',
+        'a === 1 && b === 0',
+        'a === 1 && true',
+        '0 === 0 && false',
+        'true && b === 0',
+        'a === 1 || b === 0',
+        'a === 1 || false',
+        'a === b ?? c',
+        'a === 1 ? x : y',
+        'a === 1 & b',
+        'a === 1 | b',
+        'a === 1 ^ b',
+        'a === 1, b === 2',
+        'x => x === 1',
+        'a = b === 1',
+        'typeof x === "string" && x.length === 3',
+    ])
+    def test_looser_top_level_operator_means_no_split(self, expr):
+        assert find_split(expr) is None
+
+    @pytest.mark.parametrize("expr", [
+        '(a === 1) && (b === 0)',
+        'f(a === 1 && b === 2)',
+        '[a === 1 && b]',
+    ])
+    def test_equality_only_inside_brackets_is_not_a_split(self, expr):
+        assert find_split(expr) is None
+
+    @pytest.mark.parametrize("expr", [
+        '"a && b" === c',
+        "a /* && */ === b",
+        'a ?. b === 1',
+        'a?.b === 1',
+        'a + 1 === b * 2',
+        'a < b === true',
+        'a >= 1 === true',
+        '!a === b',
+        'typeof x === "string"',
+    ])
+    def test_tighter_or_hidden_operator_still_splits(self, expr):
+        result = find_split(expr)
+        assert result is not None
+        assert result[1] == '==='
+
+    def test_chained_equality_splits_at_the_last_one(self):
+        """`a === b === c` is `(a === b) === c`: left-associative."""
+        expr = 'a === b === c'
+        pos, op = find_split(expr)
+        assert op == '==='
+        assert expr[:pos].rstrip() == 'a === b'
+
+    def test_trailing_not_equal_is_not_a_split(self):
+        """The root of `a === b !== c` is the `!==`, which is evaluated
+        as a boolean, not reported as left/right."""
+        assert find_split('a === b !== c') == (8, '!==')
+
+    def test_loose_equality_is_never_reported_as_triple(self):
+        for expr in ('a == b', 'a != b'):
+            result = find_split(expr)
+            assert result is None or result[1] != '==='
+
+
+class TestRealClaimLines:
+    """Claim lines from pn-chomper (reporter of the precedence bug): the
+    bug itself, plus lines that stress the scanner without containing a
+    top-level equality (operators inside strings, `?.`/`??`, arrows)."""
+
+    @pytest.mark.parametrize("expr", [
+        # the reported line
+        '_noDecl.defaults.dot === 1 && _noDecl.defaults.ghost === 0',
+        # no top-level ===
+        "(_afterCollisionAtNw.eaten?.places ?? []).includes('nw')",
+        '[...makeClassicMap().ghostStart.keys()].every('
+        'id => makeClassicMap().net.places.has(id))',
+        "exportPNML(makeSplitMap(), 'Split').includes("
+        "'<initialMarking><text>1</text></initialMarking>')",
+        'runTrials(makeDiamondMap, randomPolicy, 200).won >= 20',
+    ])
+    def test_not_an_equality(self, expr):
+        assert find_split(expr) is None
+
+    @pytest.mark.parametrize("expr", [
+        # operators `&`, `<`, `>` and quotes live inside string literals
+        '''escXml('a & b < c > d "e"') === '''
+        '''\'a &amp; b &lt; c &gt; d &quot;e&quot;\'''',
+        "tokenCount(makeMandalaMap().ghostStart, 'den') === 1",
+    ])
+    def test_still_an_equality(self, expr):
+        result = find_split(expr)
+        assert result is not None
+        assert result[1] == '==='
 
 
 # ── helpers ──────────────────────────────────────────────────

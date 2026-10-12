@@ -37,6 +37,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
+- TypeScript: a claim line mixing `===` with `&&`, `||`, `??`, a ternary
+  or a bitwise operator was split at the first `===` as though it were an
+  equality, ignoring that those operators bind more loosely. True
+  conjunctions failed, and a false one could pass: `0 === 0 && false`
+  was evaluated as `0 === 0`, silently dropping `&& false`. The line is
+  now an equality claim only when `===` is its root operator, and is
+  otherwise evaluated whole. Claims that passed only because an operand
+  was dropped will now fail, correctly. Python and Haskell were not
+  affected. See `meta/bugs/2026-10-12-claim-equality-precedence`.
 - Python lint flagged an import used only by a `~run` body as unused
   (`F401`): `~run` code is not part of the linted source, and the
   by-name suppression that already covered `~example`, `#Tests` and
