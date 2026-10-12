@@ -16,6 +16,12 @@ relays that exit code as a warning. The script should handle a
 one-artifact manifest itself (for example exit 0 quietly), since a hook
 can see how many artifacts it was given.
 
+pn-chomper's `inject-bundle.ts` was changed on 2026-10-05: it now exits 0
+with a message when the manifest has no main artifact, and copies to
+`docs/index.html` only when `output_dir` is the project's own `dist/`.
+(Before that, a single-module build that included `game/main.lob`
+overwrote that tracked file whatever `--output` said.)
+
 Considered and dropped: skipping the hook on single-file builds (changes
 behaviour for hooks that want it), a `--no-on-build` flag, and a manifest
 field saying whether the build was whole-project or single-module. Nobody
