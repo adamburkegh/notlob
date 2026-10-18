@@ -139,11 +139,32 @@ def _fallback_path_snippet(site_packages: str) -> str:
 def build_examples_harness(
     module_source: str,
     assertions: list[tuple[str, str, int | None]],
+    notlob_site_packages: str | None = None,
 ) -> str:
     """Return a standalone script: module code, then one CLAIM per
-    ``~example``/``#Tests`` assertion in *assertions* (module scope,
-    no injected namespace -- ``~example`` claims never needed one)."""
-    parts = [_CHECK_HELPER, module_source, _check_calls(assertions)]
+    ``~example`` assertion in *assertions*.
+
+    ``pytest``'s ``approx``/``raises`` are bound after the module's own
+    code, as ``build_tests_harness`` does, so the same assertion line
+    sees the same names in ``~example`` as in ``#Tests``. Unlike
+    ``#Tests``, a name the module defines itself is kept: ``~example``
+    never had these names, so no existing module relies on them
+    overriding its own.
+
+    *notlob_site_packages* is appended to ``sys.path`` first, as in
+    ``build_tests_harness``, so ``import pytest`` succeeds when the
+    target interpreter has none of its own.
+    """
+    pytest_import = (
+        "import pytest as _notlob_pytest\n"
+        'pytest = globals().get("pytest", _notlob_pytest)\n'
+        'approx = globals().get("approx", _notlob_pytest.approx)\n'
+        'raises = globals().get("raises", _notlob_pytest.raises)'
+    )
+    parts = [_CHECK_HELPER]
+    if notlob_site_packages is not None:
+        parts.append(_fallback_path_snippet(notlob_site_packages))
+    parts += [module_source, pytest_import, _check_calls(assertions)]
     return "\n\n".join(p for p in parts if p) + "\n"
 
 

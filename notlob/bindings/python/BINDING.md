@@ -95,8 +95,10 @@ module also resolved correctly.
   `note`, `target`, `HealthCheck`, `Phase`, `Verbosity`, `st`,
   `strategies`. They are injected after the module's own code runs, so
   module-level code does not see them.
-- `#Tests` assertions get `pytest`, `approx`, and `raises` injected into
-  the assertion namespace.
+- `~example` claims and `#Tests` assertions both get `pytest`, `approx`,
+  and `raises` in scope. In `#Tests` the pytest helper replaces a module's
+  own name of the same spelling; in `~example` the module's own name is
+  kept.
 
 ## Claims
 

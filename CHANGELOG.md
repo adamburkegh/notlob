@@ -42,6 +42,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
+- Python: `approx`, `raises` and `pytest` were in scope for `#Tests`
+  assertions but not for `~example`, so the same line (`x ==
+  approx(0.3)`) passed in one and raised `NameError` in the other. They
+  are now in scope for `~example` too, working even when the target
+  interpreter has no pytest of its own. A module's own `approx`/`raises`
+  is kept in `~example` (in `#Tests` the pytest helper still replaces it).
+  See `meta/bugs/2026-10-18-example-lacks-pytest-helpers`.
 - TypeScript: a claim line mixing `===` with `&&`, `||`, `??`, a ternary
   or a bitwise operator was split at the first `===` as though it were an
   equality, ignoring that those operators bind more loosely. True

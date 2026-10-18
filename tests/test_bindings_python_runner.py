@@ -73,6 +73,57 @@ class TestPassFail:
         assert ran(src) == []
 
 
+# ── pytest helpers in scope, as in #Tests ─────────────────────
+
+class TestPytestHelpersInScope:
+    """`approx`, `raises` and `pytest` are in scope for `~example`, as
+    they are for `#Tests`: same assertion line, same environment (see
+    meta/bugs/2026-10-18-example-lacks-pytest-helpers). A name the
+    module defines itself is not overwritten."""
+
+    _FLOAT = "#T\n\n    total = 0.1 + 0.2\n\n"
+
+    def test_approx(self):
+        results = ran(self._FLOAT + "~example\n    total == approx(0.3)\n")
+        assert [r.status for r in results] == [Status.PASS]
+
+    def test_approx_failure_is_a_failure_not_an_error(self):
+        results = ran(self._FLOAT + "~example\n    total == approx(0.4)\n")
+        assert [r.status for r in results] == [Status.FAIL]
+
+    def test_raises(self):
+        src = (
+            "#T\n\n    def boom():\n        raise ValueError('x')\n\n"
+            "~example\n"
+            "    raises(ValueError, boom) is not None\n"
+        )
+        assert [r.status for r in ran(src)] == [Status.PASS]
+
+    def test_pytest_module(self):
+        results = ran(
+            self._FLOAT + "~example\n    pytest.approx(0.3) == total\n"
+        )
+        assert [r.status for r in results] == [Status.PASS]
+
+    def test_same_line_same_verdict_as_tests_section(self):
+        from notlob.bindings.python.runner import run_tests
+        src = (
+            self._FLOAT
+            + "~example\n    total == approx(0.3)\n\n"
+            "---\n\n#Tests\n    total == approx(0.3)\n"
+        )
+        module = from_tree(parse(src))
+        assert run_examples(module)[0].status == Status.PASS
+        assert run_tests(module)[0].status == Status.PASS
+
+    def test_module_defined_name_is_not_overwritten(self):
+        src = (
+            "#T\n\n    def approx(x):\n        return x\n\n"
+            "~example\n    approx(5) == 5\n"
+        )
+        assert [r.status for r in ran(src)] == [Status.PASS]
+
+
 # ── Code swallowed into a claim body ──────────────────────────
 
 class TestSwallowedCodeHint:
@@ -368,3 +419,14 @@ class TestBuildExamplesHarness:
             "def f(): return 1", [("t#example#1", "f() == 1", 1)],
         )
         compile(result, "_examples.py", "exec")  # must not raise
+
+    def test_pytest_helpers_bound_after_module_code(self):
+        result = build_examples_harness("x = 1", [])
+        assert "approx" in result and "raises" in result
+        assert result.index("x = 1") < result.index("approx")
+
+    def test_site_packages_fallback_precedes_the_pytest_import(self):
+        result = build_examples_harness("x = 1", [], "/some/site-packages")
+        assert "/some/site-packages" in result
+        assert result.index("/some/site-packages") < result.index(
+            "import pytest")

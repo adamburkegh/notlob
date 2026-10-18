@@ -654,7 +654,9 @@ def run_examples(
         return []
 
     source = _module_source(module, file_path)
-    script = build_examples_harness(source, assertions)
+    script = build_examples_harness(
+        source, assertions, _notlob_site_packages(),
+    )
     keep_path = (keep_dir / "_examples.py") if keep_dir else None
     stdout, stderr, _rc = _run_harness(script, keep_path=keep_path)
 

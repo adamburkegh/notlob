@@ -145,6 +145,29 @@ class TestThirdPartyAndNotlobToolingBothResolve:
         assert len(results) == 2
         assert all(r.status == Status.PASS for r in results), results
 
+    def test_example_resolves_approx_from_notlob_pytest(
+        self, target_venv, tmp_path,
+    ):
+        """`~example` has `approx` like `#Tests` does, even when the
+        target interpreter has no pytest of its own: the notlob
+        site-packages fallback must be on the path before the import."""
+        from notlob.bindings.python.runner import Status, run_examples
+        (tmp_path / "binding.lob").write_text(
+            "#Scratch\n\n---\n\n#Binding\n    ~language python\n",
+            encoding="utf-8",
+        )
+        path = tmp_path / "num.lob"
+        path.write_text(
+            "#Num\n\n    total = 0.1 + 0.2\n\n"
+            "~example\n    total == approx(0.3)\n",
+            encoding="utf-8",
+        )
+        module = from_tree(parse_file(path))
+        results = _run_with_target_venv_on_path(
+            target_venv, run_examples, module, file_path=path,
+        )
+        assert [r.status for r in results] == [Status.PASS], results
+
     def test_target_venv_genuinely_lacks_pytest_and_hypothesis(
         self, target_venv,
     ):
