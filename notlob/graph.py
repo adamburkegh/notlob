@@ -510,10 +510,13 @@ def _prose_text(body: list) -> str | None:
     Inline refs are re-serialised with their sigil (``#Label``).
     Bullet items are included as plain text so symbol search covers them.
     Subheadings in *body* are ignored — they carry their own content.
+    Blocks are separated by a blank line, so one paragraph's last
+    sentence is not glued to the next paragraph's first.
     """
-    parts: list[str] = []
+    blocks: list[str] = []
     for item in body:
         if isinstance(item, ProseBlock):
+            parts: list[str] = []
             for span in item.spans:
                 if isinstance(span, str):
                     parts.append(span)
@@ -521,9 +524,10 @@ def _prose_text(body: list) -> str | None:
                     parts.append(
                         ("##" if span.sub else "#") + span.label
                     )
+            blocks.append("".join(parts))
         elif isinstance(item, BulletBlock):
-            parts.append("\n".join(item.items))
-    text = "".join(parts).strip()
+            blocks.append("\n".join(item.items))
+    text = "\n\n".join(b.strip() for b in blocks if b.strip())
     return text or None
 
 

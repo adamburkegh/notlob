@@ -630,6 +630,25 @@ class TestCheckQuantifier:
         assert findings[0].severity == "advisory"
         assert "each token fires" in findings[0].message
 
+    def test_message_does_not_run_paragraphs_together(self, tmp_path):
+        """The advisory quotes the sentence. A sentence at the start of
+        a paragraph must not be prefixed with the end of the previous
+        paragraph ("...three.Each token fires...")."""
+        self._binding(tmp_path)
+        self._write(
+            tmp_path, "main.lob",
+            "#Main\n\n"
+            "A short introduction to the module.\n\n"
+            "Each token fires a randomly chosen transition.\n\n"
+            "    x = 1\n",
+        )
+        graph = build_package(tmp_path, extract_symbols)
+        findings = check_quantifier(graph)
+        assert len(findings) == 1
+        assert "introduction to the module.Each" not in findings[0].message
+        assert findings[0].message.count("Each token fires") == 1
+        assert "introduction" not in findings[0].message
+
     def test_structural_quantifier_no_behavioural_verb_silent(
         self, tmp_path,
     ):

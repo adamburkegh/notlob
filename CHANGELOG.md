@@ -42,6 +42,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
+- A node's stored prose (`notlob query content`, the graph JSON and
+  Turtle, and the `quantifier` advisory) ran paragraphs together with no
+  separator, so "...use three." and "The patterns..." read as
+  "three.The patterns" and a sentence boundary was lost. Paragraphs and
+  bullet lists are now separated by a blank line. See
+  `meta/bugs/2026-10-18-prose-paragraphs-run-together`.
 - Python: `approx`, `raises` and `pytest` were in scope for `#Tests`
   assertions but not for `~example`, so the same line (`x ==
   approx(0.3)`) passed in one and raised `NameError` in the other. They

@@ -56,6 +56,36 @@ class TestContent:
         assert "content" in mod
         assert "introductory" in mod["content"]["prose"]
 
+    def test_paragraphs_are_separated_not_run_together(self):
+        """Two prose paragraphs must not be glued into 'one.Two': the
+        join dropped the paragraph break, so a sentence boundary
+        vanished from the stored prose (and from the `quantifier`
+        advisory built on it)."""
+        g = _graph("#T\n\nFirst paragraph.\n\nSecond paragraph.\n")
+        d = g.to_dict(include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        prose = mod["content"]["prose"]
+        assert "paragraph.Second" not in prose
+        assert "First paragraph." in prose and "Second paragraph." in prose
+        assert prose.index("First") < prose.index("Second")
+
+    def test_prose_and_bullets_are_separated(self):
+        g = _graph("#T\n\nIntro text.\n\n- one\n- two\n\nOutro text.\n")
+        d = g.to_dict(include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        prose = mod["content"]["prose"]
+        assert "text.- one" not in prose
+        assert "two" in prose and "Outro" in prose
+        assert "twoOutro" not in prose
+
+    def test_single_paragraph_prose_is_unchanged(self):
+        """A paragraph's own spans (text and inline refs) still join
+        without added separators."""
+        g = _graph("#T\n\nSee ##Section for details.\n\n##Section\n")
+        d = g.to_dict(include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        assert mod["content"]["prose"] == "See ##Section for details."
+
     def test_subheading_prose_captured(self):
         g = _graph("#T\n##Section\nSection prose here.\n    code\n")
         d = g.to_dict(include_content=True)
