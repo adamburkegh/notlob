@@ -96,14 +96,30 @@
       }
     },
     "CheckFinding": {
+      "description": "One semantic-check finding. This definition appears in both check_result.json (`notlob check --json`) and test_result.json (the `checks` list of `notlob test --json`); a test keeps the two identical.",
       "type": "object",
       "required": ["check", "message", "addresses", "severity"],
       "additionalProperties": false,
       "properties": {
-        "check":     {"type": "string"},
-        "message":   {"type": "string"},
-        "addresses": {"type": "array", "items": {"type": "string"}},
-        "severity":  {"type": "string", "enum": ["error", "advisory"]}
+        "check": {
+          "description": "Which check produced it. `names` is the synthetic finding `notlob test --json` reports for an address collision (two things in one module sharing a name); it is not a check `notlob check` runs.",
+          "type": "string",
+          "enum": [
+            "imports", "typos", "conventions", "titles", "references",
+            "style", "quantifier", "names"
+          ]
+        },
+        "message": {"type": "string"},
+        "addresses": {
+          "description": "Addresses of the nodes the finding concerns.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "severity": {
+          "description": "`error` fails the build; `advisory` never does.",
+          "type": "string",
+          "enum": ["error", "advisory"]
+        }
       }
     }
   }

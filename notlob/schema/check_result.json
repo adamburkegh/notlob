@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notlob/check-result",
+  "title": "CheckResult",
+  "description": "The document printed by `notlob check --json`: the findings of the semantic checks over the project name-graph. Stdout holds only this document. Exit code is 1 when any finding has severity `error`, else 0, whether or not --json is given. If the graph cannot be built because two things in one module share a name, the document holds a single `names` finding and an empty `counts`. If there is no project (no binding.lob), nothing is printed to stdout, an error goes to stderr, and the exit code is 1. `version` is bumped on a breaking change.",
+  "type": "object",
+  "required": ["version", "findings", "counts"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Version of this document's shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "findings": {
+      "description": "Every finding from the checks that ran, in check order.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/CheckFinding"}
+    },
+    "counts": {
+      "description": "Number of findings per check, including checks that found nothing (0). With `--only`, only the checks that ran appear; empty when no check could run.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imports":     {"type": "integer", "minimum": 0},
+        "typos":       {"type": "integer", "minimum": 0},
+        "conventions": {"type": "integer", "minimum": 0},
+        "titles":      {"type": "integer", "minimum": 0},
+        "references":  {"type": "integer", "minimum": 0},
+        "style":       {"type": "integer", "minimum": 0},
+        "quantifier":  {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "definitions": {
+    "CheckFinding": {
+      "description": "One semantic-check finding. This definition appears in both check_result.json (`notlob check --json`) and test_result.json (the `checks` list of `notlob test --json`); a test keeps the two identical.",
+      "type": "object",
+      "required": ["check", "message", "addresses", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "description": "Which check produced it. `names` is the synthetic finding `notlob test --json` reports for an address collision (two things in one module sharing a name); it is not a check `notlob check` runs.",
+          "type": "string",
+          "enum": [
+            "imports", "typos", "conventions", "titles", "references",
+            "style", "quantifier", "names"
+          ]
+        },
+        "message": {"type": "string"},
+        "addresses": {
+          "description": "Addresses of the nodes the finding concerns.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "severity": {
+          "description": "`error` fails the build; `advisory` never does.",
+          "type": "string",
+          "enum": ["error", "advisory"]
+        }
+      }
+    }
+  }
+}

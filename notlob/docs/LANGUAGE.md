@@ -516,4 +516,6 @@ root) and `line`, plus `left`/`right` on a failed equality; claims, lint
 findings and check findings are separate lists. The shape is specified by
 `schema/test_result.json`, written beside this file by `notlob docs`, and
 `version` changes on a breaking change. `notlob check --json` prints
-`{findings, counts}`.
+`{version, findings, counts}` (`schema/check_result.json`); a finding has
+`check`, `message`, `addresses` and `severity` (`error` or `advisory`),
+and is the same shape as an entry in `checks` above.

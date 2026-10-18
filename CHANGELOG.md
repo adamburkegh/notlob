@@ -22,6 +22,20 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   prose. `DESIGN.md` states the rule: structured output has a schema.
   The `schema/*.json` files are added to the package data; they were not
   shipped in installs before.
+- A JSON Schema for `notlob check --json` (`schema/check_result.json`).
+  The document gains a `version` field (`1`): it is now
+  `{version, findings, counts}`. A finding is unchanged and is specified
+  once, with the same definition in `test_result.json`'s `checks` list
+  (kept identical by a test). `check` in a finding is now an enum of the
+  registered checks plus `names`. Adding a check without updating the
+  schema fails a test.
+- Fixed with it: under an address collision (a subheading and a symbol
+  sharing a name) `notlob check --json` printed an error to stderr and
+  nothing to stdout, so a consumer could not `json.loads` it. It now
+  prints a valid document holding a single `names` finding (as
+  `notlob test --json` already did) and an empty `counts`, and exits 1.
+  With no project at all it still prints nothing to stdout and exits 1,
+  which the schema now states.
 - A JSON Schema for the `~on-build` hook manifest
   (`schema/build_manifest.json`), which hook scripts are written against.
   The manifest gains a `version` field (`1`); no field was removed or

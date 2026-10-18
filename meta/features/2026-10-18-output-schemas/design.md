@@ -20,7 +20,7 @@ change carries a `version` field.
 |---|---|---|---|
 | `notlob graph --format json` | `graph.py` `to_json` | **done**: `name_graph.json` | validated in `tests/test_graph_export.py` |
 | `notlob test --json` | `cmd_test` | **done**: `test_result.json` | `version: 1`; `tests/test_cli_test_json.py` |
-| `notlob check --json` | `cmd_check` | none | `{findings, counts}`; the finding shape is the one `test --json` `checks` uses, so share a definition |
+| `notlob check --json` | `cmd_check` | **done**: `check_result.json` (2026-10-18) | `version: 1` added (additive); the finding definition is duplicated, not `$ref`d, in `test_result.json` and a test keeps them identical (a cross-file `$ref` needs a resolver in every consumer, and the written schemas must each stand alone); `tests/test_cli_check_json.py`. Address collision: `check --json` now prints a valid document with a `names` finding, as `test --json` does (fixed with it; with no project it still prints nothing, documented in the schema) |
 | `notlob query children/imports/imported-by/callers/callees/references/referenced-by/search` | `cmd_query_*` | none | a JSON array of node summaries (`_node_dict`: `address`, `label`, `kind`, optional `start_line`) |
 | `notlob query resolve` | `cmd_query_resolve` | none | one node summary, or `null` (exit 1) |
 | `notlob query content` | `cmd_query_content` | none | a node summary plus `content` (`prose`, `code`, bullet count), or `null` (exit 1) |

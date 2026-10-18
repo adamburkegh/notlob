@@ -150,6 +150,35 @@ def _check_address(
 _TEST_JSON_VERSION = 1
 
 
+#: Version of the ``notlob check --json`` document
+#: (``notlob/schema/check_result.json``). Bumped on a breaking change.
+_CHECK_JSON_VERSION = 1
+
+
+def _finding_dict(f) -> dict:
+    """Convert a ``notlob.check.Finding`` to its JSON form (the
+    ``CheckFinding`` definition shared by ``check_result.json`` and
+    ``test_result.json``)."""
+    return {
+        "check": f.check,
+        "message": f.message,
+        "addresses": list(f.addresses),
+        "severity": f.severity,
+    }
+
+
+def _collision_finding(exc: AddressCollisionError) -> dict:
+    """The ``names`` finding reported for an address collision, in the
+    shared ``CheckFinding`` shape. It is not a check ``notlob check``
+    runs: the graph could not be built, so no check could."""
+    return {
+        "check": "names",
+        "message": str(exc),
+        "addresses": [exc.address],
+        "severity": "error",
+    }
+
+
 def _project_relative(file_path: str, root: Path | None) -> str:
     """*file_path* relative to the project *root*, with forward slashes
     (the form of a module address). Falls back to the bare file name when
@@ -636,19 +665,11 @@ def cmd_test(
                     root, _extr, call_extractor=_kit.extract_calls,
                 )
             except AddressCollisionError as exc:
-                check_findings = [{
-                    "check": "names", "message": str(exc),
-                    "addresses": [exc.address], "severity": "error",
-                }]
+                check_findings = [_collision_finding(exc)]
                 check_errors = True
             else:
                 findings, _ = run_checks(graph)
-                check_findings = [
-                    {"check": f.check, "message": f.message,
-                     "addresses": list(f.addresses),
-                     "severity": f.severity}
-                    for f in findings
-                ]
+                check_findings = [_finding_dict(f) for f in findings]
                 check_errors = has_errors(findings)
         else:
             check_errors = _run_check_advisory(root, binding)
@@ -1250,8 +1271,15 @@ def _require_root(
     return root, _find_binding(root / "binding.lob")
 
 
-def _require_graph(hint: Path | None = None):
-    """Build the package graph, or return None with an error printed."""
+def _require_graph(
+    hint: Path | None = None, *, raise_on_collision: bool = False,
+):
+    """Build the package graph, or return None with an error printed.
+
+    An address collision is printed as an error and gives None, unless
+    *raise_on_collision* is set, in which case it propagates so a JSON
+    caller can report it as a finding instead.
+    """
     root, binding = _require_root(hint)
     if root is None:
         return None
@@ -1261,6 +1289,8 @@ def _require_graph(hint: Path | None = None):
     try:
         return build_package(root, extract_symbols, call_extractor=kit.extract_calls)
     except AddressCollisionError as exc:
+        if raise_on_collision:
+            raise
         print(f"ERROR  <names>  {exc}", file=sys.stderr)
         return None
 
@@ -1385,7 +1415,17 @@ def cmd_check(
     """
     from notlob.check import coverage_summary, has_errors, run_checks
 
-    graph = _require_graph()
+    try:
+        graph = _require_graph(raise_on_collision=json_mode)
+    except AddressCollisionError as exc:
+        # No graph, so no check ran: report the collision as the one
+        # finding (as `test --json` does) so stdout is still a document.
+        print(json.dumps({
+            "version": _CHECK_JSON_VERSION,
+            "findings": [_collision_finding(exc)],
+            "counts": {},
+        }, indent=2))
+        return 1
     if graph is None:
         return 1
     if verbose and not json_mode:
@@ -1394,12 +1434,8 @@ def cmd_check(
 
     if json_mode:
         output = {
-            "findings": [
-                {"check": f.check, "message": f.message,
-                 "addresses": list(f.addresses),
-                 "severity": f.severity}
-                for f in findings
-            ],
+            "version": _CHECK_JSON_VERSION,
+            "findings": [_finding_dict(f) for f in findings],
             "counts": counts,
         }
         print(json.dumps(output, indent=2))
