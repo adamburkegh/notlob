@@ -31,8 +31,9 @@ or::
     CLAIM\\t<address>\\t<expression>
     ERROR\\t<message>
 
-For boolean expressions (no top-level ``===``), the FAIL line omits
-the JSON values (lhs=None, rhs=None in the ClaimResult).
+For boolean expressions (no root ``===``), the line is a bare ``FAIL``
+with no values (lhs=None, rhs=None in the ClaimResult), so the report
+does not show a ``right: None`` that would read as a missing side.
 
 A compile / startup error (non-zero exit, no CLAIM lines in stdout) is
 reported as a single ERROR result with line ``'<assembly>'``.
@@ -89,8 +90,7 @@ function __runClaim(
   try {
     const lhs = lhsFn();
     if (rhsFn === null) {
-      process.stdout.write(Boolean(lhs) ? 'PASS\\n'
-        : 'FAIL\\t' + __safeStr(lhs) + '\\tnull\\n');
+      process.stdout.write(Boolean(lhs) ? 'PASS\\n' : 'FAIL\\n');
     } else {
       const rhs = rhsFn();
       process.stdout.write(lhs === rhs ? 'PASS\\n'

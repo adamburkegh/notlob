@@ -16,6 +16,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   design and its deliberate limits.
 
 ### Changed
+- TypeScript: a failing boolean claim (one whose root is not `===`, or
+  that uses `!==`) no longer prints `left: False` / `right: None`. There
+  is no right side to report, and `right: None` read as a missing one;
+  the failing line is shown without sides, as the Python runner does. A
+  failing `===` still reports both sides, including a `null` right side.
 - Python: when an `~example` or `#Tests` line fails to parse as an
   assertion because it is really a statement (a `def`, `class`,
   `import` or assignment), the error now says why instead of a bare

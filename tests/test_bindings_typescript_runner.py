@@ -246,6 +246,36 @@ class TestRunExamplesIntegration:
         assert [r.status for r in results] == [s for _, s in lines]
 
     @_RUNNER_SKIP
+    @pytest.mark.parametrize("expr", [
+        '0 === 0 && false',        # boolean: root is `&&`
+        'xs.every(x => x > 5)',    # plain boolean
+        'a !== 1',                 # `!==` is evaluated as a boolean
+    ])
+    def test_failing_boolean_has_no_sides(self, expr):
+        """A failing boolean claim has no left/right: reporting
+        `right: None` would read as a missing right-hand side."""
+        mod = _module(
+            '#T\n\n    const a = 1;\n    const xs = [1, 2, 3];\n\n'
+            f'~example\n    {expr}\n'
+        )
+        results = _run_examples(mod)
+        assert results[0].status == Status.FAIL
+        assert results[0].left is None
+        assert results[0].right is None
+
+    @_RUNNER_SKIP
+    def test_failing_equality_keeps_its_sides(self):
+        """Guard: a real `===` failure, including a `null` right side,
+        still reports both."""
+        mod = _module(
+            '#T\n\n    const x = 1;\n\n~example\n    x === null\n'
+        )
+        results = _run_examples(mod)
+        assert results[0].status == Status.FAIL
+        assert results[0].left == 1
+        assert results[0].right is None
+
+    @_RUNNER_SKIP
     def test_runtime_error_in_claim(self):
         mod = _module(
             '#T\n\n    const xs: number[] = []\n\n'
