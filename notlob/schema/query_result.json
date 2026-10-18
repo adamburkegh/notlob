@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notlob/query-result",
+  "title": "QueryResult",
+  "description": "What the `notlob query ...` commands print to stdout, each a bare JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `references`, `referenced-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull and `content` prints a NodeOrNull whose node carries `content`; both print `null` and exit 1 when the address or label does not resolve. A node here is the name-graph's node (the `Node` and `Content` definitions are identical to those in name_graph.json; a test keeps them identical). Unlike `test --json` and `check --json` these outputs are not wrapped in a versioned object, so their shape follows the name-graph's. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
+  "anyOf": [
+    {"$ref": "#/definitions/NodeList"},
+    {"$ref": "#/definitions/Node"},
+    {"type": "null"}
+  ],
+  "definitions": {
+    "NodeList": {
+      "description": "An array of nodes, in graph order.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/Node"}
+    },
+    "NodeOrNull": {
+      "description": "A node, or null when it does not resolve.",
+      "anyOf": [
+        {"$ref": "#/definitions/Node"},
+        {"type": "null"}
+      ]
+    },
+    "Node": {
+      "description": "A named node: module, subheading, symbol, property, example, test, or external.",
+      "type": "object",
+      "required": [
+        "address",
+        "label",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "description": "Globally unique machine identifier, e.g. 'roman/numerals#to_roman'.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Human-readable name as written in source.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What type of named thing this node represents.",
+          "type": "string",
+          "enum": [
+            "MODULE",
+            "SUBHEADING",
+            "SYMBOL",
+            "PROPERTY",
+            "EXAMPLE",
+            "RUN",
+            "TEST",
+            "EXTERNAL"
+          ]
+        },
+        "content": {
+          "description": "Source payload; present only when include_content=True.",
+          "$ref": "#/definitions/Content"
+        },
+        "start_line": {
+          "description": "1-based source line number where this node begins in its .lob file.",
+          "type": "integer"
+        }
+      }
+    },
+    "Content": {
+      "description": "Source content attached to a node.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prose": {
+          "description": "Plain text of prose blocks (refs re-serialised with sigil).",
+          "type": "string"
+        },
+        "code": {
+          "description": "Dedented source code for the node.",
+          "type": "string"
+        },
+        "bullet_block_count": {
+          "description": "Number of bullet lists (`* item` blocks) directly in the section. Present only when it is at least 1; the bullet items' text is part of `prose`.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

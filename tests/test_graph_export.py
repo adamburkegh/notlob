@@ -413,6 +413,26 @@ class TestSchemaConformance:
         g = _graph(source)
         jsonschema.validate(g.to_dict(), _SCHEMA)   # raises on failure
 
+    @pytest.mark.parametrize("label,source", [
+        ("prose and code",   "#T\n\nIntro.\n\n    def f(): pass\n"),
+        ("bullet list",      "#T\n\nIntro.\n\n* one\n* two\n\n    x = 1\n"),
+        ("bullets in a subheading",
+         "#T\n##S\n\nText.\n\n* a\n* b\n\n    y = 2\n"),
+    ])
+    def test_content_conforms(self, label, source):
+        """With content included, a section that has a bullet list gets a
+        `bullet_block_count`; the schema must allow what the code emits."""
+        g = _graph(source)
+        jsonschema.validate(g.to_dict(include_content=True), _SCHEMA)
+
+    def test_bullet_count_is_actually_emitted(self):
+        """Guard for the test above: it only means something if the
+        content does carry the count."""
+        d = _graph("#T\n\nIntro.\n\n* one\n* two\n").to_dict(
+            include_content=True)
+        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
+        assert mod["content"]["bullet_block_count"] == 1
+
     def test_conforms_with_imports_edge(self):
         jsonschema.validate(_all_kinds_graph().to_dict(), _SCHEMA)
 

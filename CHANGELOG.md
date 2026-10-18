@@ -22,6 +22,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   prose. `DESIGN.md` states the rule: structured output has a schema.
   The `schema/*.json` files are added to the package data; they were not
   shipped in installs before.
+- A JSON Schema for the `notlob query` outputs (`schema/query_result.json`):
+  node arrays, and the single node or `null` of `resolve` and `content`.
+  The node shape is the name-graph's, with identical `Node` and `Content`
+  definitions kept in step by a test. These outputs are bare JSON values
+  and are not versioned.
 - A JSON Schema for `notlob check --json` (`schema/check_result.json`).
   The document gains a `version` field (`1`): it is now
   `{version, findings, counts}`. A finding is unchanged and is specified
@@ -89,6 +94,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
+- `schema/name_graph.json` rejected real output: a section containing a
+  bullet list gets a `bullet_block_count` in its content, which the
+  schema's `Content` did not allow, so `notlob graph --content` output
+  for such a project failed its own published schema. The schema now
+  allows it. Found by validating real output while writing the `query`
+  schema; the existing conformance tests did not include content.
 - A node's stored prose (`notlob query content`, the graph JSON and
   Turtle, and the `quantifier` advisory) ran paragraphs together with no
   separator, so "...use three." and "The patterns..." read as

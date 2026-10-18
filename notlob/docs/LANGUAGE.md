@@ -518,4 +518,9 @@ findings and check findings are separate lists. The shape is specified by
 `version` changes on a breaking change. `notlob check --json` prints
 `{version, findings, counts}` (`schema/check_result.json`); a finding has
 `check`, `message`, `addresses` and `severity` (`error` or `advisory`),
-and is the same shape as an entry in `checks` above.
+and is the same shape as an entry in `checks` above. The `notlob query`
+commands print node summaries (`address`, `label`, `kind`, `start_line`,
+and `content` for `query content`): an array, or for `resolve` and
+`content` a single node, or `null` with exit code 1 when it does not
+resolve. They are specified by `schema/query_result.json`, and the graph
+by `schema/name_graph.json`.
