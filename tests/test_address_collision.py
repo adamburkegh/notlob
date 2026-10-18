@@ -128,7 +128,7 @@ class TestCmdTestProjectJson:
         assert rc == 1
         import json
         output = json.loads(capsys.readouterr().out)
-        findings = output.get("check_findings", [])
+        findings = output.get("checks", [])
         assert any(
             f["check"] == "names" and f["severity"] == "error"
             for f in findings

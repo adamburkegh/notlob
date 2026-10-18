@@ -145,17 +145,40 @@ def _check_address(
 
 # ── Formatting ────────────────────────────────────────────────
 
-def _result_dict(r: ClaimResult) -> dict:
-    """Convert a ClaimResult to a JSON-serialisable dict."""
+#: Version of the ``notlob test --json`` document (see
+#: ``notlob/schema/test_result.json``). Bumped on a breaking change.
+_TEST_JSON_VERSION = 1
+
+
+def _project_relative(file_path: str, root: Path | None) -> str:
+    """*file_path* relative to the project *root*, with forward slashes
+    (the form of a module address). Falls back to the bare file name when
+    there is no root or the file is outside it."""
+    p = Path(file_path)
+    if root is not None:
+        try:
+            return p.resolve().relative_to(root.resolve()).as_posix()
+        except (ValueError, OSError):
+            pass
+    return p.name
+
+
+def _result_dict(r: ClaimResult, kind: str, root: Path | None) -> dict:
+    """Convert a ClaimResult to a JSON-serialisable dict.
+
+    *kind* is ``EXAMPLE``, ``PROPERTY`` or ``TEST``; ``source`` is the
+    assertion text and ``line`` its 1-based line number in ``file``.
+    """
     d: dict = {
         "address": r.address,
-        "line": r.line,
+        "kind": kind,
         "status": r.status.name,
+        "source": r.line,
     }
     if r.file_path:
-        d["file"] = Path(r.file_path).name
+        d["file"] = _project_relative(r.file_path, root)
     if r.source_line:
-        d["source_line"] = r.source_line
+        d["line"] = r.source_line
     if r.status == Status.FAIL:
         if r.left is not None:
             d["left"] = repr(r.left)
@@ -461,9 +484,12 @@ def _test_module(
     binding:            dict,
     keep_generated_src: str | None      = None,
     only:               set[str] | None = None,
-    json_out:           list | None     = None,
+    json_out:           dict | None     = None,
 ) -> tuple[int, int, int]:
     """Test one module; print per-claim output (or collect into *json_out*).
+
+    *json_out*, when given, is a dict with ``"claims"`` and ``"lint"``
+    lists that this call appends to instead of printing.
 
     Returns *(n_pass, n_fail, n_lint)*.  Parse or document errors count
     as one failure and short-circuit claim execution.
@@ -521,28 +547,29 @@ def _test_module(
                 _print_lint_result(r)
 
     # ── Claims ────────────────────────────────────────────────
-    results = []
+    kinded: list[tuple[str, ClaimResult]] = []
     if run_examples:
-        results += kit.run_examples(
+        kinded += [("EXAMPLE", r) for r in kit.run_examples(
             module, file_path=path, cache=cache, keep_dir=keep_dir,
-        )
+        )]
     if run_props:
-        results += kit.run_properties(
+        kinded += [("PROPERTY", r) for r in kit.run_properties(
             module, binding=binding, file_path=path,
             cache=cache, keep_dir=keep_dir,
-        )
+        )]
     if run_tests_:
-        results += kit.run_tests(
+        kinded += [("TEST", r) for r in kit.run_tests(
             module, binding=binding, file_path=path,
             cache=cache, keep_dir=keep_dir,
-        )
+        )]
+    results = [r for _, r in kinded]
 
     non_skip = [r for r in results if r.status != Status.SKIP]
     if json_out is not None:
-        for r in results:
-            json_out.append(_result_dict(r))
-        for r in lint_results:
-            json_out.append(_lint_dict(r))
+        json_out["claims"] += [
+            _result_dict(r, kind, root) for kind, r in kinded
+        ]
+        json_out["lint"] += [_lint_dict(r) for r in lint_results]
     else:
         for r in results:
             _print_result(r)
@@ -569,7 +596,9 @@ def cmd_test(
     ``"tests"``.  Lint failures produce exit code 1 just like claim
     failures.
     """
-    json_out: list | None = [] if json_mode else None
+    json_out: dict | None = (
+        {"claims": [], "lint": []} if json_mode else None
+    )
 
     if path is not None:
         root    = find_project_root(path)
@@ -626,13 +655,17 @@ def cmd_test(
 
     if json_mode:
         output = {
-            "passed": n_pass,
-            "failed": n_fail,
-            "lint": n_lint,
-            "results": json_out,
+            "version": _TEST_JSON_VERSION,
+            "summary": {
+                "passed": n_pass,
+                "failed": n_fail,
+                "lint": n_lint,
+            },
+            "claims": json_out["claims"],
+            "lint": json_out["lint"],
         }
-        if check_findings:
-            output["check_findings"] = check_findings
+        if path is None:
+            output["checks"] = check_findings
         print(json.dumps(output, indent=2))
     else:
         parts = [f"{n_pass} passed"]
@@ -672,6 +705,14 @@ def _run_check_advisory(root: Path, binding: dict) -> bool:
 # ── Init / docs / new helpers ────────────────────────────────
 
 _DOCS_DIR = Path(__file__).parent / "docs"
+_SCHEMA_DIR = Path(__file__).parent / "schema"
+_GRAMMAR_PATH = Path(__file__).parent / "grammar.lark"
+_GRAMMAR_NOTE = (
+    "// This is notlob's syntax reference for .lob files, written by\n"
+    "// `notlob docs`. The syntax it defines is what to rely on; its rule\n"
+    "// and terminal names may change between notlob versions.\n"
+    "//\n"
+)
 
 
 def _binding_docs() -> list[tuple[str, Path]]:
@@ -1451,6 +1492,9 @@ def cmd_docs(
     ``LANGUAGE.md`` refers readers to each binding's ``BINDING.md``, so
     the doc of every registered binding (built-in or third-party; see
     :func:`_binding_docs`) is written too, as ``BINDING-<language>.md``.
+    The JSON Schemas for the stable-tier structured output go to
+    ``schema/``, and ``grammar.lark``, the formal syntax reference, is
+    written with a note that its rule and terminal names may change.
 
     Pass *full=True* (``--full``) to also write ``DESIGN.md`` —
     the internal architecture and design rationale.
@@ -1458,17 +1502,25 @@ def cmd_docs(
     out_dir = output_dir or Path("notlob-docs")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    docs = [(_DOCS_DIR / "LANGUAGE.md", "LANGUAGE.md")]
-    docs += [(path, f"BINDING-{language}.md")
-             for language, path in _binding_docs()]
-    if full:
-        docs += [(_DOCS_DIR / name, name)
-                 for name in ("DESIGN.md", "USER-AGENTS.md")]
+    files: list[tuple[str, str]] = []   # (relative path, text)
 
-    for source, name in docs:
+    def add(name: str, source: Path, header: str = "") -> None:
+        files.append((name, header + source.read_text(encoding="utf-8")))
+
+    add("LANGUAGE.md", _DOCS_DIR / "LANGUAGE.md")
+    for language, path in _binding_docs():
+        add(f"BINDING-{language}.md", path)
+    for schema in sorted(_SCHEMA_DIR.glob("*.json")):
+        add(f"schema/{schema.name}", schema)
+    add("grammar.lark", _GRAMMAR_PATH, _GRAMMAR_NOTE)
+    if full:
+        for name in ("DESIGN.md", "USER-AGENTS.md"):
+            add(name, _DOCS_DIR / name)
+
+    for name, text in files:
         out_path = out_dir / name
-        out_path.write_text(source.read_text(encoding="utf-8"),
-                            encoding="utf-8")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text, encoding="utf-8")
         print(f"DOCS   {out_path}")
 
     return 0

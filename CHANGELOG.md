@@ -14,8 +14,36 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   whether the prose or the claim is actually correct. See
   `meta/features/2026-10-02-quantifier-check/design.md` for the full
   design and its deliberate limits.
+- `notlob docs` (and `notlob init`) now also write the JSON Schemas for
+  the stable-tier output to `notlob-docs/schema/`, and `grammar.lark`,
+  the formal `.lob` syntax, to `notlob-docs/grammar.lark` (headed by a
+  note that its rule and terminal names may change). Agents working in
+  another project can now read the exact shapes and syntax, not only
+  prose. `DESIGN.md` states the rule: structured output has a schema.
+  The `schema/*.json` files are added to the package data; they were not
+  shipped in installs before.
 
 ### Changed
+- **Breaking:** the shape of `notlob test --json`, which was
+  undocumented and is now specified (`notlob/schema/test_result.json`,
+  documented in `LANGUAGE.md`) with a `version` field (now `1`). The old
+  document was `{passed, failed, lint, results, check_findings}`. The
+  new one is `{version, summary: {passed, failed, lint}, claims, lint,
+  checks}`:
+  - Claims, lint findings and check findings are separate lists
+    (`results` mixed the first two).
+  - A claim's `line` is now the 1-based line number, as an integer
+    (previously `source_line`); the assertion text moved to `source`
+    (previously `line`).
+  - `file` is relative to the project root, e.g. `petri/marking.lob`
+    (previously a bare file name).
+  - Each claim has a `kind` (`EXAMPLE`, `PROPERTY`, `TEST`).
+  - `checks` replaces `check_findings`, and is always present in a
+    whole-project run (it was omitted when empty); it is absent for a
+    single-file run.
+  Exit codes and `--json` on `check` are unchanged. The old shape was
+  undocumented and the only known consumer is being moved over, so there
+  is no deprecation period.
 - TypeScript: a failing boolean claim (one whose root is not `===`, or
   that uses `!==`) no longer prints `left: False` / `right: None`. There
   is no right side to report, and `right: None` read as a missing one;

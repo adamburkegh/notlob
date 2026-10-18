@@ -2,7 +2,7 @@
 
 **Status:** documentation pass done 2026-10-05. Language-level items are
 in `LANGUAGE.md`; Python-specific ones in `notlob/bindings/python/BINDING.md`
-(`LANGUAGE.md` points readers there). Open: items 1, 11 (code part), 12.
+(`LANGUAGE.md` points readers there). Open: item 1's CLI-flag currency test, 11 (code part), 12.
 **Origin:** the notlob-vids dialogue, 2026-10-03. The reporter worked from
 `LANGUAGE.md` (via `notlob docs`), then `--help` for the commands it was
 stuck on, then the source, then trial and error. These are the places the
@@ -15,7 +15,10 @@ that has not been checked against the code.
 1. **`--json` for `test` and `check`** is not in `LANGUAGE.md` (only
    `graph --format` is). Covered with the shape fix in
    `2026-10-03-test-json-shape`, which also proposes extending
-   `tests/test_language_md_currency.py` to cover CLI flags.
+   `tests/test_language_md_currency.py` to cover CLI flags. *Done:*
+   `--json` for `test` and `check` is documented in `LANGUAGE.md`, and
+   the `test` shape is specified. The currency-test extension to CLI
+   flags is not done.
 2. **Whole-project commands discover every `**/*.lob` under the root**,
    including nested projects' modules. This is what swept in reference
    projects and started the shelved `~ignore` discussion. *Done:* stated

@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notlob/test-result",
+  "title": "TestResult",
+  "description": "The document printed by `notlob test --json`. Stdout holds only this document; diagnostics go to stderr. Exit codes are unchanged by --json. `version` is bumped on a breaking change.",
+  "type": "object",
+  "required": ["version", "summary", "claims", "lint"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Version of this document's shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "summary": {
+      "description": "Counts over the run. `failed` counts FAIL and ERROR claims and any module that could not be parsed or checked; SKIP claims are not counted.",
+      "type": "object",
+      "required": ["passed", "failed", "lint"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "lint":   {"type": "integer", "minimum": 0}
+      }
+    },
+    "claims": {
+      "description": "One entry per claim assertion. A single-file run lists only that module's claims, though its dependencies are assembled alongside.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/Claim"}
+    },
+    "lint": {
+      "description": "Linter findings, separate from claims.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/LintFinding"}
+    },
+    "checks": {
+      "description": "Semantic-check findings from `notlob check`. Present in a whole-project run (possibly empty), absent for a single-file run.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/CheckFinding"}
+    }
+  },
+  "definitions": {
+    "Claim": {
+      "type": "object",
+      "required": ["address", "kind", "status", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "description": "Claim address, e.g. pkg/calc#example#1. Stable across edits, unlike `line`.",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["EXAMPLE", "PROPERTY", "TEST"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PASS", "FAIL", "ERROR", "SKIP"]
+        },
+        "source": {
+          "description": "The assertion text (for a ~property, its sigil).",
+          "type": "string"
+        },
+        "file": {
+          "description": "Path of the module file relative to the project root, with forward slashes. The bare file name if the module is outside a project.",
+          "type": "string"
+        },
+        "line": {
+          "description": "1-based line of the assertion in `file` (for a ~property, the sigil line). Omitted when unknown.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "left": {
+          "description": "On FAIL of an equality: repr of the left value. Absent when the claim is not an equality.",
+          "type": "string"
+        },
+        "right": {
+          "description": "On FAIL of an equality: repr of the right value.",
+          "type": "string"
+        },
+        "error": {
+          "description": "Message, on ERROR or a FAIL that carries one.",
+          "type": "string"
+        }
+      }
+    },
+    "LintFinding": {
+      "type": "object",
+      "required": ["address", "code", "message", "col"],
+      "additionalProperties": false,
+      "properties": {
+        "address": {"type": "string"},
+        "code":    {"type": "string"},
+        "message": {"type": "string"},
+        "col":     {"type": "integer", "minimum": 1}
+      }
+    },
+    "CheckFinding": {
+      "type": "object",
+      "required": ["check", "message", "addresses", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "check":     {"type": "string"},
+        "message":   {"type": "string"},
+        "addresses": {"type": "array", "items": {"type": "string"}},
+        "severity":  {"type": "string", "enum": ["error", "advisory"]}
+      }
+    }
+  }
+}

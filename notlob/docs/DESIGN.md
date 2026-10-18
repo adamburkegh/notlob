@@ -574,9 +574,24 @@ worth promising, so there are two tiers.
 
 **Stable.** The commands and their machine-readable output (`--json`,
 `graph --format`), the model types exported from `notlob`, the
-name-graph and its exported schema, and the `BindingKit` contract that
-language bindings register against. Changes here are additive where
-they can be, and a breaking change is called out in the CHANGELOG.
+name-graph and the JSON schemas under `notlob/schema/`, and the
+`BindingKit` contract that language bindings register against. Changes
+here are additive where they can be, and a breaking change is called out
+in the CHANGELOG.
+
+**Structured output has a schema.** Every structured output in the
+stable tier is specified by a JSON Schema under `notlob/schema/`, not by
+whatever the code happens to print. A schema ships in the package and is
+written out by `notlob docs`, so an agent working in another project can
+read it. A test validates real output against it, so the schema and the
+code cannot drift. An output that may change carries a `version` field,
+bumped on a breaking change. A new `--json` flag, or any other structured
+output meant for a program to read, is not finished until its schema is.
+This is the same premise as the rest of notlob: an agent does better
+against a hard formal check than against prose that describes one, and a
+shape that grew organically is a shape every consumer has to guess.
+Outputs that predate the rule are being brought into line;
+`meta/features/2026-10-18-output-schemas` lists them.
 
 **Unstable.** The Lark parse tree: its rule and terminal names, the
 token values after normalisation, and which position data survives.

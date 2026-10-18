@@ -1,6 +1,15 @@
 # Design note: fix the shape of `notlob test --json`
 
-**Status:** proposal, queued (not started)
+**Status:** done, 2026-10-18. Decided with Adam: a breaking change with a
+`version` field and a CHANGELOG callout, no deprecation period (<1.0, one
+known consumer, and the old shape was undocumented so agents rarely used
+it). Shape: `notlob/schema/test_result.json`; tests:
+`tests/test_cli_test_json.py`. What shipped differs from the proposal
+below in two ways: counts moved under `summary` (the proposal's top-level
+`lint` array now holds findings, so the old `lint: N` count could not stay
+there), and `duration`/`end_line` were not added (the runners don't
+measure either). Item 5 below ("stdout is only the document") is covered
+by a test that parses all of stdout as JSON.
 **Origin:** notlob-vids backport report (`notlob-vids/docs/notlob-backport.md`,
 section 1) and the follow-up dialogue, 2026-10-03.
 **Tier:** machine-readable output, i.e. the stable tier in `DESIGN.md`

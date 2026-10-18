@@ -26,6 +26,10 @@ The title line is required. The `---` separator and post-text are
 optional. Everything before `---` is the **body**; everything after
 is the **post-text**.
 
+The formal syntax is `grammar.lark`, written beside this file by
+`notlob docs`. Where this reference is unclear at an edge, the grammar
+decides.
+
 ---
 
 ## Module title
@@ -481,8 +485,8 @@ the linter sees) is in each binding's doc, written beside this file as
 
 ```
 notlob init [--language LANG]    scaffold a new project in the current dir
-notlob test [file]              run all claims (project or one file)
-notlob check [--only ...] [-v]  run semantic checks on the name-graph
+notlob test [file] [--json]     run all claims (project or one file)
+notlob check [--only ...] [-v] [--json]  run semantic checks on the name-graph
 notlob build [file]             assemble to source artifacts in dist/
 notlob run <file>               execute a module
 notlob weave [file]             render as Markdown
@@ -502,3 +506,14 @@ File arguments accept either a filesystem path or a module address via
 
 `notlob build` (`--output DIR`) and `notlob docs` write relative to the
 current directory, not the project root.
+
+`--json` prints a machine-readable document to stdout (diagnostics go to
+stderr) and leaves the exit code unchanged. `notlob test --json` prints
+`{version, summary, claims, lint}`, plus `checks` for a whole-project run.
+Each claim has `address`, `kind` (`EXAMPLE`, `PROPERTY`, `TEST`),
+`status`, `source` (the assertion text), `file` (relative to the project
+root) and `line`, plus `left`/`right` on a failed equality; claims, lint
+findings and check findings are separate lists. The shape is specified by
+`schema/test_result.json`, written beside this file by `notlob docs`, and
+`version` changes on a breaking change. `notlob check --json` prints
+`{findings, counts}`.

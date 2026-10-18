@@ -107,6 +107,59 @@ class TestCmdDocs:
         assert (out / "BINDING-rust.md").read_text(
             encoding="utf-8") == "# Rust Binding\n"
 
+    def test_writes_every_json_schema(self, tmp_path):
+        """Schemas specify the stable-tier JSON outputs, so an agent in
+        another project must be able to read them (DESIGN.md, 'Structured
+        output has a schema')."""
+        cmd_docs(tmp_path)
+        schema_dir = Path(notlob.__file__).parent / "schema"
+        expected = sorted(p.name for p in schema_dir.glob("*.json"))
+        assert expected  # guard: the glob found something
+        written = sorted(p.name for p in (tmp_path / "schema").iterdir())
+        assert written == expected
+        for name in expected:
+            assert (tmp_path / "schema" / name).read_text(
+                encoding="utf-8") == (schema_dir / name).read_text(
+                encoding="utf-8")
+
+    def test_written_schemas_are_valid_json_schema(self, tmp_path):
+        import jsonschema
+        cmd_docs(tmp_path)
+        written = list((tmp_path / "schema").glob("*.json"))
+        assert written
+        for path in written:
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            jsonschema.Draft7Validator.check_schema(schema)
+
+    def test_writes_grammar_with_a_stability_note(self, tmp_path):
+        """The grammar is the formal syntax reference; it is written by
+        default, headed by a note that rule and terminal names may change."""
+        from lark import Lark
+        cmd_docs(tmp_path)
+        text = (tmp_path / "grammar.lark").read_text(encoding="utf-8")
+        source = (
+            Path(notlob.__file__).parent / "grammar.lark"
+        ).read_text(encoding="utf-8")
+        assert text.endswith(source)
+        header = text[:-len(source)]
+        assert "may change" in header
+        # The header must not break the grammar. Built as notlob's own
+        # parser builds it (it uses `\p{...}` classes, so regex=True).
+        Lark(text, parser="lalr", propagate_positions=True, regex=True)
+
+    def test_language_md_only_names_files_the_dump_writes(self, tmp_path):
+        """LANGUAGE.md must not point at a path a user of notlob lacks
+        (it once named notlob/schema/test_result.json, inside the notlob
+        source tree)."""
+        import re
+        cmd_docs(tmp_path)
+        text = (tmp_path / "LANGUAGE.md").read_text(encoding="utf-8")
+        named = set(re.findall(r"\bschema/[\w.-]+\.json\b", text))
+        assert named  # LANGUAGE.md does name at least one schema
+        for rel in named:
+            assert (tmp_path / rel).is_file(), rel
+        assert "notlob/schema/" not in text
+
     def test_registered_binding_without_doc_is_skipped(
         self, tmp_path, monkeypatch,
     ):
@@ -127,7 +180,7 @@ class TestCmdDocs:
         )
         out = tmp_path / "out"
         assert cmd_docs(out) == 0
-        assert sorted(p.name for p in out.iterdir()) == ["LANGUAGE.md"]
+        assert not [p for p in out.iterdir() if p.name.startswith("BINDING-")]
 
     def test_every_binding_doc_is_packaged(self):
         """A BINDING.md missing from package-data would be written by
