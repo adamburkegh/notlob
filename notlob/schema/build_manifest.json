@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notlob/build-manifest",
+  "title": "BuildManifest",
+  "description": "The JSON document `notlob build` writes to a temporary file and passes, as its first argument, to the script named by `~on-build` in binding.lob. It describes what this build produced. A single-module build (`notlob build <file>`) lists only that module; a whole-project build lists every module, so a hook written for the whole set should check what it was given. `version` is bumped on a breaking change.",
+  "type": "object",
+  "required": [
+    "version", "artifacts", "entry_points", "externals",
+    "language", "project_root", "output_dir"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Version of this document's shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "artifacts": {
+      "description": "Absolute paths of the built output files, one per module built.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "entry_points": {
+      "description": "The subset of `artifacts` whose source modules contain `~run` claims, i.e. program entry points as opposed to library modules. A hook that needs the main artifact to bundle or execute should read this list, not `artifacts`.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "externals": {
+      "description": "Absolute paths of the files declared with `~external` in binding.lob.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "language": {
+      "description": "The `~language` of the project, or null when none is declared (Python is then the default).",
+      "type": ["string", "null"]
+    },
+    "project_root": {
+      "description": "Absolute path of the project root (the directory holding binding.lob).",
+      "type": "string"
+    },
+    "output_dir": {
+      "description": "Absolute path of the output directory the artifacts were written to.",
+      "type": "string"
+    }
+  }
+}

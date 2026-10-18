@@ -24,7 +24,7 @@ change carries a `version` field.
 | `notlob query children/imports/imported-by/callers/callees/references/referenced-by/search` | `cmd_query_*` | none | a JSON array of node summaries (`_node_dict`: `address`, `label`, `kind`, optional `start_line`) |
 | `notlob query resolve` | `cmd_query_resolve` | none | one node summary, or `null` (exit 1) |
 | `notlob query content` | `cmd_query_content` | none | a node summary plus `content` (`prose`, `code`, bullet count), or `null` (exit 1) |
-| `~on-build` hook manifest | `_run_build_hook` | none | `artifacts`, `entry_points`, `externals`, `language`, `project_root`, `output_dir`; a contract hook scripts code against (pn-chomper's `inject-bundle.ts`), documented only in a docstring and `DESIGN.md` |
+| `~on-build` hook manifest | `_run_build_hook` | **done**: `build_manifest.json` (2026-10-18) | `version: 1` added (additive); `tests/test_build_manifest.py` runs a real hook that saves the manifest and validates it. `DESIGN.md`'s example, which had no `entry_points`, is corrected |
 | `notlob graph --format turtle` | `graph.py` `to_turtle` | none | RDF; the vocabulary (`notlob:` classes and predicates) is built inline. A schema here means a vocabulary file, not JSON Schema |
 | MCP tool results | `mcp_server.py` | n/a | they are the CLI JSON above, so they inherit the schemas; the tool `inputSchema`s are already JSON Schema, inline |
 
@@ -54,6 +54,51 @@ Outside the rule, deliberately:
    package-data (exists for `BINDING.md` and, in
    `tests/test_cli_test_json.py`, for schemas).
 5. Optional: a vocabulary file for the Turtle export.
+
+## Turtle: ontology and namespace (decided 2026-10-18)
+
+In scope under the rule above. Decisions:
+
+- **Namespace is a `urn:`.** `to_turtle` has been emitting
+  `https://notlob.dev/ns#` and a default `@base https://notlob.dev/project/`,
+  a domain that nobody here controls. A URL namespace is a public identity
+  and a long-term commitment to keep it meaningful; with no current users
+  and no RDF focus on the roadmap, a `urn:` avoids both. The ontology
+  therefore ships as a file (it cannot be fetched from its own IRI).
+  Form: `urn:notlob:ns:` (terms such as `urn:notlob:ns:Module`), decided
+  2026-10-18. `notlob` is not a registered URN namespace identifier
+  (RFC 8141 expects IANA registration); for a self-contained vocabulary
+  that is acceptable, rdflib treats it as any IRI, and **the ontology file
+  says in a comment that this is an informal namespace**. The considered
+  alternative was a `tag:` URI (RFC 4151) such as
+  `tag:adamburkegh.github.io,2026:notlob:ns:`: more correct, but longer
+  and it puts a GitHub name in every export. Switching later is a
+  one-line change plus a CHANGELOG callout. Changing from the current
+  `https://notlob.dev/ns#` is a breaking change to the Turtle output, to
+  be called out in the CHANGELOG.
+- **No default `@base`.** Project data does not belong in notlob's
+  namespace. Emit `@base` only when the caller supplies one, so addresses
+  stay relative to wherever the file is loaded. (`to_turtle` already takes
+  `base`; check whether the CLI exposes it.)
+- **Ontology file** `notlob/schema/notlob.ttl`: classes (one per
+  `NodeKind`), datatype properties (`address`, `startLine`, `prose`,
+  `code`, plus `rdfs:label`) and edge predicates (one per `EdgeKind`),
+  each with label, comment, domain and range. Shipped in package data and
+  written to `notlob-docs/schema/` by `notlob docs`.
+- **Drift test:** the ontology's classes and predicates equal the
+  `NodeKind` and `EdgeKind` names `to_turtle` can emit.
+- **Validation with `rdflib`**, added to the `[dev]` extra beside
+  `jsonschema` (test-only; notlob itself stays dependency-free here): parse
+  real `to_turtle` output, with and without content. This is expected to
+  find emitter bugs (characters illegal in an IRI, prose ending in a
+  quote); fix what it finds as part of the work.
+- **No SHACL / `pyshacl`** (decided 2026-10-18). The vocabulary is small
+  (8 classes, 5 datatype properties, 5 edge predicates) and notlob's own
+  emitter is the only producer, so shapes would add a dependency, a file
+  and a drift test for little. The constraints that matter (each typed
+  node has exactly one address and label; every edge endpoint is a typed
+  node; no term outside the ontology) are a few `rdflib` assertions in a
+  test. Revisit if an external consumer wants to validate exports.
 
 ## The grammar
 

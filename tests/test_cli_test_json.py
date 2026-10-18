@@ -195,6 +195,7 @@ class TestSchema:
     def test_every_schema_is_packaged(self):
         """A schema missing from package-data is in a checkout but not an
         install, and a stable output's schema is part of its contract."""
+        import fnmatch
         import tomllib
         root = SCHEMA.parent.parent.parent
         listed = tomllib.loads(
@@ -204,7 +205,12 @@ class TestSchema:
             p.relative_to(root / "notlob").as_posix()
             for p in SCHEMA.parent.glob("*.json")
         }
-        assert on_disk <= set(listed)
+        assert on_disk  # guard: the glob found the schemas
+        unpackaged = {
+            f for f in on_disk
+            if not any(fnmatch.fnmatch(f, pattern) for pattern in listed)
+        }
+        assert not unpackaged, unpackaged
 
     def test_schema_requires_a_version(self):
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))

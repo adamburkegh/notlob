@@ -624,18 +624,28 @@ to the binding module via a `USES_EXTERNAL` edge, visible via `notlob query`).
 
 **`~on-build <script>`** — a hook script in the binding's own language
 (TypeScript for TypeScript projects, Python for Python projects).
-`notlob build` runs this script after assembling all artifacts, passing
-a JSON manifest as the path of a temporary file (first argument):
+`notlob build` runs this script after assembling artifacts, passing
+a JSON manifest as the path of a temporary file (first argument). Its
+shape is specified by `schema/build_manifest.json` (the hook is code
+written against it, so it is structured output with a schema and a
+`version`):
 
 ```json
 {
+  "version":      1,
   "artifacts":    ["/abs/path/to/dist/module_name.ts"],
+  "entry_points": ["/abs/path/to/dist/module_name.ts"],
   "externals":    ["/abs/path/to/index.html"],
   "language":     "typescript",
   "project_root": "/abs/path/to/project",
   "output_dir":   "/abs/path/to/dist"
 }
 ```
+
+`entry_points` is the subset of `artifacts` whose modules have `~run`
+claims. A single-module build (`notlob build <file>`) runs the hook too,
+with a manifest listing just that module, so a hook written for the whole
+set should check what it was given.
 
 The script owns the integration logic — injecting a bundle into an
 HTML template, compiling a C extension, whatever the project needs.

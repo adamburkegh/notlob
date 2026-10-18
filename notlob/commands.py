@@ -922,6 +922,11 @@ def _build_one(path: Path, kit, output_dir: Path) -> Path | None:
     return out_path
 
 
+#: Version of the ``~on-build`` manifest (``notlob/schema/build_manifest.json``).
+#: Bumped on a breaking change.
+_BUILD_MANIFEST_VERSION = 1
+
+
 def _hook_runner(
     language: str | None,
     root:     Path,
@@ -944,8 +949,12 @@ def _run_build_hook(
     """Run the ``~on-build`` hook script if declared in *binding*.
 
     The hook receives a JSON manifest written to a temporary file whose
-    path is passed as its first argument.  The manifest contains:
+    path is passed as its first argument.  The shape is specified by
+    ``notlob/schema/build_manifest.json`` (written to ``schema/`` by
+    ``notlob docs``).  The manifest contains:
 
+    ``version``
+        Version of the manifest's shape (``_BUILD_MANIFEST_VERSION``).
     ``artifacts``
         Absolute paths of all built output files.
     ``entry_points``
@@ -983,6 +992,7 @@ def _run_build_hook(
     ]
     ep_paths   = entry_points if entry_points is not None else artifacts
     manifest = {
+        "version":      _BUILD_MANIFEST_VERSION,
         "artifacts":    [str(a.resolve()) for a in artifacts],
         "entry_points": [str(e.resolve()) for e in ep_paths],
         "externals":    externals,

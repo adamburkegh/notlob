@@ -22,6 +22,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   prose. `DESIGN.md` states the rule: structured output has a schema.
   The `schema/*.json` files are added to the package data; they were not
   shipped in installs before.
+- A JSON Schema for the `~on-build` hook manifest
+  (`schema/build_manifest.json`), which hook scripts are written against.
+  The manifest gains a `version` field (`1`); no field was removed or
+  renamed, so existing hooks are unaffected. `DESIGN.md`'s example of the
+  manifest, which had no `entry_points`, is corrected.
 
 ### Changed
 - **Breaking:** the shape of `notlob test --json`, which was

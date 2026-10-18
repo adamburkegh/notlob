@@ -26,7 +26,7 @@ notlob = [
     "docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md",
     "bindings/python/BINDING.md", "bindings/haskell/BINDING.md",
     "bindings/typescript/BINDING.md",
-    "schema/name_graph.json", "schema/test_result.json",
+    "schema/*.json",
 ]
 
 [tool.pytest.ini_options]
