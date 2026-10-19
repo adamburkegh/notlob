@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import re
 import textwrap
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -182,6 +183,61 @@ class Edge:
     target:     str             # address of the target node
     kind:       EdgeKind
     start_line: int | None = field(default=None, hash=False, compare=False)
+
+
+# ── Turtle serialisation helpers ─────────────────────────────
+
+#: Characters that may not appear in an IRI reference, plus ``%`` (so a
+#: literal percent survives a round trip). Space and control characters
+#: are covered by ``ord(ch) <= 0x20``.
+_IRI_ENCODE = frozenset('<>"{}|\\^`%\x7f')
+
+
+def _turtle_iri(address: str) -> str:
+    """*address* as a Turtle IRI reference.
+
+    Addresses are free text (a subheading title can hold spaces, quotes,
+    ``#``, ``:``), so they are made safe as a relative IRI reference:
+
+    * characters not allowed in an IRI (and ``%``) are percent-encoded;
+    * only the first ``#`` is the fragment separator, later ones are
+      encoded (a fragment may not contain ``#``);
+    * a ``:`` in the first path segment is encoded, or ``foo:/bar``
+      would be read as scheme ``foo``.
+
+    Non-ASCII text is kept. The exact address is also emitted as the
+    ``notlob:address`` literal, so nothing is lost to the encoding.
+    """
+    text = "".join(
+        "".join(f"%{b:02X}" for b in ch.encode("utf-8"))
+        if ch in _IRI_ENCODE or ord(ch) <= 0x20 else ch
+        for ch in address
+    )
+    head, sep, fragment = text.partition("#")
+    text = head + sep + fragment.replace("#", "%23")
+    first_segment = re.match(r"[^/?#]*", text).group(0)
+    text = first_segment.replace(":", "%3A") + text[len(first_segment):]
+    return f"<{text}>"
+
+
+def _turtle_lit(s: str) -> str:
+    """*s* as a one-line Turtle string literal."""
+    escaped = (s.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\n", "\\n")
+                .replace("\r", "\\r"))
+    return f'"{escaped}"'
+
+
+def _turtle_long_lit(s: str) -> str:
+    """*s* as a triple-quoted Turtle string literal.
+
+    Every quote is escaped, not only a run of three: a long literal that
+    ends in a quote has four in a row at its close, which is ambiguous,
+    and escaping is always valid.
+    """
+    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"""{escaped}"""'
 
 
 # ── Graph ────────────────────────────────────────────────────
@@ -428,38 +484,32 @@ class NameGraph:
 
     def to_turtle(
         self,
-        base: str = "https://notlob.dev/project/",
+        base: str | None = None,
         include_content: bool = False,
     ) -> str:
         """Serialise the graph as RDF in Turtle syntax.
 
-        *base* is the base URI for the project; node addresses become
-        URI fragments relative to it.  *include_content* attaches prose
-        and code literals when present.
+        The vocabulary (``notlob:``) is declared in
+        ``notlob/schema/notlob.ttl`` under the informal ``urn:notlob:ns:``
+        namespace. Node addresses become relative IRI references (see
+        :func:`_turtle_iri`), so they resolve against wherever the
+        document is loaded; pass *base* to emit an ``@base`` and put the
+        project's nodes under an IRI of your own. There is no default
+        base: project data does not belong in notlob's namespace.
+        *include_content* attaches prose and code literals when present.
 
         No external dependency — Turtle is emitted as plain strings.
         """
-        ns = "https://notlob.dev/ns#"
-        lines = [
-            f"@base <{base}> .",
+        ns = "urn:notlob:ns:"
+        lines = [f"@base <{base}> ."] if base else []
+        lines += [
             f"@prefix notlob: <{ns}> .",
             "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
             "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
             "",
         ]
 
-        def _uri(address: str) -> str:
-            return "<" + address.replace(" ", "%20") + ">"
-
-        def _lit(s: str) -> str:
-            escaped = (s.replace("\\", "\\\\")
-                        .replace('"', '\\"')
-                        .replace("\n", "\\n"))
-            return f'"{escaped}"'
-
-        def _long_lit(s: str) -> str:
-            escaped = s.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
-            return f'"""{escaped}"""'
+        _uri, _lit, _long_lit = _turtle_iri, _turtle_lit, _turtle_long_lit
 
         for node in self._nodes.values():
             uri = _uri(node.address)

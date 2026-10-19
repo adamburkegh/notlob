@@ -113,8 +113,12 @@ class TestCmdDocs:
         output has a schema')."""
         cmd_docs(tmp_path)
         schema_dir = Path(notlob.__file__).parent / "schema"
-        expected = sorted(p.name for p in schema_dir.glob("*.json"))
+        expected = sorted(
+            p.name for p in schema_dir.iterdir()
+            if p.suffix in (".json", ".ttl")
+        )
         assert expected  # guard: the glob found something
+        assert "notlob.ttl" in expected  # the Turtle ontology ships too
         written = sorted(p.name for p in (tmp_path / "schema").iterdir())
         assert written == expected
         for name in expected:

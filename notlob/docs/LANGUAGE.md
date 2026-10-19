@@ -523,4 +523,7 @@ commands print node summaries (`address`, `label`, `kind`, `start_line`,
 and `content` for `query content`): an array, or for `resolve` and
 `content` a single node, or `null` with exit code 1 when it does not
 resolve. They are specified by `schema/query_result.json`, and the graph
-by `schema/name_graph.json`.
+by `schema/name_graph.json`. `notlob graph --format turtle` exports the
+same graph as RDF; its vocabulary is declared in `schema/notlob.ttl`
+(informal namespace `urn:notlob:ns:`), and node IRIs are relative
+references, so they resolve against wherever the file is loaded.

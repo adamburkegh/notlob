@@ -203,7 +203,8 @@ class TestSchema:
         )["tool"]["setuptools"]["package-data"]["notlob"]
         on_disk = {
             p.relative_to(root / "notlob").as_posix()
-            for p in SCHEMA.parent.glob("*.json")
+            for p in SCHEMA.parent.iterdir()
+            if p.suffix in (".json", ".ttl")
         }
         assert on_disk  # guard: the glob found the schemas
         unpackaged = {

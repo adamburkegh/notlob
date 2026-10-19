@@ -1556,7 +1556,8 @@ def cmd_docs(
     add("LANGUAGE.md", _DOCS_DIR / "LANGUAGE.md")
     for language, path in _binding_docs():
         add(f"BINDING-{language}.md", path)
-    for schema in sorted(_SCHEMA_DIR.glob("*.json")):
+    for schema in sorted([*_SCHEMA_DIR.glob("*.json"),
+                          *_SCHEMA_DIR.glob("*.ttl")]):
         add(f"schema/{schema.name}", schema)
     add("grammar.lark", _GRAMMAR_PATH, _GRAMMAR_NOTE)
     if full:

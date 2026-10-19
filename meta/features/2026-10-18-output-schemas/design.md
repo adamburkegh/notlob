@@ -25,7 +25,7 @@ change carries a `version` field.
 | `notlob query resolve` | `cmd_query_resolve` | **done**: `NodeOrNull` | a node, or `null` with exit 1 |
 | `notlob query content` | `cmd_query_content` | **done**: `NodeOrNull` | a node plus `content`, or `null` with exit 1. Writing its test found `name_graph.json` rejecting real output (a bullet list adds `bullet_block_count` to content): schema fixed, CHANGELOG notes it |
 | `~on-build` hook manifest | `_run_build_hook` | **done**: `build_manifest.json` (2026-10-18) | `version: 1` added (additive); `tests/test_build_manifest.py` runs a real hook that saves the manifest and validates it. `DESIGN.md`'s example, which had no `entry_points`, is corrected |
-| `notlob graph --format turtle` | `graph.py` `to_turtle` | none | RDF; the vocabulary (`notlob:` classes and predicates) is built inline. A schema here means a vocabulary file, not JSON Schema |
+| `notlob graph --format turtle` | `graph.py` `to_turtle` | **done**: `notlob.ttl` (2026-10-19) | the vocabulary file; namespace `urn:notlob:ns:` (informal, noted in the file); no default `@base`. Parsing real output with rdflib found and fixed emitter bugs (IRI escaping, a second `#`, `:` in the first segment, `\r` in a short literal, a long literal ending in a quote). The edge kinds are six (including `uses_external`), not five as an earlier draft said |
 | MCP tool results | `mcp_server.py` | n/a | they are the CLI JSON above, so they inherit the schemas; the tool `inputSchema`s are already JSON Schema, inline |
 
 Outside the rule, deliberately:

@@ -22,6 +22,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   prose. `DESIGN.md` states the rule: structured output has a schema.
   The `schema/*.json` files are added to the package data; they were not
   shipped in installs before.
+- An ontology for the Turtle export (`schema/notlob.ttl`), written to
+  `notlob-docs/schema/` with the JSON Schemas: a class per node kind, a
+  property per edge kind, and the literals a node carries, each with a
+  label and a comment. Tests parse real output with `rdflib` (added to
+  the `[dev]` extra; notlob itself does not depend on it) and fail if the
+  ontology and the emitter drift apart.
 - A JSON Schema for the `notlob query` outputs (`schema/query_result.json`):
   node arrays, and the single node or `null` of `resolve` and `content`.
   The node shape is the name-graph's, with identical `Node` and `Content`
@@ -48,6 +54,24 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
+- **Breaking:** the Turtle export (`notlob graph --format turtle`).
+  The vocabulary namespace was `https://notlob.dev/ns#`, a domain nobody
+  here controls; it is now `urn:notlob:ns:`, an informal namespace (it
+  needs no URL to keep alive, and the ontology file says it is informal).
+  The default `@base https://notlob.dev/project/` is gone: a project's
+  nodes do not belong in notlob's namespace, so node IRIs are relative
+  references and `@base` is emitted only when a caller of
+  `NameGraph.to_turtle(base=...)` supplies one. Anyone holding exports
+  made with the old namespace must re-export; there were no known users.
+  Class and property names are unchanged (`notlob:Module`, `notlob:uses`,
+  ...).
+- The Turtle export was also made well-formed for awkward names: an
+  address with a space, quote, `<`, `>`, `{`, `}`, `|`, `^`, a backtick, a
+  `%`, a second `#`, or a `:` in its first segment is now percent-encoded
+  to a valid IRI reference (the exact address stays in `notlob:address`),
+  a prose literal ending in a quote no longer risks an ambiguous close,
+  and a carriage return in a label is escaped. Found by parsing the output
+  with rdflib.
 - **Breaking:** the shape of `notlob test --json`, which was
   undocumented and is now specified (`notlob/schema/test_result.json`,
   documented in `LANGUAGE.md`) with a `version` field (now `1`). The old

@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 dependencies = ["lark>=1.2", "regex>=2024", "pytest>=8", "hypothesis>=6", "ruff>=0.4"]
 
 [project.optional-dependencies]
-dev = ["jsonschema>=4"]
+dev = ["jsonschema>=4", "rdflib>=7"]
 
 [project.scripts]
 notlob = "notlob.cli:main"
@@ -26,7 +26,7 @@ notlob = [
     "docs/LANGUAGE.md", "docs/USER-AGENTS.md", "docs/DESIGN.md",
     "bindings/python/BINDING.md", "bindings/haskell/BINDING.md",
     "bindings/typescript/BINDING.md",
-    "schema/*.json",
+    "schema/*.json", "schema/*.ttl",
 ]
 
 [tool.pytest.ini_options]
