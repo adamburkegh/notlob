@@ -41,6 +41,12 @@ subprocess-backed tests, not a few outliers.
 - `tests/test_cli_check_json.py` and `tests/test_address_collision.py`
   did not make the top 25, but follow the same pattern.
 
+Timings are noisy: a later run of 1377 tests took 328 s, double the above
+for 22 more tests, while the machine was busy with other work. Take
+measurements on a quiet machine, more than once, before acting on
+absolute durations; the relative ordering of the slow tests is the part to
+trust.
+
 Only the top 25 were listed; per-file totals and the long tail of the
 remaining ~1300 tests still need measuring.
 
