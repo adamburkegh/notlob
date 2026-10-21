@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-22
+
+Changes that can break an existing project or a tool reading notlob's
+output, to check first: a `#References` listing no longer loads a module
+unless the listing module's code uses it (modules may now list each other,
+and a cycle of use is an error); `notlob test --json` has a new,
+documented shape; the Turtle export's vocabulary namespace is now
+`urn:notlob:ns:`; and `notlob check --json` gains a `version` field.
+Details are under Added, Changed and Fixed.
+
 ### Added
 - `quantifier` check (`notlob check`): flags a prose sentence that
   makes a quantified claim about behaviour ("each token fires...")
@@ -152,8 +162,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   now the module's `.lob` path in claims (a built artifact carries no
   source path). Found by running the example projects end to end, which
   no test did: `examples/gutenberg` was broken, and also had three
-  placeholder-less f-strings (lint) and a `##` reference to a module that
-  never resolved; both fixed in the example. See
+  placeholder-less f-strings (lint, hidden until 0.5.4 by a Windows
+  encoding failure that lint read as a clean result) and a `##` reference
+  to a module, written before references were scoped to what a module
+  lists. The f-strings are fixed in the example; the reference is now
+  `#Gutenberg Hamlet` with a listing (see the `#References` entry under
+  Changed). A new test runs `notlob test` and `notlob build` over every
+  project under `examples/`. See
   `meta/bugs/2026-10-22-python-claims-file-attribute`.
 - **Python and Haskell loaded only a module's direct `#References`.** A
   module `Top` that lists only `Middle`, where `Middle` lists `Base` and
@@ -165,7 +180,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   (TypeScript already did), through one shared
   `project.load_dependency_modules`. What a module may *use* is unchanged:
   the Python linter still reports a name from a module it did not list.
-  `LANGUAGE.md` now defines this once for every binding. See
+  `LANGUAGE.md` now defines this once for every binding. (Which listings
+  load was narrowed later in the same release, to those the code uses; see
+  the `#References` entry under Changed.) See
   `meta/bugs/2026-10-21-transitive-lob-refs`.
 - **`#Appendix` was invisible to the name-graph and to claim collection.**
   The grammar defines an Appendix as the same thing as the module body,
