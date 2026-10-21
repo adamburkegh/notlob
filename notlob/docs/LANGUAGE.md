@@ -306,6 +306,17 @@ an author might move a shared test fixture there, or just as easily a
 supporting helper that the main argument's code genuinely calls at
 runtime — both need to actually work, not just parse.
 
+In the name-graph an Appendix is a node of its own (kind `APPENDIX`,
+address `module#appendix#1`, `#2` and so on in order, labelled with its
+title), contained by its module. Its symbols and claims belong to it, and
+its claims are numbered within it, as a subheading's are
+(`module#appendix#1#example#1`).
+
+Claims are legal in an Appendix and they run, but they are discouraged:
+`notlob check` gives an advisory `style` finding for an `~example` or
+`~property` there. Examples belong in the main body, next to the prose
+they illustrate, and supporting tests belong in `#Tests`.
+
 ```
 ---
 
@@ -522,7 +533,11 @@ and is the same shape as an entry in `checks` above. The `notlob query`
 commands print node summaries (`address`, `label`, `kind`, `start_line`,
 and `content` for `query content`): an array, or for `resolve` and
 `content` a single node, or `null` with exit code 1 when it does not
-resolve. They are specified by `schema/query_result.json`, and the graph
+resolve. `query content` on a module, subheading or appendix returns its
+`body`: its prose, code, bullet lists and claims in document order, each
+with its source line; a claim is listed by address, and its own node holds
+its sigil and lines. A module's `content` also lists its `#References`
+lines as `imports`. They are specified by `schema/query_result.json`, and the graph
 by `schema/name_graph.json`. `notlob graph --format turtle` exports the
 same graph as RDF; its vocabulary is declared in `schema/notlob.ttl`
 (informal namespace `urn:notlob:ns:`), and node IRIs are relative

@@ -97,6 +97,16 @@ class TestProseBlock:
         refs = [s for s in m.body[0].spans if isinstance(s, Ref)]
         assert refs == []
 
+    def test_block_has_a_source_line(self):
+        """Prose has a position, like code, claims and bullets: the
+        name-graph's file-adjacency needs it."""
+        m = model("#T\n\nFirst para.\nSecond line.\n\nSecond para.\n")
+        assert [b.start_line for b in m.body] == [3, 6]
+
+    def test_block_starting_with_a_ref_has_a_source_line(self):
+        m = model("#T\n\n#Foo opens this paragraph.\n")
+        assert m.body[0].start_line == 3
+
 
 # ── CodeBlock ────────────────────────────────────────────────
 

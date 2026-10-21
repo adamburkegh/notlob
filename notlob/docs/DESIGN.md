@@ -329,10 +329,11 @@ markers/newlines) and checks reserved sigils, then hands a Lark `Tree`
 serialisable to JSON for use by tooling and LLM context. Parse tree
 access will also be exposed via MCP.
 
-**Name-graph:** The central data structure of the tooling layer. Every
-named thing in a `.lob` file or package is a node; relationships between
-them are edges. The name-graph accumulates in layers, each adding richer
-information:
+**Name-graph:** The central data structure of the tooling layer: a graph
+of names, prose, concepts and code, built from the parse tree. Every
+named thing in a `.lob` file or package is a node, the prose and code
+around it belong to it, and relationships between them are edges. The
+name-graph accumulates in layers, each adding richer information:
 
 - *Structure.* Module addresses and subheading nodes, derived from the
   `.lob` parser alone. No language binding required. Sufficient for
@@ -377,6 +378,57 @@ information:
 The seam between the structural and symbolic layers is the binding
 boundary. The structural layer is the common vocabulary across all
 languages; the symbolic layer is language-specific richness.
+
+**The name-graph is complete.** It is a complete index of the document,
+not a list of its names. Every prose block, code block, claim, import and
+binding declaration in the parse tree appears in the graph, with its
+kind, its text, its source position and its order within the body that
+holds it (the body of a module, a subheading, or an `#Appendix`, each of
+which is a node). The design's two adjacencies depend on it:
+file-adjacency (what sits next to this in the serial text) needs position
+and order, and concept-adjacency (what is a few edges away) needs the
+edges. So does every check that reads the graph, prose checks included: a
+check cannot report on what the graph does not hold, and it does not say
+that it could not. The graph is therefore what the rest of the system
+reads, not one reader among several: a body is held on its node
+(`NameGraph.body`), `build` is the only place the parse tree is walked to
+find bodies, and symbol extraction, reference resolution, the claim
+collectors and `notlob run` read the graph. Anything that still reads the
+document by another route (the assemblers, the weaver) must see the same
+elements as the graph, and a test compares them. The contract is checked
+by an oracle that walks the parse tree independently and compares it with
+what the graph holds. An element of the document that is missing from the
+graph is a bug, not a design choice.
+
+*Status: met for the bodies of modules, subheadings and appendices.*
+Open: `#Tests` assertions and their order, binding declarations, the
+Turtle export of bodies, and moving the assemblers and weaver onto the
+graph. See `meta/bugs/2026-10-20-name-graph-incomplete/bug.md`. The
+contract tests are `tests/test_graph_body.py` and
+`tests/test_appendix_graph.py`; the latter found that the `#Appendix` had
+been missing from most of these views for ten weeks.
+
+Reading a document through the graph looks like this:
+
+```python
+from notlob import build, enrich, from_tree, parse_file
+from notlob.bindings.python import extract_symbols
+
+module = from_tree(parse_file("pricing/discounts.lob"))
+graph  = build(module)                     # nodes, bodies and claims; no binding
+enrich(graph, module, extract_symbols)     # adds symbol nodes; needs a binding
+
+# Every node that holds a body (the module, its subheadings, its
+# appendices), and each body's items in document order.
+for node in graph.body_holders("pricing/discounts"):
+    for item in graph.body(node.address):
+        print(node.address, item["kind"], item["start_line"])
+```
+
+An item's `kind` is `prose`, `code`, `bullets` or `claim`. A claim item
+gives the address of the claim's own node, which holds its `sigil` and
+its lines; `graph.claims(module_address)` lists a module's claim nodes in
+document order.
 
 **Binding kit architecture:** A binding is not a single function; it is a
 kit of cooperating tools that share a language substrate. The binding

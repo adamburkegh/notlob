@@ -23,6 +23,12 @@ single document. The format is the experiment.
   (`YYYY-MM-DD-slug/`, dated by when filed) that aren't being
   implemented yet. A design doc that arrives for later work goes here
   rather than being lost between conversations.
+- `meta/retrospectives/` — same convention (`YYYY-MM-DD-slug/`), for a
+  look back at *why* something went wrong when the fix alone doesn't
+  answer that: what happened, how it was found, what let it through, and
+  what changes so the class of problem is caught next time. Written for
+  the bugs that point at a missing property of the project, not for every
+  bug; the bug itself still gets its `meta/bugs/` note.
 
   Note: `notlob/docs/` (above) ships with the installed package
   (`pyproject.toml` package-data) and is aimed at notlob *users*;
@@ -44,6 +50,7 @@ meta/                project background (not packaged)
   origin.md          founding conversation and intellectual background
   bugs/              investigated bug reports, one dir per bug
   features/          queued feature proposals, one dir per proposal
+  retrospectives/    why a significant bug happened, one dir each
 editors/vim/         vim syntax highlighting for .lob files
 examples/            independent example notlob projects
   roman/             Python example project

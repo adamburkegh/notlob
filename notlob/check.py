@@ -18,7 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from notlob.graph import EdgeKind, NameGraph, NodeKind
+from notlob.graph import EdgeKind, NameGraph, Node, NodeKind
 
 
 @dataclass(frozen=True)
@@ -366,21 +366,71 @@ def check_references(
 
 # ── Check: style ─────────────────────────────────────────────
 
+_APPENDIX_CLAIM_ADVICE = {
+    NodeKind.EXAMPLE: (
+        "~example",
+        "Examples are part of the exposition: put it in the main body next "
+        "to the prose it illustrates, or move it to #Tests if it is a "
+        "supporting fact.",
+    ),
+    NodeKind.PROPERTY: (
+        "~property",
+        "A property is a formal invariant: put it in the main body next to "
+        "the prose that explains the constraint.",
+    ),
+}
+
+
+def _in_appendix(graph: NameGraph, node: Node) -> bool:
+    """Whether *node* was written in an ``#Appendix``: defined directly by
+    an APPENDIX node, or by a subheading that one contains."""
+    for parent in graph.parents(node.address, EdgeKind.DEFINES):
+        if parent.kind == NodeKind.APPENDIX:
+            return True
+        if parent.kind == NodeKind.SUBHEADING and any(
+            grand.kind == NodeKind.APPENDIX
+            for grand in graph.parents(parent.address, EdgeKind.CONTAINS)
+        ):
+            return True
+    return False
+
+
 def check_style(graph: NameGraph) -> list[Finding]:
-    """Flag modules or sections with excessive bullet-point use."""
+    """Style guidance, advisory only.
+
+    * Flag modules or sections with excessive bullet-point use.
+    * Flag an ``~example`` or ``~property`` written in an ``#Appendix``.
+      The grammar allows claims there (an Appendix is a regular body),
+      but the design places examples in the exposition, tests in
+      ``#Tests`` and properties beside the prose that motivates them.
+      ``~run`` is not flagged: the design says nothing about it. The
+      grammar may later ban these outright.
+    """
     findings: list[Finding] = []
     for node in graph.nodes():
-        if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
-            continue
-        n = (node.content or {}).get("bullet_block_count", 0)
-        if n > 1:
+        if node.kind in (NodeKind.MODULE, NodeKind.SUBHEADING):
+            n = (node.content or {}).get("bullet_block_count", 0)
+            if n > 1:
+                findings.append(Finding(
+                    check="style",
+                    message=(
+                        f"Found {n} separate bullet point blocks. "
+                        "This suggests concepts need more articulation, "
+                        "or structure lacking from code or headings is "
+                        "being sought in prose."
+                    ),
+                    addresses=(node.address,),
+                    severity="advisory",
+                ))
+        elif node.kind in _APPENDIX_CLAIM_ADVICE and _in_appendix(
+            graph, node,
+        ):
+            sigil, advice = _APPENDIX_CLAIM_ADVICE[node.kind]
             findings.append(Finding(
                 check="style",
                 message=(
-                    f"Found {n} separate bullet point blocks. "
-                    "This suggests concepts need more articulation, "
-                    "or structure lacking from code or headings is "
-                    "being sought in prose."
+                    f"{sigil} in an #Appendix. Claims are allowed there, "
+                    f"but discouraged. {advice}"
                 ),
                 addresses=(node.address,),
                 severity="advisory",

@@ -57,7 +57,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -67,10 +66,11 @@ from notlob.bindings.python.harness import (
     build_examples_harness, build_properties_harness, build_tests_harness,
 )
 from notlob.graph import (
-    claim_address, module_address, property_address, subheading_address,
+    NodeKind, claim_lines, claims_of, module_address,
+    property_address,
 )
 from notlob.model import (
-    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
+    Module, NamedTest, TestGroup, TestsSection,
 )
 
 
@@ -482,28 +482,17 @@ def _collect_example_assertions(
     module: Module,
 ) -> list[tuple[str, str, int | None]]:
     """Return ``(addr, expr, source_line)`` for every ~example
-    assertion in *module* (module body and subheadings)."""
-    mod_addr = module_address(module.title)
+    assertion in *module*: wherever it is written (the body, a
+    subheading, an ``#Appendix``), as its claim node in the name-graph
+    has it."""
     assertions: list[tuple[str, str, int | None]] = []
-
-    def _collect(body: list, containing_addr: str) -> None:
-        example_n = 0
-        for item in body:
-            if not (isinstance(item, Claim) and item.sigil == "~example"):
-                continue
-            example_n += 1
-            addr = claim_address(containing_addr, "example", example_n)
-            base = (item.start_line + 1) if item.start_line else None
-            for assertion, offset in _iter_assertions(item.lines):
-                sl = (base + offset) if base else None
-                assertions.append((addr, assertion, sl))
-
-    _collect(module.body, mod_addr)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect(item.body, sub_addr)
-
+    for claim in claims_of(module):
+        if claim.kind != NodeKind.EXAMPLE:
+            continue
+        base = (claim.start_line + 1) if claim.start_line else None
+        for assertion, offset in _iter_assertions(claim_lines(claim)):
+            sl = (base + offset) if base else None
+            assertions.append((claim.address, assertion, sl))
     return assertions
 
 
@@ -583,32 +572,15 @@ def _collect_properties(
     module: Module,
 ) -> list[tuple[str, str, int | None, str]]:
     """Return ``(addr, sigil, source_line, prop_block_source)`` for
-    every ~property claim in *module* (module body and subheadings)."""
-    mod_addr = module_address(module.title)
-    properties: list[tuple[str, str, int | None, str]] = []
-
-    def _collect(body: list, containing_addr: str) -> None:
-        prop_n = 0
-        for item in body:
-            if not (isinstance(item, Claim)
-                    and item.sigil.startswith("~property")):
-                continue
-            prop_n += 1
-            parts = item.sigil.split(None, 1)
-            if len(parts) > 1:
-                addr = property_address(containing_addr, parts[1].strip())
-            else:
-                addr = claim_address(containing_addr, "property", prop_n)
-            prop_block = textwrap.dedent("\n".join(item.lines))
-            properties.append((addr, item.sigil, item.start_line, prop_block))
-
-    _collect(module.body, mod_addr)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect(item.body, sub_addr)
-
-    return properties
+    every ~property claim in *module*: wherever it is written (the body,
+    a subheading, an ``#Appendix``), as its claim node in the name-graph
+    has it."""
+    return [
+        (claim.address, claim.content["sigil"], claim.start_line,
+         "\n".join(claim_lines(claim)))
+        for claim in claims_of(module)
+        if claim.kind == NodeKind.PROPERTY
+    ]
 
 
 def _iter_assertions(lines: list[str]):

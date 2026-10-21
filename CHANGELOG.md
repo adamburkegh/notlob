@@ -118,6 +118,60 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
+- **`#Appendix` was invisible to the name-graph and to claim collection.**
+  The grammar defines an Appendix as the same thing as the module body,
+  but most of the code that walks a module looked only at the body:
+  symbols and claims defined in an Appendix were not graph nodes (so
+  `notlob check`'s `[imports]` reported an import used only from the
+  Appendix as unused, and `query`, `graph` and the `typos`, `conventions`
+  and `titles` checks could not see them), prose references in an
+  Appendix made no `REFERENCES` edges, and **`~example`, `~property` and
+  `~run` blocks written in an Appendix were never run** (they could not
+  fail). Now an `#Appendix` is a node of its own (kind `APPENDIX`,
+  address `mod#appendix#N`, label its title), contained by the module;
+  its subheadings hang from it, and the symbols and claims written in it
+  are defined by it. Claims in an Appendix are numbered within it, like a
+  subheading's (`mod#appendix#1#example#1`). The graph now holds every
+  node's body and is what the rest of the system reads (next entry).
+  **Visible changes:** a new node kind `APPENDIX` (added to
+  `name_graph.json`, `query_result.json` and the ontology);
+  `query children <module>` lists the Appendix node, not the Appendix's
+  subheadings, which hang from it; and the module node's own prose and
+  code are the body's only. Guarded by a property that the assembler, graph
+  and collectors agree wherever in the file the code is written, and by a
+  test derived from `grammar.lark` that fails if the grammar gains a body
+  the model does not cover. See `meta/bugs/2026-10-19-appendix-not-in-graph`
+  and the retrospective `meta/retrospectives/2026-10-19-appendix-blind-spot`.
+- **The name-graph is a complete index of each body.** A module, a
+  subheading and an `#Appendix` each have a body, and each is a node whose
+  `content.body` lists its body items in order: prose (its text, its
+  cross-references as data, its source line), code, bullets, and claims
+  (by address). Claim nodes carry their `sigil` (so the `~run` mode) and
+  their lines; the module node carries its `#References` lines as
+  `content.imports`; `ProseBlock` has a source line. `NameGraph.body`,
+  `NameGraph.claims` and `NameGraph.body_holders` read them. `build` is
+  the only place the parse tree is walked to find bodies; symbol
+  extraction, the reference edges, reference validation, the claim
+  collectors (Python, TypeScript, Haskell), `collect_run_bodies` and
+  `notlob run` read the graph, so a claim's address and number have one
+  owner. Additive to `name_graph.json` and `query_result.json`
+  (`sigil`, `body`, `imports` on `Content`). **Changes to be aware of:**
+  `add_references_edges(graph)` no longer takes the modules; claim nodes
+  are created by `build`, not `enrich`; the module's `code` no longer
+  repeats a `~run` body (it has its own node); a claim node's `code` keeps
+  leading blank lines. Also fixed: a `~run on-load` was made a `PROPERTY`
+  node named "on-load" (the graph compared the sigil to `~run` exactly),
+  and Haskell numbered unnamed `~property` claims with one counter for the
+  whole module while the graph numbered per body, so their addresses
+  differed. `DESIGN.md` states the completeness contract. See
+  `meta/bugs/2026-10-20-name-graph-incomplete` (what is still open:
+  `#Tests`, binding declarations, Turtle bodies).
+- New advisory `style` finding: an `~example` or `~property` written in an
+  `#Appendix` (directly or in one of its subheadings). Claims there are
+  legal and now run, but the design (the paper) places examples in the
+  exposition, supporting tests in `#Tests` and properties beside the prose
+  that motivates them, so it is discouraged. `~run` is not flagged. The
+  grammar may later ban them.
 - `schema/name_graph.json` rejected real output: a section containing a
   bullet list gets a `bullet_block_count` in its content, which the
   schema's `Content` did not allow, so `notlob graph --content` output

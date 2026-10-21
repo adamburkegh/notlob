@@ -192,8 +192,10 @@ class TestSchema:
         drift apart."""
         mine, graph = _schema()["definitions"], _schema("name_graph.json")[
             "definitions"]
-        assert mine["Node"] == graph["Node"]
-        assert mine["Content"] == graph["Content"]
+        shared = ("Node", "Content", "BodyItem", "ProseItem", "CodeItem",
+                  "BulletsItem", "ClaimItem", "Ref", "Import")
+        for name in shared:
+            assert mine[name] == graph[name], name
 
     def test_kind_enums_are_the_real_kinds(self):
         """Adding a NodeKind or EdgeKind without updating the schemas must

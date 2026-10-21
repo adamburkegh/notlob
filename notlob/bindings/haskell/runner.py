@@ -65,10 +65,11 @@ from typing import Any
 
 from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
-    claim_address, module_address, property_address, subheading_address,
+    Node, NodeKind, claim_lines, claims_of, module_address,
+    property_address,
 )
 from notlob.model import (
-    Claim, Module, NamedTest, Subheading, TestsSection, TestGroup,
+    Module, NamedTest, TestsSection, TestGroup,
 )
 from notlob.bindings.haskell.assemble import _merge_modules
 from notlob.bindings.haskell.symbols import extract_symbols
@@ -483,21 +484,18 @@ def _parse_property_output(
 # ── Claim collectors ──────────────────────────────────────────
 
 def _collect_example_assertions(
-    body: list,
-    containing_addr: str,
+    claims: list[Node],
     assertions: list[tuple[str, str, int | None]],
 ) -> None:
-    """Append (address, expression, source_line) from ~example claims."""
-    example_n = 0
-    for item in body:
-        if not (isinstance(item, Claim) and item.sigil == "~example"):
+    """Append (address, expression, source_line) from the ~example claim
+    nodes in *claims* (addresses and numbering come from the name-graph)."""
+    for claim in claims:
+        if claim.kind != NodeKind.EXAMPLE:
             continue
-        example_n += 1
-        addr = claim_address(containing_addr, "example", example_n)
-        base = (item.start_line + 1) if item.start_line else None
-        for expr, offset in _iter_assertions(item.lines):
+        base = (claim.start_line + 1) if claim.start_line else None
+        for expr, offset in _iter_assertions(claim_lines(claim)):
             sl = (base + offset) if base else None
-            assertions.append((addr, expr, sl))
+            assertions.append((claim.address, expr, sl))
 
 
 def _collect_tests_assertions(
@@ -601,14 +599,9 @@ def run_examples(
     If *keep_dir* is set the harness source is written there as
     ``_examples.hs`` before execution.
     """
-    mod_addr = module_address(module.title)
     assertions: list[tuple[str, str, int | None]] = []
 
-    _collect_example_assertions(module.body, mod_addr, assertions)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect_example_assertions(item.body, sub_addr, assertions)
+    _collect_example_assertions(claims_of(module), assertions)
 
     if not assertions:
         return []
@@ -683,66 +676,50 @@ def run_properties(
     If *keep_dir* is set each property harness is written there as
     ``_prop_<name>.hs`` before execution.
     """
-    mod_addr    = module_address(module.title)
     dep_modules = _load_dep_modules(module, file_path)
     results: list[ClaimResult] = []
-    prop_n = 0
 
-    def _run_prop_in(body: list, containing_addr: str) -> None:
-        nonlocal prop_n
-        for item in body:
-            if not (isinstance(item, Claim)
-                    and item.sigil.startswith("~property")):
-                continue
-            prop_n += 1
+    for claim in claims_of(module):
+        if claim.kind != NodeKind.PROPERTY:
+            continue
+        addr  = claim.address       # numbering is the name-graph's
+        sigil = claim.content["sigil"]
+        lines = claim_lines(claim)
+        sl    = claim.start_line
 
-            parts = item.sigil.split(None, 1)
-            if len(parts) > 1:
-                addr = property_address(containing_addr, parts[1].strip())
-            else:
-                addr = claim_address(containing_addr, "property", prop_n)
+        syms = extract_symbols(lines)
+        if not syms:
+            results.append(ClaimResult(
+                address=addr,
+                line=sigil,
+                status=Status.ERROR,
+                error=ValueError(
+                    "no function found in ~property block; "
+                    "define a top-level property function"
+                ),
+                source_line=sl,
+                file_path=str(file_path) if file_path else None,
+            ))
+            continue
 
-            sl = item.start_line
-
-            syms = extract_symbols(item.lines)
-            if not syms:
-                results.append(ClaimResult(
-                    address=addr,
-                    line=item.sigil,
-                    status=Status.ERROR,
-                    error=ValueError(
-                        "no function found in ~property block; "
-                        "define a top-level property function"
-                    ),
-                    source_line=sl,
-                    file_path=str(file_path) if file_path else None,
-                ))
-                continue
-
-            prop_name  = syms[0].name
-            safe_name  = re.sub(r"[^A-Za-z0-9_]", "_", prop_name)
-            harness    = _build_property_harness(
-                module, item.lines, addr, prop_name, dep_modules,
+        prop_name  = syms[0].name
+        safe_name  = re.sub(r"[^A-Za-z0-9_]", "_", prop_name)
+        harness    = _build_property_harness(
+            module, lines, addr, prop_name, dep_modules,
+        )
+        keep_path  = (
+            keep_dir / f"_prop_{safe_name}.hs"
+        ) if keep_dir else None
+        stdout, stderr, rc = _run_harness(
+            harness,
+            extra_packages=["QuickCheck"],
+            keep_path=keep_path,
+        )
+        results.append(
+            _parse_property_output(
+                stdout, stderr, rc, addr, sigil,
+                source_line=sl, file_path=file_path,
             )
-            keep_path  = (
-                keep_dir / f"_prop_{safe_name}.hs"
-            ) if keep_dir else None
-            stdout, stderr, rc = _run_harness(
-                harness,
-                extra_packages=["QuickCheck"],
-                keep_path=keep_path,
-            )
-            results.append(
-                _parse_property_output(
-                    stdout, stderr, rc, addr, item.sigil,
-                    source_line=sl, file_path=file_path,
-                )
-            )
-
-    _run_prop_in(module.body, mod_addr)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _run_prop_in(item.body, sub_addr)
+        )
 
     return results

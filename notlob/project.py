@@ -256,7 +256,7 @@ def build_package(
     _add_external_nodes(graph, root)
 
     # Fourth pass: add REFERENCES edges from prose #Label cross-references.
-    add_references_edges(graph, modules)
+    add_references_edges(graph)
 
     # Fifth pass: add USES edges from statically visible call references.
     if call_extractor is not None:

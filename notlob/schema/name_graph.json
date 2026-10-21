@@ -27,7 +27,7 @@
   },
   "definitions": {
     "Node": {
-      "description": "A named node: module, subheading, symbol, property, example, test, or external.",
+      "description": "A named node: module, subheading, appendix, symbol, property, example, run, test, or external.",
       "type": "object",
       "required": [
         "address",
@@ -55,7 +55,8 @@
             "EXAMPLE",
             "RUN",
             "TEST",
-            "EXTERNAL"
+            "EXTERNAL",
+            "APPENDIX"
           ]
         },
         "content": {
@@ -85,7 +86,93 @@
           "description": "Number of bullet lists (`* item` blocks) directly in the section. Present only when it is at least 1; the bullet items' text is part of `prose`.",
           "type": "integer",
           "minimum": 1
+        },
+        "sigil": {
+          "description": "On a claim node: the sigil as written, e.g. `~example`, `~property name`, `~run on-load`. A claim's lines are in `code`.",
+          "type": "string"
+        },
+        "body": {
+          "description": "On a module, subheading or appendix node: the items of its body, in document order. Subheadings are not body items; they are nodes, reached through CONTAINS.",
+          "type": "array",
+          "items": {"$ref": "#/definitions/BodyItem"}
+        },
+        "imports": {
+          "description": "On a module node: its `#References` lines, in order.",
+          "type": "array",
+          "items": {"$ref": "#/definitions/Import"}
         }
+      }
+    },
+    "BodyItem": {
+      "description": "One item of a node's body: a prose block, a code block, a bullet list, or a claim (by the address of its own node).",
+      "oneOf": [
+        {"$ref": "#/definitions/ProseItem"},
+        {"$ref": "#/definitions/CodeItem"},
+        {"$ref": "#/definitions/BulletsItem"},
+        {"$ref": "#/definitions/ClaimItem"}
+      ]
+    },
+    "ProseItem": {
+      "type": "object",
+      "required": ["kind", "text", "refs", "start_line"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "prose"},
+        "text": {"description": "The paragraph, with inline cross-references written with their `#` or `##` sigil.", "type": "string"},
+        "refs": {"description": "The cross-references in `text`, in order.", "type": "array", "items": {"$ref": "#/definitions/Ref"}},
+        "start_line": {"description": "1-based source line of the first line, or null if unknown.", "type": ["integer", "null"]}
+      }
+    },
+    "CodeItem": {
+      "type": "object",
+      "required": ["kind", "text", "start_line"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "code"},
+        "text": {"description": "The code block, dedented.", "type": "string"},
+        "start_line": {"type": ["integer", "null"]}
+      }
+    },
+    "BulletsItem": {
+      "type": "object",
+      "required": ["kind", "items", "start_line"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "bullets"},
+        "items": {"description": "The text of each bullet, without its marker.", "type": "array", "items": {"type": "string"}},
+        "start_line": {"type": ["integer", "null"]}
+      }
+    },
+    "ClaimItem": {
+      "type": "object",
+      "required": ["kind", "address", "start_line"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "claim"},
+        "address": {"description": "The address of the claim's own node, which holds its sigil and lines.", "type": "string"},
+        "start_line": {"description": "1-based source line of the claim's sigil.", "type": ["integer", "null"]}
+      }
+    },
+    "Ref": {
+      "description": "An inline cross-reference in prose.",
+      "type": "object",
+      "required": ["label", "sub", "start_line"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {"type": "string"},
+        "sub": {"description": "True for a `##Label` reference (a subheading of this module), false for `#Label`.", "type": "boolean"},
+        "start_line": {"type": ["integer", "null"]}
+      }
+    },
+    "Import": {
+      "description": "One line of a module's `#References`.",
+      "type": "object",
+      "required": ["text", "lob_ref", "start_line"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {"type": "string"},
+        "lob_ref": {"description": "True for a reference to another lob module (`#Title`), false for a language import, passed through verbatim.", "type": "boolean"},
+        "start_line": {"type": ["integer", "null"]}
       }
     },
     "Edge": {

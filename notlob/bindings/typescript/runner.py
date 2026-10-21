@@ -69,10 +69,11 @@ from typing import Any, Generator
 
 from notlob.bindings import ClaimResult, Status
 from notlob.graph import (
-    claim_address, module_address, property_address, subheading_address,
+    Node, NodeKind, claim_lines, claims_of, module_address,
+    property_address,
 )
 from notlob.model import (
-    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
+    Module, NamedTest, TestGroup, TestsSection,
 )
 from notlob.bindings.typescript.assemble import assemble
 from notlob.bindings.typescript.tokenizer import find_split, is_complete
@@ -415,48 +416,37 @@ def _assembly_error(
 # ── Section collectors ────────────────────────────────────────
 
 def _collect_property_calls(
-    body:            list,
-    containing_addr: str,
-    out_calls:       list[str],
-    out_addrs:       list[str],
-    out_sigils:      list[str],
-    out_lines:       list[int | None],
+    claims:     list[Node],
+    out_calls:  list[str],
+    out_addrs:  list[str],
+    out_sigils: list[str],
+    out_lines:  list[int | None],
 ) -> None:
-    """Collect ~property blocks from *body* into parallel output lists."""
-    prop_n = 0
-    for item in body:
-        if not (isinstance(item, Claim) and item.sigil.startswith('~property')):
+    """Collect the ~property claim nodes in *claims* into parallel output
+    lists (addresses and numbering come from the name-graph)."""
+    for claim in claims:
+        if claim.kind != NodeKind.PROPERTY:
             continue
-        prop_n += 1
-        parts     = item.sigil.split(None, 1)
-        prop_name = parts[1].strip() if len(parts) > 1 else None
-        addr      = (
-            property_address(containing_addr, prop_name)
-            if prop_name else
-            claim_address(containing_addr, 'property', prop_n)
-        )
-        out_calls.append(_property_call(addr, item.sigil, item.lines))
-        out_addrs.append(addr)
-        out_sigils.append(item.sigil)
-        out_lines.append(item.start_line)
+        sigil = claim.content['sigil']
+        out_calls.append(_property_call(claim.address, sigil, claim_lines(claim)))
+        out_addrs.append(claim.address)
+        out_sigils.append(sigil)
+        out_lines.append(claim.start_line)
 
 
 def _collect_example_claims(
-    body:            list,
-    containing_addr: str,
-    out:             list[str],
-    out_lines:       list[int | None] | None = None,
+    claims:    list[Node],
+    out:       list[str],
+    out_lines: list[int | None] | None = None,
 ) -> None:
-    """Append ``__runClaim(...)`` lines for ~example blocks in *body*."""
-    example_n = 0
-    for item in body:
-        if not (isinstance(item, Claim) and item.sigil == '~example'):
+    """Append ``__runClaim(...)`` lines for the ~example claim nodes in
+    *claims* (addresses and numbering come from the name-graph)."""
+    for claim in claims:
+        if claim.kind != NodeKind.EXAMPLE:
             continue
-        example_n += 1
-        addr = claim_address(containing_addr, 'example', example_n)
-        base = (item.start_line + 1) if item.start_line else None
-        for expr, offset in _iter_assertions(item.lines):
-            out.append(_claim_call(addr, expr))
+        base = (claim.start_line + 1) if claim.start_line else None
+        for expr, offset in _iter_assertions(claim_lines(claim)):
+            out.append(_claim_call(claim.address, expr))
             if out_lines is not None:
                 out_lines.append(
                     (base + offset) if base else None
@@ -593,11 +583,7 @@ def run_examples(
 
     claim_calls: list[str] = []
     src_lines: list[int | None] = []
-    _collect_example_claims(module.body, mod_addr, claim_calls, src_lines)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect_example_claims(item.body, sub_addr, claim_calls, src_lines)
+    _collect_example_claims(claims_of(module), claim_calls, src_lines)
 
     if not claim_calls:
         return []
@@ -685,14 +671,8 @@ def run_properties(
     src_lines:   list[int | None] = []
 
     _collect_property_calls(
-        module.body, mod_addr, prop_calls, prop_addrs, prop_sigils, src_lines,
+        claims_of(module), prop_calls, prop_addrs, prop_sigils, src_lines,
     )
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect_property_calls(
-                item.body, sub_addr, prop_calls, prop_addrs, prop_sigils, src_lines,
-            )
 
     if not prop_calls:
         return []

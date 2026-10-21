@@ -28,6 +28,7 @@ from notlob.bindings.haskell.runner import (
     run_properties,
 )
 from notlob.model import (
+    AppendixSection,
     Claim,
     CodeBlock,
     Module,
@@ -300,6 +301,17 @@ class TestRunExamplesIntegration:
         results = self._run("answer = 42", ["answer == 42"])
         assert len(results) == 1
         assert results[0].status == Status.PASS
+
+    def test_example_in_an_appendix_is_run(self):
+        """An #Appendix is a regular body: its code is in scope and its
+        claims are collected (meta/bugs/2026-10-19-appendix-not-in-graph)."""
+        m = _module("Test Module")
+        m.post_text = PostText(sections=[AppendixSection(
+            title="#Appendix",
+            body=[_code("answer = 42"), _example(["answer == 42"])],
+        )])
+        results = run_examples(m)
+        assert [r.status for r in results] == [Status.PASS]
 
     def test_failing_example(self):
         results = self._run("answer = 42", ["answer == 99"])

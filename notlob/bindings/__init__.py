@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Generator, Sequence
 
-from ..model import Claim, CodeBlock, Module, Subheading
+from ..model import CodeBlock, Module
 
 
 # ── Claim result types ────────────────────────────────────────
@@ -215,9 +215,9 @@ def assemble_section(
 
 def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
     """Return ``(on_load_bodies, on_invocation_bodies)`` -- dedented,
-    stripped text for each ``~run`` claim in *module* (module body and
-    subheadings), grouped by declared mode and preserving document
-    order within each group.
+    stripped text for each ``~run`` claim in *module* (wherever it is
+    written: the body, a subheading, an ``#Appendix``), grouped by
+    declared mode and preserving document order within each group.
 
     Bare ``~run`` defaults to ``on-invocation`` -- the notlob
     equivalent of ``if __name__ == "__main__":`` (see DESIGN.md).
@@ -226,6 +226,9 @@ def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
     binding's ``build()`` does with that distinction -- or whether it
     supports ``on-load`` at all -- is entirely up to that binding.
     """
+    # graph imports this package, so import it here.
+    from notlob.graph import NodeKind, claim_lines, claims_of
+
     on_load: list[str] = []
     on_invocation: list[str] = []
 
@@ -233,21 +236,17 @@ def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
         parts = sigil.split(None, 1)
         return parts[1] if len(parts) > 1 else "on-invocation"
 
-    def _collect(body: list) -> None:
-        for item in body:
-            if isinstance(item, Claim) and item.sigil.startswith("~run"):
-                text = textwrap.dedent("\n".join(item.lines)).strip()
-                if not text:
-                    continue
-                target = (
-                    on_load if _mode(item.sigil) == "on-load"
-                    else on_invocation
-                )
-                target.append(text)
-            elif isinstance(item, Subheading):
-                _collect(item.body)
-
-    _collect(module.body)
+    for claim in claims_of(module):
+        if claim.kind != NodeKind.RUN:
+            continue
+        text = "\n".join(claim_lines(claim)).strip()
+        if not text:
+            continue
+        target = (
+            on_load if _mode(claim.content["sigil"]) == "on-load"
+            else on_invocation
+        )
+        target.append(text)
     return on_load, on_invocation
 
 
