@@ -54,6 +54,26 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
+- **Behaviour change:** a `#References` listing no longer loads the listed
+  module unless it is used. Modules may now list each other (an overview
+  that cites its parts; parts that list the overview, or siblings that cite
+  one another), which used to load a module's code before the code it
+  needed and fail with a `NameError`. A module's code is loaded after the
+  code of every module it *needs*: one it lists whose names its code
+  (body or claims) refers to, less names it defines itself, outside strings
+  and comments; and what those need. A listing nothing uses is a citation
+  and loads nothing. A cycle of need is now an error that names the cycle
+  (`ERROR <imports> circular code dependency: a -> b -> a`) instead of a
+  `NameError`. Python only: TypeScript's and Haskell's reference
+  extraction is not complete (calls only; lowercase names only), so those
+  bindings keep loading every listing except one of a descendant module
+  (`BindingKit.complete_references`, new and defaulting to false). The
+  rules are in `DESIGN.md` ("Listing, citing and loading") and
+  `LANGUAGE.md`. What breaks: a module that lists another only for its
+  side effects, or that uses an unlisted module's name that happened to be
+  loaded through a listed one (lint reported both already as `F821`). Run
+  `notlob test` over your project. See
+  `meta/bugs/2026-10-22-mutual-references/bug.md`.
 - **Breaking:** the Turtle export (`notlob graph --format turtle`).
   The vocabulary namespace was `https://notlob.dev/ns#`, a domain nobody
   here controls; it is now `urn:notlob:ns:`, an informal namespace (it
@@ -118,6 +138,35 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
+- The name-graph's `USES` edges missed everything a multi-line `#Tests`
+  group (or named `~test`) used. The node's code was stripped as a whole
+  after joining, leaving the first line unindented and the rest indented,
+  which does not parse, so call extraction silently returned nothing. The
+  code is now dedented as a block. A consequence of the same code being
+  empty of references: `[imports]` could report a module used only from
+  `#Tests` as unused.
+- **Python claims ran with the harness script's `__file__`.** A module that
+  finds files relative to itself (`Path(__file__).parent.parent / "data"`)
+  worked under the original in-process loader but, since claims moved to a
+  subprocess harness, looked for them next to a temp script. `__file__` is
+  now the module's `.lob` path in claims (a built artifact carries no
+  source path). Found by running the example projects end to end, which
+  no test did: `examples/gutenberg` was broken, and also had three
+  placeholder-less f-strings (lint) and a `##` reference to a module that
+  never resolved; both fixed in the example. See
+  `meta/bugs/2026-10-22-python-claims-file-attribute`.
+- **Python and Haskell loaded only a module's direct `#References`.** A
+  module `Top` that lists only `Middle`, where `Middle` lists `Base` and
+  uses it when loaded, failed with a `NameError` (or a compile error) from
+  Middle's own code, although `notlob test` on Middle passed; listing
+  `Base` in `Top` made it run but earned an `[imports]` "unused import"
+  error. Claims and `notlob build` now load a module's dependencies
+  transitively, dependencies first, each once, in every binding
+  (TypeScript already did), through one shared
+  `project.load_dependency_modules`. What a module may *use* is unchanged:
+  the Python linter still reports a name from a module it did not list.
+  `LANGUAGE.md` now defines this once for every binding. See
+  `meta/bugs/2026-10-21-transitive-lob-refs`.
 - **`#Appendix` was invisible to the name-graph and to claim collection.**
   The grammar defines an Appendix as the same thing as the module body,
   but most of the code that walks a module looked only at the body:

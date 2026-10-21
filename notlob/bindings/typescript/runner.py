@@ -237,17 +237,12 @@ def _build_module_source(module: Module, root: Path | None) -> str:
     parts: list[str] = []
 
     if root is not None:
-        from notlob import from_tree, parse_file
-        from notlob.project import transitive_lob_refs, resolve_module_path
-        for dep_addr in transitive_lob_refs(module, root):
-            try:
-                dep_path = resolve_module_path(dep_addr, root)
-                dep_mod  = from_tree(parse_file(dep_path))
-                dep_src  = assemble(dep_mod)
-                if dep_src:
-                    parts.append(dep_src)
-            except Exception:
-                pass   # missing dep surfaces as a claim execution error
+        from notlob.bindings.typescript import kit
+        from notlob.project import load_dependency_modules
+        for dep_mod in load_dependency_modules(module, root, kit):
+            dep_src = assemble(dep_mod)
+            if dep_src:
+                parts.append(dep_src)
 
     mod_src = assemble(module)
     if mod_src:

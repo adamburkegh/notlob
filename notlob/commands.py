@@ -44,7 +44,8 @@ from notlob.model import BindingSection
 from notlob.project import (
     address_from_path,
     build_package,
-    find_project_root, module_lob_refs, resolve_module_path,
+    LobRefCycleError, find_project_root, lob_ref_cycle, module_lob_refs,
+    resolve_module_path,
 )
 
 
@@ -545,6 +546,11 @@ def _test_module(
     if ref_graph is not None:
         for ref_err in validate_refs(ref_graph, module):
             doc_errors.append(f"ERROR  <refs>  {ref_err}")
+
+    if root is not None:
+        cycle = lob_ref_cycle(module, root, kit)
+        if cycle is not None:
+            doc_errors.append(f"ERROR  <imports>  {LobRefCycleError(cycle)}")
 
     if doc_errors:
         for msg in doc_errors:

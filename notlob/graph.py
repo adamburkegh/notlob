@@ -915,6 +915,14 @@ def build(module: Module) -> NameGraph:
     return graph
 
 
+def _assertion_source(lines: list[str]) -> str:
+    """The source of a block of ``#Tests`` assertion lines, dedented as a
+    whole: stripping first would leave the first line unindented and the
+    rest indented, which no language parses, so every consumer of the
+    node's code (call extraction, the ``USES`` edges) saw nothing."""
+    return textwrap.dedent("\n".join(lines)).strip()
+
+
 def _add_named_tests(
     graph: NameGraph,
     items: list,
@@ -931,7 +939,7 @@ def _add_named_tests(
         if not isinstance(item, NamedTest):
             continue
         addr = property_address(containing_addr, item.name)
-        source = "\n".join(item.lines).strip()
+        source = _assertion_source(item.lines)
         graph.add_node(Node(
             address=addr,
             label=item.name,
@@ -970,7 +978,7 @@ def _add_tests(
         elif isinstance(item, TestGroup):
             group_addr = f"{tests_addr}#{item.title}"
             bare_lines = [i for i in item.items if isinstance(i, str)]
-            source = "\n".join(bare_lines).strip()
+            source = _assertion_source(bare_lines)
             graph.add_node(Node(
                 address=group_addr,
                 label=item.title,
@@ -991,7 +999,7 @@ def _add_tests(
             item for item in tests_section.items
             if isinstance(item, str)
         ]
-        source = "\n".join(bare_lines).strip()
+        source = _assertion_source(bare_lines)
         bare_start = None
         if tests_section.line_offsets:
             first_bare_idx = next(

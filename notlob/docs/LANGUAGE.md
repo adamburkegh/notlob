@@ -284,10 +284,41 @@ Two kinds of entry:
   verbatim to the language runtime.
 
 Lob module imports must be declared explicitly. There is no implicit
-package import; each module lists exactly what it uses.
+package import (not for siblings, not for the project); each module lists
+exactly what it uses or cites.
 
-Exactly which names a lob-ref brings into scope depends on the binding;
-see [Toolchains](#toolchains).
+**Listing, citing and loading.** A listing says this module is in
+conversation with that one. It does three separate things:
+
+- **Citing.** A prose `#Name` that names a module resolves only if the
+  module is listed. Siblings list each other to cite one another.
+- **Using.** A module may use only names from modules it lists. The
+  Python linter reports a name from an unlisted module as undefined.
+- **Loading.** A module runs with the code of the modules it *needs*: those
+  it lists whose names its code uses (calls, references, in the body or in
+  its claims; a name inside a string or comment does not count), and what
+  those need, each once and before it. A listing that the code does not
+  use is a *citation*: it loads nothing.
+
+So if `Top` lists `Middle` and `Middle` lists `Base`, `Middle`'s code can
+use `Base` whether it is loaded by itself or by `Top`: a module that works
+on its own works when another module uses it, and `Top` need not list
+`Base` just to make `Middle` run.
+
+**Listings may be circular.** An overview module can list the parts it
+explains and cite them in prose; the parts can list the overview, or
+anything above them. Only a cycle of *need* is an error: if `A`'s code
+uses names `B` defines and `B`'s code uses names `A` defines, no load order
+exists, and `notlob test` reports `circular code dependency: a -> b -> a`.
+Cycles made of citations are fine.
+
+A listing you neither use in code nor mention in prose is an `[imports]`
+error. A module is not loaded just because it is listed, so do not list
+one in the hope of running its top-level code; use it. Where a binding
+cannot tell what a module uses, the address tree decides: a listing of a
+descendant is a citation and any other listing is loaded. Anything else a
+lob-ref does or does not bring into scope depends on the binding; see
+[Toolchains](#toolchains).
 
 ### #Appendix
 
@@ -371,7 +402,9 @@ against the name-graph.
 
 - `##Name` — refers to a subheading in the current module.
 - `#Name` — resolves in order: symbol in current module, subheading in
-  current module, module declared in `#References`.
+  current module, module listed in `#References`. A module that is not
+  listed does not resolve, however near it is: the scope of a citation is
+  what the author lists, as in a paper's bibliography.
 
 A reference's first letter must be uppercase (or, for scripts with no
 case distinction at all — CJK, Arabic, Hebrew, Thai, Devanagari, etc.

@@ -144,6 +144,15 @@ class BindingKit:
     build            (module, file_path=None) -> str, the assembly used
                      by ``notlob build``, or None when the binding
                      doesn't support it.
+    complete_references
+                     True when ``extract_calls`` reports every name the
+                     code refers to (not only calls), outside strings and
+                     comments.  Loading follows use only for a binding
+                     that sets this: a listed module whose names the
+                     code does not refer to is then a citation and is not
+                     loaded.  False (the default) means use cannot be
+                     determined, and every listing except one of a
+                     descendant module is loaded.
 
     Runner and lint callables are typed as Callable[..., list] to avoid
     a circular import; element types are ClaimResult and LintResult
@@ -159,6 +168,7 @@ class BindingKit:
     extension:       str                        = "py"
     comment_prefix:  str                        = "#"
     build:           Callable[..., str]  | None = None
+    complete_references: bool                   = False
 
 
 # ── Lint result type ──────────────────────────────────────────

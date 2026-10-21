@@ -7,7 +7,7 @@ functions here are independent of any particular text; they apply
 uniformly to any Gutenberg play or novel.
 
 A second text — Titus Andronicus, say, or The Great Gatsby — would
-be a module of the same shape as ##Gutenberg Hamlet, importing this
+be a module of the same shape as #Gutenberg Hamlet, importing this
 one for the analysis machinery.
 
 ##Loading
@@ -103,6 +103,7 @@ the whole basis of the parse.
     parse_speakers("hamlet.\n") == Counter()
 
 #References
+    #Gutenberg Hamlet
     from pathlib import Path
     from collections import Counter
     import re

@@ -189,11 +189,10 @@ def _load_dep_modules(
     module: Module,
     file_path: Path | None,
 ) -> list[Module]:
-    """Return the lob-ref dependency modules of *module* in declaration order.
+    """Return the modules *module*'s code needs, dependencies first.
 
-    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
-    section to its ``.lob`` file under the project root, parses it, and
-    returns the resulting Module objects.  Dependencies that cannot be
+    Its lob-refs, theirs, and so on, each once (see
+    ``project.load_dependency_modules``).  Dependencies that cannot be
     found or parsed are silently skipped — GHC will report the missing
     symbol as a compile error, which is surfaced through the normal
     claim-result machinery.
@@ -204,28 +203,17 @@ def _load_dep_modules(
     if file_path is None:
         return []
 
-    # Lazy imports: keep runner.py free of top-level circular deps
+    # Lazy import: keep runner.py free of top-level circular deps
     from notlob.project import (           # noqa: PLC0415
         find_project_root,
-        module_lob_refs,
-        resolve_module_path,
+        load_dependency_modules,
     )
-    from notlob.parser import parse_file   # noqa: PLC0415
-    from notlob.model import from_tree     # noqa: PLC0415
 
     root = find_project_root(file_path)
     if root is None:
         return []
-
-    result: list[Module] = []
-    for dep_addr in module_lob_refs(module):
-        try:
-            dep_path = resolve_module_path(dep_addr, root)
-            result.append(from_tree(parse_file(dep_path)))
-        except Exception:
-            pass  # missing dep — will surface as GHC compile error
-
-    return result
+    from notlob.bindings.haskell import kit  # noqa: PLC0415
+    return load_dependency_modules(module, root, kit)
 
 
 # ── Harness builders ──────────────────────────────────────────

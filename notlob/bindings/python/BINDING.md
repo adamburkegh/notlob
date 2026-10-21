@@ -50,11 +50,19 @@ by name:
 
 **`#References`:** language imports are passed through verbatim, so
 ordinary conventions apply (a blank line between import groups, a
-parenthesised multi-line import). A lob-ref brings in the referenced
-module's own top-level names, including its `#Appendix`, but not what it
-imports: import `json` yourself even if the dependency does. Claims
-happen to run with the dependency inlined whole, imports included, so
-leaning on its imports can run but fails lint with `F821`.
+parenthesised multi-line import). Everything a module *needs*, the
+lob-refs whose names its code uses and what those need in turn, is
+inlined before it, dependencies first, each once (imports included), for
+claims and for `notlob build` alike. A lob-ref the code does not use is a
+citation and is not inlined, so two modules may list each other; a cycle
+of use is an error. Use is every name the code, or a claim, refers to,
+less names the module defines itself, outside strings and comments (this
+binding's reference extraction is complete). What lint treats as in scope
+is narrower: the referenced module's own top-level names, including its
+`#Appendix`, but not what it imports (import `json` yourself even if the
+dependency does), and only for modules the module lists. A name that only
+a transitive dependency defines is `F821`, though it would run if a
+module the module does use needs that dependency.
 
 ## Static call analysis
 
@@ -117,6 +125,12 @@ values on failure for `a == b`.
 `~example` claims, `#Tests` assertions and `~property` blocks run as
 three separate batches, each in its own subprocess, so module-level work
 (reading a file, an expensive import) runs once per batch.
+
+In a claim, the module's own `__file__` is the `.lob` file it is written in,
+so code can find files relative to the source
+(`Path(__file__).parent.parent / "data"`). A dependency inlined before the
+module still sees the harness script's path when it loads. A built artifact
+has no such path: it is portable.
 
 Each claim batch is assembled into a self-contained harness script
 (with lob-ref dependencies inlined, matching `notlob build`) and run

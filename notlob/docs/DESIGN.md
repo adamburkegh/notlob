@@ -210,6 +210,65 @@ signal they belong in one module. Explicit imports make the dependency
 graph readable directly from source; the `#References` list is a true
 bibliography.
 
+**Listing, citing and loading.** A `#References` entry records one
+fact, that this module is in conversation with that one, and the tooling
+reads it three ways. Keeping the three apart is what lets modules list
+each other.
+
+*Terms.* A module A *lists* B when A's `#References` contains `#B`. A
+*cites* B when A's prose mentions `#B`. *Defined(B)* is the top-level
+names in B's own code (body, subheadings, `#Appendix`; not its claims or
+imports). *Used(A)* is the names A's code and claims statically refer to,
+less builtins and less names A defines itself; strings and comments do
+not count. It is the binding's own call extraction, the one the `USES`
+edges come from. A *needs* B when A lists B and Used(A) meets Defined(B).
+
+1. **Citing needs listing.** A prose `#B` that names a module resolves
+   only if A lists B. The scope of a citation is authored, never ambient:
+   not the package, not the project. A bare name resolved project-wide
+   would collide as projects, and chains of libraries, grow, and
+   traceability is the point: which modules is this argument in
+   conversation with, and why. That is a scholarly paper's bibliography,
+   and like one it is written by the author, not discovered. This is
+   also why there is no implicit sibling scope (the Java package rule
+   rejected above): siblings list each other to cite, as to use.
+2. **Listing is free.** Any module may list any other, including two that
+   list each other: an overview that lists the parts it explains, parts
+   that list the overview or anything above it, siblings that cite one
+   another. Listing creates an `IMPORTS` edge and nothing else.
+3. **Loading follows need.** A's code is loaded after the code of every
+   module A needs, and of what those need, each once, in listing order. A
+   listing that A's code does not need is a citation and loads nothing.
+   `notlob test`, `run` and `build` load the same set.
+4. **Visibility.** A may use only names from modules it lists. Lint
+   enforces it where the binding can.
+5. **A cycle of need is an error.** It is reported with the cycle named
+   (`a -> b -> a`), wherever the modules sit in the address tree. Modules
+   are inlined into one namespace and run top to bottom, so no order
+   exists. A cycle of citations is not a cycle.
+6. **When use cannot be determined**, because the binding's reference
+   extraction is not complete or a module's names cannot be read, the
+   address tree decides: a listing of a descendant is a citation, and
+   any other listing is treated as a need. The tree is a fallback, never
+   a rule for resolving references. A binding says whether its extraction
+   is complete (`BindingKit.complete_references`). Python's is: every
+   name the code refers to. TypeScript's sees only calls and Haskell's
+   only lowercase names, so today they load every listing except one of a
+   descendant, as before, and two sibling modules that list each other
+   are a cycle there until their extraction is widened.
+7. **Listing is not a request for side effects.** A module the listing
+   module does not need is not loaded, so its top-level effects do not
+   run. To depend on a module's code, use it.
+
+The scale this is for: an overview module that explains the structure of
+a part of the project and lists the parts; parts that list their overview
+or the shared modules above them; a library chain in which the label
+namespace is large and a reader needs to see why one module mentions
+another. The Gutenberg example is the small case: `corpus` cites `hamlet`
+in prose (a second text "would be a module of the same shape") and lists
+it; `hamlet` lists `corpus` and uses its code. Only the second listing
+loads anything.
+
 **Python-level imports are transitive across lob boundaries — by binding
 design, not by notlob rule.** When module B declares
 `from decimal import Decimal`, that name is visible to any lob module
@@ -260,11 +319,12 @@ is a live cross-reference to the constant definition, with the same
 hyperlink semantics as a subheading or module reference. All named
 things are first-class in prose.
 
-This means `#References` does double duty: it is a bibliography
-(acknowledging what the argument depends on) and a scope declaration
-(bringing module labels into reference resolution context). An
-unresolved reference is an error; the name-graph is closed-world.
-Cross-references are machine-validated against the name-graph.
+`#References` is both a bibliography (acknowledging what the argument
+depends on or mentions) and a scope declaration (bringing module labels
+into reference resolution context); see "Listing, citing and loading"
+above for what each reading means to the tooling. An unresolved
+reference is an error; the name-graph is closed-world. Cross-references
+are machine-validated against the name-graph.
 
 **`binding.lob` is a reserved structural filename.** Each project root
 contains a `binding.lob` that declares the execution substrate and

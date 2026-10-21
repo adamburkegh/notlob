@@ -144,7 +144,9 @@ def assemble(module: Module) -> str:
     return result
 
 
-def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
+def assemble_with_deps(
+    module: Module, dep_modules: list[Module], module_prelude: str = "",
+) -> str:
     """Assemble *module* with *dep_modules* inlined before it.
 
     Used by ``build_python`` so a build artifact is genuinely
@@ -157,12 +159,19 @@ def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
     separate import-merging step is needed. Mirrors
     ``notlob.bindings.haskell.assemble.assemble_with_deps``.
 
+    *module_prelude*, if given, is a line of code placed between the
+    dependencies and the module's own code (the claim runners use it to
+    set ``__file__`` to the module's ``.lob`` path; a build does not, so
+    an artifact carries no source path).
+
     Returns an empty string if neither the module nor any dependency
     contains code.
     """
     chunks = [text for dep in dep_modules if (text := assemble(dep))]
     own = assemble(module)
     if own:
+        if module_prelude:
+            chunks.append(module_prelude)
         chunks.append(own)
     return "\n\n\n".join(chunks)
 

@@ -50,6 +50,21 @@ trust.
 Only the top 25 were listed; per-file totals and the long tail of the
 remaining ~1300 tests still need measuring.
 
+## No unit / functional distinction (found 2026-10-22)
+
+There is one pytest configuration (`testpaths = ["tests", "notlob"]`,
+`--doctest-modules`), no markers and no `conftest.py`. Pure unit tests
+(parser, model) and subprocess-heavy ones (runners, CLI, a real venv) sit
+in one directory and run in one pass. There was also no functional test of
+the whole product: nothing ran `notlob test` over a project. The first
+one, `tests/test_example_projects.py`, runs `notlob test` and `notlob build`
+over every project under `examples/` (discovered, so a new example is
+covered), and the first time it ran it found a real bug
+(`2026-10-22-python-claims-file-attribute`) plus two defects in the
+Gutenberg example; the Haskell and TypeScript examples had never been run
+by any test. A marker such as `functional` (and `unit` by default) would
+let the fast loop and the full run be chosen; see "Method" step 5.
+
 ## Method
 
 1. `pytest --durations=50` (and per-file totals) for a real picture

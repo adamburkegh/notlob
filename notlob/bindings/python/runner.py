@@ -431,14 +431,12 @@ def _load_dep_modules(
     module: Module,
     file_path: Path | None,
 ) -> list[Module]:
-    """Return the lob-ref dependency modules of *module* in declaration order.
+    """Return the modules *module*'s code needs, dependencies first.
 
-    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
-    section to its ``.lob`` file under the project root, parses it, and
-    returns the resulting Module objects. Dependencies that cannot be
-    found or parsed are silently skipped -- the resulting NameError at
-    execution time surfaces the missing symbol, same as a real import
-    error would.
+    Its lob-refs, theirs, and so on, each once (see
+    ``project.load_dependency_modules``). Dependencies that cannot be
+    found or parsed are skipped -- the resulting NameError at execution
+    time surfaces the missing symbol, same as a real import error would.
 
     Returns an empty list when *file_path* is ``None`` (no project
     context available) or when no project root is found.
@@ -446,25 +444,15 @@ def _load_dep_modules(
     if file_path is None:
         return []
 
+    from notlob.bindings.python import kit  # noqa: PLC0415
     from notlob.project import (           # noqa: PLC0415
-        find_project_root, module_lob_refs, resolve_module_path,
+        find_project_root, load_dependency_modules,
     )
-    from notlob.parser import parse_file   # noqa: PLC0415
-    from notlob.model import from_tree     # noqa: PLC0415
 
     root = find_project_root(file_path)
     if root is None:
         return []
-
-    result: list[Module] = []
-    for dep_addr in module_lob_refs(module):
-        try:
-            dep_path = resolve_module_path(dep_addr, root)
-            result.append(from_tree(parse_file(dep_path)))
-        except Exception:
-            pass  # missing dep — will surface as a NameError at exec time
-
-    return result
+    return load_dependency_modules(module, root, kit)
 
 
 def _module_source(module: Module, file_path: Path | None) -> str:
@@ -473,7 +461,14 @@ def _module_source(module: Module, file_path: Path | None) -> str:
     execution time, so dependency source has to be inlined directly,
     same as ``build_python``."""
     dep_modules = _load_dep_modules(module, file_path)
-    return assemble_with_deps(module, dep_modules)
+    # The module's own `__file__` is the .lob file it is written in, as
+    # it was under the original in-process loader; the harness script
+    # would otherwise be what code sees. Limitation: it is one shared
+    # namespace, so a dependency inlined before the module still sees the
+    # harness script when it loads, and the module's path afterwards.
+    prelude = (f"__file__ = {str(Path(file_path).resolve())!r}"
+               if file_path is not None else "")
+    return assemble_with_deps(module, dep_modules, prelude)
 
 
 # ── Claim collection (parsing-only, no execution) ───────────────
