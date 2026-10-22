@@ -263,15 +263,32 @@ class TestSpecifics:
         assert g.node("mod#f").kind == NodeKind.SYMBOL
         assert g.body("mod#f") == []
 
-    def test_prose_and_code_concatenations_are_kept(self):
-        """The existing `prose` and `code` content (used by checks and
-        `query content`) is unchanged by the addition of the body."""
+    def test_a_body_holder_stores_its_text_once(self):
+        """The text is in `body` and nowhere else on the node. (It was
+        briefly also stored as concatenated `prose` and `code`, which
+        doubled the size of `query content`.) What the checks and the
+        Turtle export read is derived from the body."""
         _mod, g = _graph(
             "#Mod\n\nSome prose.\n\n    x = 1\n\nMore prose.\n")
         content = g.node("mod").content
-        assert "Some prose." in content["prose"]
-        assert "More prose." in content["prose"]
-        assert content["code"].strip() == "x = 1"
+        assert "prose" not in content and "code" not in content
+        assert g.prose("mod") == "Some prose.\n\nMore prose."
+        assert g.code("mod").strip() == "x = 1"
+
+    def test_the_text_appears_once_in_the_serialised_node(self):
+        """In the structural graph. (After `enrich`, a symbol node also
+        carries its own source, as a node of its own.)"""
+        g = build(from_tree(parse(
+            "#Mod\n\nA distinctive sentence.\n\n"
+            "    DISTINCTIVE = 1\n")))
+        dumped = json.dumps(g.to_dict(include_content=True))
+        assert dumped.count("A distinctive sentence.") == 1
+        assert dumped.count("DISTINCTIVE = 1") == 1
+
+    def test_a_non_body_node_still_carries_its_own_source(self):
+        _mod, g = _graph("#Mod\n\n    def f():\n        return 1\n")
+        assert "def f" in g.node("mod#f").content["code"]
+        assert g.code("mod#f") == g.node("mod#f").content["code"]
 
     def test_bodies_survive_a_merge(self):
         _mod, g = _graph("#Mod\n\nText.\n")

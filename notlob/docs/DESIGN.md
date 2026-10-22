@@ -490,6 +490,15 @@ gives the address of the claim's own node, which holds its `sigil` and
 its lines; `graph.claims(module_address)` lists a module's claim nodes in
 document order.
 
+**A body is stored once.** A node's text is in its `body` and nowhere else
+on the node: there is no second, concatenated copy. What a reader wants as
+one string (a check reading a section's prose, the Turtle export's
+`notlob:prose`) is derived from the body, by `NameGraph.prose(address)` and
+`NameGraph.code(address)`. A copy beside the body costs every consumer of
+the graph twice, and none more than `notlob query content`, which exists to
+be the cheap way for an agent to read one section. (Symbol and claim nodes
+carry their own source in `code`: they are nodes of their own with no body.)
+
 **Binding kit architecture:** A binding is not a single function; it is a
 kit of cooperating tools that share a language substrate. The binding
 layer is organised language-first: each binding lives in its own

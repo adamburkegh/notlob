@@ -374,6 +374,35 @@ class NameGraph:
             return []
         return list(node.content.get("body", []))
 
+    def prose(self, address: str) -> str:
+        """The prose of the node at *address*: its paragraphs and bullet
+        lists, in order, a blank line apart (inline references with their
+        sigils). Derived from :meth:`body`, which is the only place the
+        text is stored. Empty for a node that holds no body."""
+        blocks: list[str] = []
+        for entry in self.body(address):
+            if entry["kind"] == "prose":
+                blocks.append(entry["text"])
+            elif entry["kind"] == "bullets":
+                blocks.append("\n".join(entry["items"]))
+        return "\n\n".join(b.strip() for b in blocks if b.strip())
+
+    def code(self, address: str) -> str:
+        """The code of the node at *address*. For a node that holds a
+        body (module, subheading, ``#Appendix``) its code blocks, dedented
+        and a blank line apart, derived from :meth:`body`; for any other
+        node (a symbol, a claim, a ``#Tests`` group) the source it
+        carries. Empty if it has none."""
+        node = self._nodes.get(address)
+        if node is None or not node.content:
+            return ""
+        if "body" in node.content:
+            return "\n\n".join(
+                e["text"] for e in node.content["body"]
+                if e["kind"] == "code"
+            )
+        return node.content.get("code", "")
+
     def claims(self, module_address_: str) -> list[Node]:
         """The claim nodes (EXAMPLE, PROPERTY, RUN) of the module at
         *module_address_*, in document order. A claim's node holds its
@@ -586,14 +615,12 @@ class NameGraph:
                     f"    notlob:startLine {node.start_line} ;"
                 )
             if include_content and node.content:
-                if node.content.get("prose"):
-                    lines.append(
-                        f"    notlob:prose {_long_lit(node.content['prose'])} ;"
-                    )
-                if node.content.get("code"):
-                    lines.append(
-                        f"    notlob:code {_long_lit(node.content['code'])} ;"
-                    )
+                prose = self.prose(node.address)
+                if prose:
+                    lines.append(f"    notlob:prose {_long_lit(prose)} ;")
+                code = self.code(node.address)
+                if code:
+                    lines.append(f"    notlob:code {_long_lit(code)} ;")
             lines[-1] = lines[-1][:-2] + "."
             lines.append("")
 
@@ -618,55 +645,12 @@ class NameGraph:
 
 # ── Content helpers ──────────────────────────────────────────
 
-def _prose_text(body: list) -> str | None:
-    """Concatenate ProseBlock and BulletBlock text from direct *body* items.
-
-    Inline refs are re-serialised with their sigil (``#Label``).
-    Bullet items are included as plain text so symbol search covers them.
-    Subheadings in *body* are ignored — they carry their own content.
-    Blocks are separated by a blank line, so one paragraph's last
-    sentence is not glued to the next paragraph's first.
-    """
-    blocks: list[str] = []
-    for item in body:
-        if isinstance(item, ProseBlock):
-            parts: list[str] = []
-            for span in item.spans:
-                if isinstance(span, str):
-                    parts.append(span)
-                else:
-                    parts.append(
-                        ("##" if span.sub else "#") + span.label
-                    )
-            blocks.append("".join(parts))
-        elif isinstance(item, BulletBlock):
-            blocks.append("\n".join(item.items))
-    text = "\n\n".join(b.strip() for b in blocks if b.strip())
-    return text or None
-
-
 def _bullet_block_count(body: list) -> int:
     """Count BulletBlock items in *body* (subheadings excluded)."""
     return sum(1 for item in body if isinstance(item, BulletBlock))
 
 
-def _code_text(body: list) -> str | None:
-    """Concatenate the dedented CodeBlock text from *body*.
-
-    Multiple blocks are joined with a blank line between them.
-    Subheadings in *body* are ignored — they carry their own content.
-    Claims are not included: each is a node of its own, and appears in
-    the node's body in its place.
-    """
-    blocks: list[str] = []
-    for item in body:
-        if isinstance(item, CodeBlock):
-            blocks.append(textwrap.dedent("\n".join(item.lines)))
-    return "\n\n".join(blocks) if blocks else None
-
-
 def _node_content(
-    prose: str | None,
     code: str | None,
     bullet_block_count: int = 0,
     body: list[dict] | None = None,
@@ -674,13 +658,13 @@ def _node_content(
 ) -> dict | None:
     """Build a content dict.
 
-    *prose* and *code* are the node's prose and code concatenated (what
-    checks and ``query content`` have always read); *body* is its body
-    items in order, and *imports* a module's ``#References`` lines.
+    A node that holds a body carries it as *body* (its items in order)
+    and nothing else of its text: its prose and code are read from the
+    body (:meth:`NameGraph.prose`, :meth:`NameGraph.code`), never stored
+    a second time. Any other node (a symbol, a ``#Tests`` group) carries
+    its source as *code*. *imports* is a module's ``#References`` lines.
     """
     d: dict = {}
-    if prose:
-        d["prose"] = prose
     if code:
         d["code"] = code
     if bullet_block_count:
@@ -862,9 +846,10 @@ def build(module: Module) -> NameGraph:
     ``mod#appendix#1#example#1``). Also creates TEST nodes for #Tests
     groups. Needs no language binding.
 
-    Each body-holding node carries its prose and code (concatenated, as
-    ``prose`` and ``code``) and its body items in order (``body``); the
-    module node also carries its ``#References`` lines (``imports``). See
+    Each body-holding node carries its body items in order (``body``),
+    once: prose and code are read from them (:meth:`NameGraph.prose`,
+    :meth:`NameGraph.code`), not stored beside them. The module node also
+    carries its ``#References`` lines (``imports``). See
     :meth:`NameGraph.body`.
     """
     graph = NameGraph()
@@ -877,8 +862,7 @@ def build(module: Module) -> NameGraph:
             label=holder.label,
             kind=holder.kind,
             content=_node_content(
-                _prose_text(holder.items),
-                _code_text(holder.items),
+                None,
                 _bullet_block_count(holder.items),
                 body=entries,
                 imports=(_module_imports(module)
@@ -944,7 +928,7 @@ def _add_named_tests(
             address=addr,
             label=item.name,
             kind=NodeKind.TEST,
-            content=_node_content(None, source or None),
+            content=_node_content(source or None),
             start_line=item.start_line,
         ))
         graph.add_edge(Edge(
@@ -983,7 +967,7 @@ def _add_tests(
                 address=group_addr,
                 label=item.title,
                 kind=NodeKind.TEST,
-                content=_node_content(None, source or None),
+                content=_node_content(source or None),
                 start_line=item.start_line,
             ))
             graph.add_edge(Edge(
@@ -1012,7 +996,7 @@ def _add_tests(
             address=tests_addr,
             label="Tests",
             kind=NodeKind.TEST,
-            content=_node_content(None, source or None),
+            content=_node_content(source or None),
             start_line=bare_start,
         ))
         graph.add_edge(Edge(
@@ -1174,7 +1158,7 @@ def _add_symbols(
             address=addr,
             label=info.name,
             kind=NodeKind.SYMBOL,
-            content=_node_content(None, info.source),
+            content=_node_content(info.source),
             start_line=start_line,
         ))
         graph.add_edge(Edge(
@@ -1201,7 +1185,7 @@ def _add_property_symbols(
             address=sym_addr,
             label=info.name,
             kind=NodeKind.SYMBOL,
-            content=_node_content(None, info.source),
+            content=_node_content(info.source),
             start_line=prop.start_line,
         ))
         graph.add_edge(Edge(

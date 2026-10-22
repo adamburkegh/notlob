@@ -335,13 +335,12 @@ def check_references(
             continue
 
         prose_parts: list[str] = []
-        if mod_node.content and mod_node.content.get("prose"):
-            prose_parts.append(mod_node.content["prose"])
+        if graph.prose(mod_node.address):
+            prose_parts.append(graph.prose(mod_node.address))
         for child in graph.children(mod_node.address):
             if (child.kind == NodeKind.SUBHEADING
-                    and child.content
-                    and child.content.get("prose")):
-                prose_parts.append(child.content["prose"])
+                    and graph.prose(child.address)):
+                prose_parts.append(graph.prose(child.address))
         prose = " ".join(prose_parts)
         if not prose:
             continue
@@ -535,7 +534,7 @@ def check_quantifier(graph: NameGraph) -> list[Finding]:
     for node in graph.nodes():
         if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
             continue
-        prose = (node.content or {}).get("prose")
+        prose = graph.prose(node.address)
         if not prose:
             continue
         has_claim = any(

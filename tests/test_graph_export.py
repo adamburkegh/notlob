@@ -54,7 +54,7 @@ class TestContent:
         d = g.to_dict(include_content=True)
         mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
         assert "content" in mod
-        assert "introductory" in mod["content"]["prose"]
+        assert "introductory" in g.prose("t")
 
     def test_paragraphs_are_separated_not_run_together(self):
         """Two prose paragraphs must not be glued into 'one.Two': the
@@ -62,18 +62,14 @@ class TestContent:
         vanished from the stored prose (and from the `quantifier`
         advisory built on it)."""
         g = _graph("#T\n\nFirst paragraph.\n\nSecond paragraph.\n")
-        d = g.to_dict(include_content=True)
-        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
-        prose = mod["content"]["prose"]
+        prose = g.prose("t")
         assert "paragraph.Second" not in prose
         assert "First paragraph." in prose and "Second paragraph." in prose
         assert prose.index("First") < prose.index("Second")
 
     def test_prose_and_bullets_are_separated(self):
         g = _graph("#T\n\nIntro text.\n\n- one\n- two\n\nOutro text.\n")
-        d = g.to_dict(include_content=True)
-        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
-        prose = mod["content"]["prose"]
+        prose = g.prose("t")
         assert "text.- one" not in prose
         assert "two" in prose and "Outro" in prose
         assert "twoOutro" not in prose
@@ -82,25 +78,15 @@ class TestContent:
         """A paragraph's own spans (text and inline refs) still join
         without added separators."""
         g = _graph("#T\n\nSee ##Section for details.\n\n##Section\n")
-        d = g.to_dict(include_content=True)
-        mod = next(n for n in d["nodes"] if n["kind"] == "MODULE")
-        assert mod["content"]["prose"] == "See ##Section for details."
+        assert g.prose("t") == "See ##Section for details."
 
     def test_subheading_prose_captured(self):
         g = _graph("#T\n##Section\nSection prose here.\n    code\n")
-        d = g.to_dict(include_content=True)
-        sub = next(
-            n for n in d["nodes"] if n["kind"] == "SUBHEADING"
-        )
-        assert "Section prose" in sub["content"]["prose"]
+        assert "Section prose" in g.prose("t#Section")
 
     def test_subheading_code_captured(self):
         g = _graph("#T\n##Section\n    def decode(): pass\n")
-        d = g.to_dict(include_content=True)
-        sub = next(
-            n for n in d["nodes"] if n["kind"] == "SUBHEADING"
-        )
-        assert "def decode" in sub["content"]["code"]
+        assert "def decode" in g.code("t#Section")
 
     def test_symbol_code_captured(self):
         g = _graph("#T\n    def to_roman(n): return str(n)\n")
@@ -155,11 +141,7 @@ class TestContent:
             source="module/a", target="roman/numerals",
             kind=EdgeKind.IMPORTS,
         ))
-        d = g.to_dict(include_content=True)
-        mod = next(
-            n for n in d["nodes"] if n["address"] == "module/a"
-        )
-        assert "#Roman Numerals" in mod["content"]["prose"]
+        assert "#Roman Numerals" in g.prose("module/a")
 
     def test_property_code_captured(self):
         src = "#T\n~property commutativity\n    def _(x): pass\n"

@@ -166,6 +166,7 @@ def _run(pyz: Path, cwd: Path, *args: str) -> subprocess.CompletedProcess:
 
 def smoke_test(pyz: Path, version: str) -> list[str]:
     """Run the artifact; return what is wrong with it (empty if nothing)."""
+    pyz = pyz.resolve()        # it is run from temporary directories
     problems: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)

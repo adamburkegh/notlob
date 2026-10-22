@@ -111,15 +111,15 @@ class TestAppendixNode:
         assert g.node("mod#appendix#1").start_line == want
 
     def test_carries_its_own_prose_and_code(self):
-        content = _graph(_WITH_APPENDIX).node("mod#appendix#1").content
-        assert "Helper prose." in content["prose"]
-        assert "def in_appendix" in content["code"]
+        g = _graph(_WITH_APPENDIX)
+        assert "Helper prose." in g.prose("mod#appendix#1")
+        assert "def in_appendix" in g.code("mod#appendix#1")
 
     def test_the_module_node_holds_only_the_body(self):
-        content = _graph(_WITH_APPENDIX).node("mod").content
-        assert "Body text." in content["prose"]
-        assert "Helper prose." not in content["prose"]
-        assert "in_appendix" not in content["code"]
+        g = _graph(_WITH_APPENDIX)
+        assert "Body text." in g.prose("mod")
+        assert "Helper prose." not in g.prose("mod")
+        assert "in_appendix" not in g.code("mod")
 
     def test_several_appendices_are_numbered(self):
         g = _graph(_TWO_APPENDICES)

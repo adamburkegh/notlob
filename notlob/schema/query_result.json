@@ -69,16 +69,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "prose": {
-          "description": "Plain text of prose blocks (refs re-serialised with sigil).",
-          "type": "string"
-        },
         "code": {
-          "description": "Dedented source code for the node.",
+          "description": "On a symbol, claim or `#Tests` node: its dedented source. A module, subheading or appendix node has none; its code blocks are in `body`, once.",
           "type": "string"
         },
         "bullet_block_count": {
-          "description": "Number of bullet lists (`* item` blocks) directly in the section. Present only when it is at least 1; the bullet items' text is part of `prose`.",
+          "description": "Number of bullet lists (`* item` blocks) directly in the section. Present only when it is at least 1; the bullet lists are in `body`.",
           "type": "integer",
           "minimum": 1
         },

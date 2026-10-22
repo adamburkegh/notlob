@@ -162,8 +162,21 @@ class TestSingleNode:
         rc, doc = _run(capsys, cmd_query_content, "alpha")
         assert rc == 0
         _validate(doc, "NodeOrNull")
-        assert "An intro with a list." in doc["content"]["prose"]
-        assert "def helper" in doc["content"]["code"]
+        body = doc["content"]["body"]
+        assert any("An intro with a list." in e["text"] for e in body
+                   if e["kind"] == "prose")
+        assert any("def helper" in e["text"] for e in body
+                   if e["kind"] == "code")
+
+    def test_content_has_each_section_text_once(self, project, capsys):
+        """`query content` is the cheap way to read one section; it once
+        printed every paragraph and code block twice (flat `prose` and
+        `code` beside `body`)."""
+        _rc, doc = _run(capsys, cmd_query_content, "alpha")
+        dumped = json.dumps(doc)
+        assert dumped.count("An intro with a list.") == 1
+        assert dumped.count("def helper") == 1
+        assert "prose" not in doc["content"]
 
     def test_content_carries_the_bullet_count(self, project, capsys):
         """Real content from a section with a bullet list. The shape

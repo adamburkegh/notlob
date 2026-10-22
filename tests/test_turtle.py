@@ -161,14 +161,17 @@ class TestEmittedTurtle:
         by_address = {
             str(o): s for s, o in parsed.subject_objects(
                 URIRef(NS + "address"))}
+        checked = 0
         for node in graph.nodes():
             assert node.address in by_address, node.address
             subject = by_address[node.address]
             assert str(parsed.value(subject, RDFS.label)) == node.label
-            prose = (node.content or {}).get("prose")
+            prose = graph.prose(node.address)
             if prose:
+                checked += 1
                 assert str(parsed.value(
                     subject, URIRef(NS + "prose"))) == prose
+        assert checked, "no node had prose, so nothing was compared"
 
     def test_every_iri_is_valid_in_the_ways_that_matter(self, project_graph):
         parsed = _parse(project_graph.to_turtle(include_content=True))

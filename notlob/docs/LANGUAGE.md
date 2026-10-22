@@ -568,8 +568,9 @@ and `content` for `query content`): an array, or for `resolve` and
 `content` a single node, or `null` with exit code 1 when it does not
 resolve. `query content` on a module, subheading or appendix returns its
 `body`: its prose, code, bullet lists and claims in document order, each
-with its source line; a claim is listed by address, and its own node holds
-its sigil and lines. A module's `content` also lists its `#References`
+with its source line, each stored once (there is no separate `prose` or
+`code` string for the section); a claim is listed by address, and its own
+node holds its sigil and lines. A module's `content` also lists its `#References`
 lines as `imports`. They are specified by `schema/query_result.json`, and the graph
 by `schema/name_graph.json`. `notlob graph --format turtle` exports the
 same graph as RDF; its vocabulary is declared in `schema/notlob.ttl`

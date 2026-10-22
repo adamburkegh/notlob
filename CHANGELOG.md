@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+Changes that can break an existing project or a tool reading notlob's
+output, to check first: a `#References` listing no longer loads a module
+unless the listing module's code uses it (modules may now list each other,
+and a cycle of use is an error); `notlob test --json` has a new,
+documented shape; the Turtle export's vocabulary namespace is now
+`urn:notlob:ns:`; `notlob check --json` gains a `version` field; and the
+`content` of a module or subheading node (`notlob query content`, `notlob
+graph --content`) holds its text in `body` and no longer has `prose` and
+`code` strings. Details are under Added, Changed and Fixed.
+
 ### Added
 - `build.py`: builds the release `.pyz` (`dist/notlob-<version>.pyz`) with
   shiv from a git ref (`python build.py --ref v0.6.0`), so the same ref
@@ -13,18 +23,6 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   version's tag points at, and smoke-tests what it built (version, shipped
   docs and schemas, a real `notlob test`). It does not tag or publish.
   `shiv` is added to the `dev` extra.
-
-## [0.6.0] - 2026-10-22
-
-Changes that can break an existing project or a tool reading notlob's
-output, to check first: a `#References` listing no longer loads a module
-unless the listing module's code uses it (modules may now list each other,
-and a cycle of use is an error); `notlob test --json` has a new,
-documented shape; the Turtle export's vocabulary namespace is now
-`urn:notlob:ns:`; and `notlob check --json` gains a `version` field.
-Details are under Added, Changed and Fixed.
-
-### Added
 - `quantifier` check (`notlob check`): flags a prose sentence that
   makes a quantified claim about behaviour ("each token fires...")
   with no `~example`/`~property` co-located in the same section to pin
@@ -229,11 +227,19 @@ Details are under Added, Changed and Fixed.
   extraction, the reference edges, reference validation, the claim
   collectors (Python, TypeScript, Haskell), `collect_run_bodies` and
   `notlob run` read the graph, so a claim's address and number have one
-  owner. Additive to `name_graph.json` and `query_result.json`
-  (`sigil`, `body`, `imports` on `Content`). **Changes to be aware of:**
-  `add_references_edges(graph)` no longer takes the modules; claim nodes
-  are created by `build`, not `enrich`; the module's `code` no longer
-  repeats a `~run` body (it has its own node); a claim node's `code` keeps
+  owner. Adds `sigil`, `body` and `imports` to `Content` in
+  `name_graph.json` and `query_result.json`, and **removes `prose` and
+  `code` from nodes that hold a body** (module, subheading, `#Appendix`):
+  the text is in `body`, once, and `NameGraph.prose(address)` and
+  `NameGraph.code(address)` derive the strings from it. (A first cut kept
+  the flat fields beside `body`, which printed every section twice in
+  `notlob query content`: 6,784 characters against 0.5.4's 2,597 for one
+  pn-chomper section. Symbol, claim and `#Tests` nodes keep their own
+  `code`; the Turtle export still has `notlob:prose` and `notlob:code`,
+  derived.) **Changes to be aware of:** a consumer that read
+  `content.prose` or `content.code` of a module or subheading reads `body`
+  now; `add_references_edges(graph)` no longer takes the modules; claim
+  nodes are created by `build`, not `enrich`; a claim node's `code` keeps
   leading blank lines. Also fixed: a `~run on-load` was made a `PROPERTY`
   node named "on-load" (the graph compared the sigil to `~run` exactly),
   and Haskell numbered unnamed `~property` claims with one counter for the
