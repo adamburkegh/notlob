@@ -23,12 +23,6 @@ single document. The format is the experiment.
   (`YYYY-MM-DD-slug/`, dated by when filed) that aren't being
   implemented yet. A design doc that arrives for later work goes here
   rather than being lost between conversations.
-- `meta/retrospectives/` — same convention (`YYYY-MM-DD-slug/`), for a
-  look back at *why* something went wrong when the fix alone doesn't
-  answer that: what happened, how it was found, what let it through, and
-  what changes so the class of problem is caught next time. Written for
-  the bugs that point at a missing property of the project, not for every
-  bug; the bug itself still gets its `meta/bugs/` note.
 
   Note: `notlob/docs/` (above) ships with the installed package
   (`pyproject.toml` package-data) and is aimed at notlob *users*;
@@ -50,13 +44,11 @@ meta/                project background (not packaged)
   origin.md          founding conversation and intellectual background
   bugs/              investigated bug reports, one dir per bug
   features/          queued feature proposals, one dir per proposal
-  retrospectives/    why a significant bug happened, one dir each
 editors/vim/         vim syntax highlighting for .lob files
 examples/            independent example notlob projects
   roman/             Python example project
   retail/            larger Python example project
 tests/               pytest test suite
-build.py             builds the release .pyz from a git ref
 ```
 
 ## Development setup
@@ -66,31 +58,10 @@ interpreter.
 
 ```
 python -m venv notlobenv                  create venv (if missing)
-notlobenv/Scripts/pip install -e ".[dev]" install in editable mode, with dev tooling
+notlobenv/Scripts/pip install -e .        install in editable mode
 notlobenv/Scripts/pytest                  run the full test suite
 npm install                               install TypeScript toolchain (tsx, tsc, fast-check)
 ```
-
-## Releasing
-
-The version in `pyproject.toml` is bumped forward when a cycle opens, so
-development happens under the number it will ship as. The released
-artifact is built by `build.py`, and only by it: a `.pyz` that was not
-built from source control by that script is not a release.
-
-1. Move `CHANGELOG.md`'s `[Unreleased]` section into a dated
-   `[X.Y.Z] - date` section (and leave an empty `[Unreleased]`). Commit.
-2. Tag that commit `vX.Y.Z`.
-3. `notlobenv/Scripts/python build.py --ref vX.Y.Z` writes
-   `dist/notlob-X.Y.Z.pyz` (`dist/` is git-ignored). It builds from the
-   ref, not the working tree; refuses a version with no dated changelog
-   section or a tag pointing elsewhere; and smoke-tests the result.
-4. Attach the file to the GitHub release for the tag. The script prints
-   the SHA-256 and does not tag, push or publish.
-5. Bump `pyproject.toml` forward to the next patch version, in its own
-   commit, and `pipx reinstall notlob` so `notlob --version` is current
-   (the version is read from installed metadata, so an editable install
-   reports the version it was last installed at).
 
 ## Conventions
 

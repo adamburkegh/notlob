@@ -302,8 +302,7 @@ class TestCmdQueryContent:
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
         assert data["kind"] == "MODULE"
-        assert any("helpers" in e["text"] for e in data["content"]["body"]
-                   if e["kind"] == "prose")
+        assert "helpers" in data["content"]["prose"]
 
     def test_subheading_content_returned(
         self, tmp_path, capsys, monkeypatch
@@ -315,11 +314,8 @@ class TestCmdQueryContent:
         cmd_query_content("t#Decoding")
         data = json.loads(capsys.readouterr().out)
         assert data["kind"] == "SUBHEADING"
-        body = data["content"]["body"]
-        assert any("Converts" in e["text"] for e in body
-                   if e["kind"] == "prose")
-        assert any("def f" in e["text"] for e in body
-                   if e["kind"] == "code")
+        assert "Converts" in data["content"]["prose"]
+        assert "def f" in data["content"]["code"]
 
     def test_unknown_address_returns_null_and_exit_1(
         self, tmp_path, capsys, monkeypatch

@@ -399,7 +399,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_references_edges(g, [module])
         refs = _refs_edges(g)
         assert any(e["source"] == "m" and e["target"] == "m#Section"
                    for e in refs)
@@ -413,7 +413,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_references_edges(g, [module])
         refs = _refs_edges(g)
         assert any(e["source"] == "m#Alpha" and e["target"] == "m#Beta"
                    for e in refs)
@@ -421,7 +421,7 @@ class TestAddReferencesEdges:
     def test_unresolved_ref_emits_no_edge(self):
         src = "#M\nSee #Phantom here.\n"
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_references_edges(g, [module])
         assert _refs_edges(g) == []
 
     def test_deduplicates_repeated_ref(self):
@@ -432,7 +432,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_references_edges(g, [module])
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m" and e["target"] == "m#Section"]
         assert len(refs) == 1
@@ -445,7 +445,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_references_edges(g, [module])
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m" and e["target"] == "m#Section"]
         assert len(refs) == 1
@@ -458,6 +458,6 @@ class TestAddReferencesEdges:
         g.merge(build(mod_a))
         g.merge(build(mod_b))
         g.add_edge(Edge(source="a", target="b", kind=EdgeKind.IMPORTS))
-        add_references_edges(g)
+        add_references_edges(g, [mod_a, mod_b])
         refs = _refs_edges(g)
         assert any(e["source"] == "a" and e["target"] == "b" for e in refs)

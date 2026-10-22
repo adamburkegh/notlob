@@ -5,16 +5,6 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-Changes that can break an existing project or a tool reading notlob's
-output, to check first: a `#References` listing no longer loads a module
-unless the listing module's code uses it (modules may now list each other,
-and a cycle of use is an error); `notlob test --json` has a new,
-documented shape; the Turtle export's vocabulary namespace is now
-`urn:notlob:ns:`; `notlob check --json` gains a `version` field; and the
-`content` of a module or subheading node (`notlob query content`, `notlob
-graph --content`) holds its text in `body` and no longer has `prose` and
-`code` strings. Details are under Added, Changed and Fixed.
-
 ### Added
 - `build.py`: builds the release `.pyz` (`dist/notlob-<version>.pyz`) with
   shiv from a git ref (`python build.py --ref v0.6.0`), so the same ref
@@ -71,26 +61,6 @@ graph --content`) holds its text in `body` and no longer has `prose` and
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
-- **Behaviour change:** a `#References` listing no longer loads the listed
-  module unless it is used. Modules may now list each other (an overview
-  that cites its parts; parts that list the overview, or siblings that cite
-  one another), which used to load a module's code before the code it
-  needed and fail with a `NameError`. A module's code is loaded after the
-  code of every module it *needs*: one it lists whose names its code
-  (body or claims) refers to, less names it defines itself, outside strings
-  and comments; and what those need. A listing nothing uses is a citation
-  and loads nothing. A cycle of need is now an error that names the cycle
-  (`ERROR <imports> circular code dependency: a -> b -> a`) instead of a
-  `NameError`. Python only: TypeScript's and Haskell's reference
-  extraction is not complete (calls only; lowercase names only), so those
-  bindings keep loading every listing except one of a descendant module
-  (`BindingKit.complete_references`, new and defaulting to false). The
-  rules are in `DESIGN.md` ("Listing, citing and loading") and
-  `LANGUAGE.md`. What breaks: a module that lists another only for its
-  side effects, or that uses an unlisted module's name that happened to be
-  loaded through a listed one (lint reported both already as `F821`). Run
-  `notlob test` over your project. See
-  `meta/bugs/2026-10-22-mutual-references/bug.md`.
 - **Breaking:** the Turtle export (`notlob graph --format turtle`).
   The vocabulary namespace was `https://notlob.dev/ns#`, a domain nobody
   here controls; it is now `urn:notlob:ns:`, an informal namespace (it
@@ -155,104 +125,6 @@ graph --content`) holds its text in `body` and no longer has `prose` and
   were not shipped in installs before.
 
 ### Fixed
-- The name-graph's `USES` edges missed everything a multi-line `#Tests`
-  group (or named `~test`) used. The node's code was stripped as a whole
-  after joining, leaving the first line unindented and the rest indented,
-  which does not parse, so call extraction silently returned nothing. The
-  code is now dedented as a block. A consequence of the same code being
-  empty of references: `[imports]` could report a module used only from
-  `#Tests` as unused.
-- **Python claims ran with the harness script's `__file__`.** A module that
-  finds files relative to itself (`Path(__file__).parent.parent / "data"`)
-  worked under the original in-process loader but, since claims moved to a
-  subprocess harness, looked for them next to a temp script. `__file__` is
-  now the module's `.lob` path in claims (a built artifact carries no
-  source path). Found by running the example projects end to end, which
-  no test did: `examples/gutenberg` was broken, and also had three
-  placeholder-less f-strings (lint, hidden until 0.5.4 by a Windows
-  encoding failure that lint read as a clean result) and a `##` reference
-  to a module, written before references were scoped to what a module
-  lists. The f-strings are fixed in the example; the reference is now
-  `#Gutenberg Hamlet` with a listing (see the `#References` entry under
-  Changed). A new test runs `notlob test` and `notlob build` over every
-  project under `examples/`. See
-  `meta/bugs/2026-10-22-python-claims-file-attribute`.
-- **Python and Haskell loaded only a module's direct `#References`.** A
-  module `Top` that lists only `Middle`, where `Middle` lists `Base` and
-  uses it when loaded, failed with a `NameError` (or a compile error) from
-  Middle's own code, although `notlob test` on Middle passed; listing
-  `Base` in `Top` made it run but earned an `[imports]` "unused import"
-  error. Claims and `notlob build` now load a module's dependencies
-  transitively, dependencies first, each once, in every binding
-  (TypeScript already did), through one shared
-  `project.load_dependency_modules`. What a module may *use* is unchanged:
-  the Python linter still reports a name from a module it did not list.
-  `LANGUAGE.md` now defines this once for every binding. (Which listings
-  load was narrowed later in the same release, to those the code uses; see
-  the `#References` entry under Changed.) See
-  `meta/bugs/2026-10-21-transitive-lob-refs`.
-- **`#Appendix` was invisible to the name-graph and to claim collection.**
-  The grammar defines an Appendix as the same thing as the module body,
-  but most of the code that walks a module looked only at the body:
-  symbols and claims defined in an Appendix were not graph nodes (so
-  `notlob check`'s `[imports]` reported an import used only from the
-  Appendix as unused, and `query`, `graph` and the `typos`, `conventions`
-  and `titles` checks could not see them), prose references in an
-  Appendix made no `REFERENCES` edges, and **`~example`, `~property` and
-  `~run` blocks written in an Appendix were never run** (they could not
-  fail). Now an `#Appendix` is a node of its own (kind `APPENDIX`,
-  address `mod#appendix#N`, label its title), contained by the module;
-  its subheadings hang from it, and the symbols and claims written in it
-  are defined by it. Claims in an Appendix are numbered within it, like a
-  subheading's (`mod#appendix#1#example#1`). The graph now holds every
-  node's body and is what the rest of the system reads (next entry).
-  **Visible changes:** a new node kind `APPENDIX` (added to
-  `name_graph.json`, `query_result.json` and the ontology);
-  `query children <module>` lists the Appendix node, not the Appendix's
-  subheadings, which hang from it; and the module node's own prose and
-  code are the body's only. Guarded by a property that the assembler, graph
-  and collectors agree wherever in the file the code is written, and by a
-  test derived from `grammar.lark` that fails if the grammar gains a body
-  the model does not cover. See `meta/bugs/2026-10-19-appendix-not-in-graph`
-  and the retrospective `meta/retrospectives/2026-10-19-appendix-blind-spot`.
-- **The name-graph is a complete index of each body.** A module, a
-  subheading and an `#Appendix` each have a body, and each is a node whose
-  `content.body` lists its body items in order: prose (its text, its
-  cross-references as data, its source line), code, bullets, and claims
-  (by address). Claim nodes carry their `sigil` (so the `~run` mode) and
-  their lines; the module node carries its `#References` lines as
-  `content.imports`; `ProseBlock` has a source line. `NameGraph.body`,
-  `NameGraph.claims` and `NameGraph.body_holders` read them. `build` is
-  the only place the parse tree is walked to find bodies; symbol
-  extraction, the reference edges, reference validation, the claim
-  collectors (Python, TypeScript, Haskell), `collect_run_bodies` and
-  `notlob run` read the graph, so a claim's address and number have one
-  owner. Adds `sigil`, `body` and `imports` to `Content` in
-  `name_graph.json` and `query_result.json`, and **removes `prose` and
-  `code` from nodes that hold a body** (module, subheading, `#Appendix`):
-  the text is in `body`, once, and `NameGraph.prose(address)` and
-  `NameGraph.code(address)` derive the strings from it. (A first cut kept
-  the flat fields beside `body`, which printed every section twice in
-  `notlob query content`: 6,784 characters against 0.5.4's 2,597 for one
-  pn-chomper section. Symbol, claim and `#Tests` nodes keep their own
-  `code`; the Turtle export still has `notlob:prose` and `notlob:code`,
-  derived.) **Changes to be aware of:** a consumer that read
-  `content.prose` or `content.code` of a module or subheading reads `body`
-  now; `add_references_edges(graph)` no longer takes the modules; claim
-  nodes are created by `build`, not `enrich`; a claim node's `code` keeps
-  leading blank lines. Also fixed: a `~run on-load` was made a `PROPERTY`
-  node named "on-load" (the graph compared the sigil to `~run` exactly),
-  and Haskell numbered unnamed `~property` claims with one counter for the
-  whole module while the graph numbered per body, so their addresses
-  differed. `DESIGN.md` states the completeness contract. See
-  `meta/bugs/2026-10-20-name-graph-incomplete` (what is still open:
-  `#Tests`, binding declarations, Turtle bodies).
-- New advisory `style` finding: an `~example` or `~property` written in an
-  `#Appendix` (directly or in one of its subheadings). Claims there are
-  legal and now run, but the design (the paper) places examples in the
-  exposition, supporting tests in `#Tests` and properties beside the prose
-  that motivates them, so it is discouraged. `~run` is not flagged. The
-  grammar may later ban them.
 - `schema/name_graph.json` rejected real output: a section containing a
   bullet list gets a `bullet_block_count` in its content, which the
   schema's `Content` did not allow, so `notlob graph --content` output

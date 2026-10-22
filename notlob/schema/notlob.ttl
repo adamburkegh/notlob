@@ -38,11 +38,6 @@ notlob:Subheading a owl:Class ;
     rdfs:label "Subheading" ;
     rdfs:comment "A ##Subheading within a module." .
 
-notlob:Appendix a owl:Class ;
-    rdfs:subClassOf notlob:Node ;
-    rdfs:label "Appendix" ;
-    rdfs:comment "An #Appendix section: a body of its own (prose, code, subheadings and claims), contained by its module and addressed by position, e.g. roman/numerals#appendix#1. Its symbols and claims are defined by it, and its claims are numbered within it." .
-
 notlob:Symbol a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Symbol" ;

@@ -39,13 +39,12 @@ from notlob.bindings import (
 )
 from notlob.bindings.python.loader import ModuleCache
 from notlob.bindings.python.runner import _resolve_python_interpreter
-from notlob.graph import claims_of, module_address
-from notlob.model import BindingSection
+from notlob.graph import module_address
+from notlob.model import BindingSection, Claim, Subheading
 from notlob.project import (
     address_from_path,
     build_package,
-    LobRefCycleError, find_project_root, lob_ref_cycle, module_lob_refs,
-    resolve_module_path,
+    find_project_root, module_lob_refs, resolve_module_path,
 )
 
 
@@ -291,11 +290,20 @@ def _build_ref_graph(module, root, extract_symbols):
 
 # ── Commands ──────────────────────────────────────────────────
 
-def _is_entry_point(module) -> bool:
-    """Whether *module* has a ``~run`` claim (bare, ``on-load`` or
-    ``on-invocation``) anywhere: the body, a subheading or an
-    ``#Appendix``. Such a module is a program entry point."""
-    return any(c.kind == NodeKind.RUN for c in claims_of(module))
+def _collect_run_claims(module) -> list[Claim]:
+    """Return all ~run claims (bare, ``on-load``, or ``on-invocation``)
+    from the module body and subheadings, in document order.
+    """
+    claims = []
+    for item in module.body:
+        if isinstance(item, Claim) and item.sigil.startswith("~run"):
+            claims.append(item)
+        elif isinstance(item, Subheading):
+            for sub_item in item.body:
+                if (isinstance(sub_item, Claim)
+                        and sub_item.sigil.startswith("~run")):
+                    claims.append(sub_item)
+    return claims
 
 
 def _resolve_keep_dir(
@@ -546,11 +554,6 @@ def _test_module(
     if ref_graph is not None:
         for ref_err in validate_refs(ref_graph, module):
             doc_errors.append(f"ERROR  <refs>  {ref_err}")
-
-    if root is not None:
-        cycle = lob_ref_cycle(module, root, kit)
-        if cycle is not None:
-            doc_errors.append(f"ERROR  <imports>  {LobRefCycleError(cycle)}")
 
     if doc_errors:
         for msg in doc_errors:
@@ -1108,7 +1111,7 @@ def cmd_build(
             return 1
         try:
             module     = from_tree(parse_file(path))
-            is_entry   = _is_entry_point(module)
+            is_entry   = bool(_collect_run_claims(module))
         except Exception:
             is_entry   = False
         entry_points = [out_path] if is_entry else []
@@ -1162,7 +1165,7 @@ def cmd_build(
             artifacts.append(out_path)
             try:
                 module = from_tree(parse_file(lob_path))
-                if _is_entry_point(module):
+                if _collect_run_claims(module):
                     entry_points.append(out_path)
             except Exception:
                 pass

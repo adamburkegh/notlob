@@ -191,17 +191,6 @@ class TestRunExamplesIntegration:
         assert results[0].right == 2
 
     @_RUNNER_SKIP
-    def test_example_in_an_appendix_is_run(self):
-        """An #Appendix is a regular body: its code is in scope and its
-        claims are collected (meta/bugs/2026-10-19-appendix-not-in-graph)."""
-        mod = _module(
-            '#T\n\n---\n\n#Appendix\n\n    const x = 1;\n\n'
-            '~example\n    x === 1\n    x === 2\n'
-        )
-        results = _run_examples(mod)
-        assert [r.status for r in results] == [Status.PASS, Status.FAIL]
-
-    @_RUNNER_SKIP
     def test_two_assertions(self):
         mod = _module(
             '#T\n\n    const x = 1\n    const y = 2\n\n'

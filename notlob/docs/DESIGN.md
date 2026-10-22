@@ -210,65 +210,6 @@ signal they belong in one module. Explicit imports make the dependency
 graph readable directly from source; the `#References` list is a true
 bibliography.
 
-**Listing, citing and loading.** A `#References` entry records one
-fact, that this module is in conversation with that one, and the tooling
-reads it three ways. Keeping the three apart is what lets modules list
-each other.
-
-*Terms.* A module A *lists* B when A's `#References` contains `#B`. A
-*cites* B when A's prose mentions `#B`. *Defined(B)* is the top-level
-names in B's own code (body, subheadings, `#Appendix`; not its claims or
-imports). *Used(A)* is the names A's code and claims statically refer to,
-less builtins and less names A defines itself; strings and comments do
-not count. It is the binding's own call extraction, the one the `USES`
-edges come from. A *needs* B when A lists B and Used(A) meets Defined(B).
-
-1. **Citing needs listing.** A prose `#B` that names a module resolves
-   only if A lists B. The scope of a citation is authored, never ambient:
-   not the package, not the project. A bare name resolved project-wide
-   would collide as projects, and chains of libraries, grow, and
-   traceability is the point: which modules is this argument in
-   conversation with, and why. That is a scholarly paper's bibliography,
-   and like one it is written by the author, not discovered. This is
-   also why there is no implicit sibling scope (the Java package rule
-   rejected above): siblings list each other to cite, as to use.
-2. **Listing is free.** Any module may list any other, including two that
-   list each other: an overview that lists the parts it explains, parts
-   that list the overview or anything above it, siblings that cite one
-   another. Listing creates an `IMPORTS` edge and nothing else.
-3. **Loading follows need.** A's code is loaded after the code of every
-   module A needs, and of what those need, each once, in listing order. A
-   listing that A's code does not need is a citation and loads nothing.
-   `notlob test`, `run` and `build` load the same set.
-4. **Visibility.** A may use only names from modules it lists. Lint
-   enforces it where the binding can.
-5. **A cycle of need is an error.** It is reported with the cycle named
-   (`a -> b -> a`), wherever the modules sit in the address tree. Modules
-   are inlined into one namespace and run top to bottom, so no order
-   exists. A cycle of citations is not a cycle.
-6. **When use cannot be determined**, because the binding's reference
-   extraction is not complete or a module's names cannot be read, the
-   address tree decides: a listing of a descendant is a citation, and
-   any other listing is treated as a need. The tree is a fallback, never
-   a rule for resolving references. A binding says whether its extraction
-   is complete (`BindingKit.complete_references`). Python's is: every
-   name the code refers to. TypeScript's sees only calls and Haskell's
-   only lowercase names, so today they load every listing except one of a
-   descendant, as before, and two sibling modules that list each other
-   are a cycle there until their extraction is widened.
-7. **Listing is not a request for side effects.** A module the listing
-   module does not need is not loaded, so its top-level effects do not
-   run. To depend on a module's code, use it.
-
-The scale this is for: an overview module that explains the structure of
-a part of the project and lists the parts; parts that list their overview
-or the shared modules above them; a library chain in which the label
-namespace is large and a reader needs to see why one module mentions
-another. The Gutenberg example is the small case: `corpus` cites `hamlet`
-in prose (a second text "would be a module of the same shape") and lists
-it; `hamlet` lists `corpus` and uses its code. Only the second listing
-loads anything.
-
 **Python-level imports are transitive across lob boundaries — by binding
 design, not by notlob rule.** When module B declares
 `from decimal import Decimal`, that name is visible to any lob module
@@ -319,12 +260,11 @@ is a live cross-reference to the constant definition, with the same
 hyperlink semantics as a subheading or module reference. All named
 things are first-class in prose.
 
-`#References` is both a bibliography (acknowledging what the argument
-depends on or mentions) and a scope declaration (bringing module labels
-into reference resolution context); see "Listing, citing and loading"
-above for what each reading means to the tooling. An unresolved
-reference is an error; the name-graph is closed-world. Cross-references
-are machine-validated against the name-graph.
+This means `#References` does double duty: it is a bibliography
+(acknowledging what the argument depends on) and a scope declaration
+(bringing module labels into reference resolution context). An
+unresolved reference is an error; the name-graph is closed-world.
+Cross-references are machine-validated against the name-graph.
 
 **`binding.lob` is a reserved structural filename.** Each project root
 contains a `binding.lob` that declares the execution substrate and
@@ -389,11 +329,10 @@ markers/newlines) and checks reserved sigils, then hands a Lark `Tree`
 serialisable to JSON for use by tooling and LLM context. Parse tree
 access will also be exposed via MCP.
 
-**Name-graph:** The central data structure of the tooling layer: a graph
-of names, prose, concepts and code, built from the parse tree. Every
-named thing in a `.lob` file or package is a node, the prose and code
-around it belong to it, and relationships between them are edges. The
-name-graph accumulates in layers, each adding richer information:
+**Name-graph:** The central data structure of the tooling layer. Every
+named thing in a `.lob` file or package is a node; relationships between
+them are edges. The name-graph accumulates in layers, each adding richer
+information:
 
 - *Structure.* Module addresses and subheading nodes, derived from the
   `.lob` parser alone. No language binding required. Sufficient for
@@ -438,66 +377,6 @@ name-graph accumulates in layers, each adding richer information:
 The seam between the structural and symbolic layers is the binding
 boundary. The structural layer is the common vocabulary across all
 languages; the symbolic layer is language-specific richness.
-
-**The name-graph is complete.** It is a complete index of the document,
-not a list of its names. Every prose block, code block, claim, import and
-binding declaration in the parse tree appears in the graph, with its
-kind, its text, its source position and its order within the body that
-holds it (the body of a module, a subheading, or an `#Appendix`, each of
-which is a node). The design's two adjacencies depend on it:
-file-adjacency (what sits next to this in the serial text) needs position
-and order, and concept-adjacency (what is a few edges away) needs the
-edges. So does every check that reads the graph, prose checks included: a
-check cannot report on what the graph does not hold, and it does not say
-that it could not. The graph is therefore what the rest of the system
-reads, not one reader among several: a body is held on its node
-(`NameGraph.body`), `build` is the only place the parse tree is walked to
-find bodies, and symbol extraction, reference resolution, the claim
-collectors and `notlob run` read the graph. Anything that still reads the
-document by another route (the assemblers, the weaver) must see the same
-elements as the graph, and a test compares them. The contract is checked
-by an oracle that walks the parse tree independently and compares it with
-what the graph holds. An element of the document that is missing from the
-graph is a bug, not a design choice.
-
-*Status: met for the bodies of modules, subheadings and appendices.*
-Open: `#Tests` assertions and their order, binding declarations, the
-Turtle export of bodies, and moving the assemblers and weaver onto the
-graph. See `meta/bugs/2026-10-20-name-graph-incomplete/bug.md`. The
-contract tests are `tests/test_graph_body.py` and
-`tests/test_appendix_graph.py`; the latter found that the `#Appendix` had
-been missing from most of these views for ten weeks.
-
-Reading a document through the graph looks like this:
-
-```python
-from notlob import build, enrich, from_tree, parse_file
-from notlob.bindings.python import extract_symbols
-
-module = from_tree(parse_file("pricing/discounts.lob"))
-graph  = build(module)                     # nodes, bodies and claims; no binding
-enrich(graph, module, extract_symbols)     # adds symbol nodes; needs a binding
-
-# Every node that holds a body (the module, its subheadings, its
-# appendices), and each body's items in document order.
-for node in graph.body_holders("pricing/discounts"):
-    for item in graph.body(node.address):
-        print(node.address, item["kind"], item["start_line"])
-```
-
-An item's `kind` is `prose`, `code`, `bullets` or `claim`. A claim item
-gives the address of the claim's own node, which holds its `sigil` and
-its lines; `graph.claims(module_address)` lists a module's claim nodes in
-document order.
-
-**A body is stored once.** A node's text is in its `body` and nowhere else
-on the node: there is no second, concatenated copy. What a reader wants as
-one string (a check reading a section's prose, the Turtle export's
-`notlob:prose`) is derived from the body, by `NameGraph.prose(address)` and
-`NameGraph.code(address)`. A copy beside the body costs every consumer of
-the graph twice, and none more than `notlob query content`, which exists to
-be the cheap way for an agent to read one section. (Symbol and claim nodes
-carry their own source in `code`: they are nodes of their own with no body.)
 
 **Binding kit architecture:** A binding is not a single function; it is a
 kit of cooperating tools that share a language substrate. The binding

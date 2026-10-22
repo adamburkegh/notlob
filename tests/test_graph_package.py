@@ -248,20 +248,10 @@ class TestGutenbergIntegration:
         ]
         assert any(n.address == "gutenberg/corpus" for n in imported)
 
-    def test_corpus_lists_hamlet_to_cite_it(self, pkg):
-        # corpus.lob lists hamlet only because its prose cites it ("a
-        # module of the same shape as #Gutenberg Hamlet"); hamlet lists
-        # corpus because its code uses it. Mutual listing is ordinary.
-        imported = [
-            n.address for n in
-            pkg.children("gutenberg/corpus", EdgeKind.IMPORTS)
-        ]
-        assert imported == ["gutenberg/hamlet"]
-        cited = [
-            n.address for n in
-            pkg.children("gutenberg/corpus", EdgeKind.REFERENCES)
-        ]
-        assert "gutenberg/hamlet" in cited
+    def test_corpus_imports_nothing(self, pkg):
+        # corpus.lob has only Python imports, no lob-ref imports
+        imported = list(pkg.children("gutenberg/corpus", EdgeKind.IMPORTS))
+        assert imported == []
 
     def test_resolve_corpus_from_hamlet_context(self, pkg):
         node = pkg.resolve("Gutenberg Corpus", context="gutenberg/hamlet")

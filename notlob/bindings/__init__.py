@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Generator, Sequence
 
-from ..model import CodeBlock, Module
+from ..model import Claim, CodeBlock, Module, Subheading
 
 
 # ── Claim result types ────────────────────────────────────────
@@ -144,15 +144,6 @@ class BindingKit:
     build            (module, file_path=None) -> str, the assembly used
                      by ``notlob build``, or None when the binding
                      doesn't support it.
-    complete_references
-                     True when ``extract_calls`` reports every name the
-                     code refers to (not only calls), outside strings and
-                     comments.  Loading follows use only for a binding
-                     that sets this: a listed module whose names the
-                     code does not refer to is then a citation and is not
-                     loaded.  False (the default) means use cannot be
-                     determined, and every listing except one of a
-                     descendant module is loaded.
 
     Runner and lint callables are typed as Callable[..., list] to avoid
     a circular import; element types are ClaimResult and LintResult
@@ -168,7 +159,6 @@ class BindingKit:
     extension:       str                        = "py"
     comment_prefix:  str                        = "#"
     build:           Callable[..., str]  | None = None
-    complete_references: bool                   = False
 
 
 # ── Lint result type ──────────────────────────────────────────
@@ -225,9 +215,9 @@ def assemble_section(
 
 def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
     """Return ``(on_load_bodies, on_invocation_bodies)`` -- dedented,
-    stripped text for each ``~run`` claim in *module* (wherever it is
-    written: the body, a subheading, an ``#Appendix``), grouped by
-    declared mode and preserving document order within each group.
+    stripped text for each ``~run`` claim in *module* (module body and
+    subheadings), grouped by declared mode and preserving document
+    order within each group.
 
     Bare ``~run`` defaults to ``on-invocation`` -- the notlob
     equivalent of ``if __name__ == "__main__":`` (see DESIGN.md).
@@ -236,9 +226,6 @@ def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
     binding's ``build()`` does with that distinction -- or whether it
     supports ``on-load`` at all -- is entirely up to that binding.
     """
-    # graph imports this package, so import it here.
-    from notlob.graph import NodeKind, claim_lines, claims_of
-
     on_load: list[str] = []
     on_invocation: list[str] = []
 
@@ -246,17 +233,21 @@ def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
         parts = sigil.split(None, 1)
         return parts[1] if len(parts) > 1 else "on-invocation"
 
-    for claim in claims_of(module):
-        if claim.kind != NodeKind.RUN:
-            continue
-        text = "\n".join(claim_lines(claim)).strip()
-        if not text:
-            continue
-        target = (
-            on_load if _mode(claim.content["sigil"]) == "on-load"
-            else on_invocation
-        )
-        target.append(text)
+    def _collect(body: list) -> None:
+        for item in body:
+            if isinstance(item, Claim) and item.sigil.startswith("~run"):
+                text = textwrap.dedent("\n".join(item.lines)).strip()
+                if not text:
+                    continue
+                target = (
+                    on_load if _mode(item.sigil) == "on-load"
+                    else on_invocation
+                )
+                target.append(text)
+            elif isinstance(item, Subheading):
+                _collect(item.body)
+
+    _collect(module.body)
     return on_load, on_invocation
 
 

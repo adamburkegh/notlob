@@ -284,41 +284,10 @@ Two kinds of entry:
   verbatim to the language runtime.
 
 Lob module imports must be declared explicitly. There is no implicit
-package import (not for siblings, not for the project); each module lists
-exactly what it uses or cites.
+package import; each module lists exactly what it uses.
 
-**Listing, citing and loading.** A listing says this module is in
-conversation with that one. It does three separate things:
-
-- **Citing.** A prose `#Name` that names a module resolves only if the
-  module is listed. Siblings list each other to cite one another.
-- **Using.** A module may use only names from modules it lists. The
-  Python linter reports a name from an unlisted module as undefined.
-- **Loading.** A module runs with the code of the modules it *needs*: those
-  it lists whose names its code uses (calls, references, in the body or in
-  its claims; a name inside a string or comment does not count), and what
-  those need, each once and before it. A listing that the code does not
-  use is a *citation*: it loads nothing.
-
-So if `Top` lists `Middle` and `Middle` lists `Base`, `Middle`'s code can
-use `Base` whether it is loaded by itself or by `Top`: a module that works
-on its own works when another module uses it, and `Top` need not list
-`Base` just to make `Middle` run.
-
-**Listings may be circular.** An overview module can list the parts it
-explains and cite them in prose; the parts can list the overview, or
-anything above them. Only a cycle of *need* is an error: if `A`'s code
-uses names `B` defines and `B`'s code uses names `A` defines, no load order
-exists, and `notlob test` reports `circular code dependency: a -> b -> a`.
-Cycles made of citations are fine.
-
-A listing you neither use in code nor mention in prose is an `[imports]`
-error. A module is not loaded just because it is listed, so do not list
-one in the hope of running its top-level code; use it. Where a binding
-cannot tell what a module uses, the address tree decides: a listing of a
-descendant is a citation and any other listing is loaded. Anything else a
-lob-ref does or does not bring into scope depends on the binding; see
-[Toolchains](#toolchains).
+Exactly which names a lob-ref brings into scope depends on the binding;
+see [Toolchains](#toolchains).
 
 ### #Appendix
 
@@ -336,17 +305,6 @@ in scope for `~example`/`#Tests`/`~property` claims, and included in
 an author might move a shared test fixture there, or just as easily a
 supporting helper that the main argument's code genuinely calls at
 runtime — both need to actually work, not just parse.
-
-In the name-graph an Appendix is a node of its own (kind `APPENDIX`,
-address `module#appendix#1`, `#2` and so on in order, labelled with its
-title), contained by its module. Its symbols and claims belong to it, and
-its claims are numbered within it, as a subheading's are
-(`module#appendix#1#example#1`).
-
-Claims are legal in an Appendix and they run, but they are discouraged:
-`notlob check` gives an advisory `style` finding for an `~example` or
-`~property` there. Examples belong in the main body, next to the prose
-they illustrate, and supporting tests belong in `#Tests`.
 
 ```
 ---
@@ -402,9 +360,7 @@ against the name-graph.
 
 - `##Name` — refers to a subheading in the current module.
 - `#Name` — resolves in order: symbol in current module, subheading in
-  current module, module listed in `#References`. A module that is not
-  listed does not resolve, however near it is: the scope of a citation is
-  what the author lists, as in a paper's bibliography.
+  current module, module declared in `#References`.
 
 A reference's first letter must be uppercase (or, for scripts with no
 case distinction at all — CJK, Arabic, Hebrew, Thai, Devanagari, etc.
@@ -566,12 +522,7 @@ and is the same shape as an entry in `checks` above. The `notlob query`
 commands print node summaries (`address`, `label`, `kind`, `start_line`,
 and `content` for `query content`): an array, or for `resolve` and
 `content` a single node, or `null` with exit code 1 when it does not
-resolve. `query content` on a module, subheading or appendix returns its
-`body`: its prose, code, bullet lists and claims in document order, each
-with its source line, each stored once (there is no separate `prose` or
-`code` string for the section); a claim is listed by address, and its own
-node holds its sigil and lines. A module's `content` also lists its `#References`
-lines as `imports`. They are specified by `schema/query_result.json`, and the graph
+resolve. They are specified by `schema/query_result.json`, and the graph
 by `schema/name_graph.json`. `notlob graph --format turtle` exports the
 same graph as RDF; its vocabulary is declared in `schema/notlob.ttl`
 (informal namespace `urn:notlob:ns:`), and node IRIs are relative

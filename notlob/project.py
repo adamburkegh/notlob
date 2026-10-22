@@ -19,7 +19,6 @@ all other non-blank lines are Python imports.
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 from typing import Callable
 
@@ -142,205 +141,38 @@ def module_lob_refs(module: Module) -> list[str]:
     return []
 
 
-class LobRefCycleError(Exception):
-    """Modules whose code needs each other: there is no order in which
-    their code can be loaded. *cycle* is the addresses, first repeated at
-    the end (``["ping", "pong", "ping"]``)."""
-
-    def __init__(self, cycle: list[str]) -> None:
-        self.cycle = cycle
-        super().__init__(
-            "circular code dependency: " + " -> ".join(cycle)
-            + " (each module's code uses a name the next one defines; "
-            "a module listed in #References but only mentioned in prose "
-            "is a citation and does not make a cycle)"
-        )
-
-
-def _defined_names(module: Module, kit) -> set[str]:
-    """The top-level names *module*'s own code defines: its body,
-    subheadings and ``#Appendix``, not its claims."""
-    graph = build(module)
-    names: set[str] = set()
-    for holder in graph.body_holders(module_address(module.title)):
-        for entry in graph.body(holder.address):
-            if entry["kind"] == "code":
-                names.update(
-                    s.name for s in kit.extract_symbols(
-                        entry["text"].splitlines()))
-    names.discard("_")
-    return names
-
-
-def _used_names(module: Module, kit) -> set[str]:
-    """The names *module*'s code statically refers to: its own code and
-    its claims' (a claim that calls another module's function counts as
-    using that module). Strings and comments do not count: this is the
-    binding's call extraction, the same one the name-graph's ``USES``
-    edges come from."""
-    graph = build(module)
-    chunks: list[str] = []
-    for holder in graph.body_holders(module_address(module.title)):
-        chunks += [e["text"] for e in graph.body(holder.address)
-                   if e["kind"] == "code"]
-    chunks += [
-        (n.content or {}).get("code", "") for n in graph.nodes()
-        if n.kind in (NodeKind.EXAMPLE, NodeKind.RUN, NodeKind.TEST,
-                      NodeKind.PROPERTY)
-    ]
-    used: set[str] = set()
-    for chunk in chunks:
-        used.update(name for name, _ in
-                    kit.extract_calls(textwrap.dedent(chunk)))
-    # A name the module defines itself is its own, even if another module
-    # defines the same name: it is not a use of that module.
-    return used - _defined_names(module, kit)
-
-
-def _is_descendant(address: str, ancestor: str) -> bool:
-    """Whether module *address* is below module *ancestor* in the address
-    tree (``gutenberg/hamlet`` is below ``gutenberg``)."""
-    return address.startswith(ancestor + "/")
-
-
-def _plan(
-    module: Module, root: Path, kit=None,
-) -> tuple[list[tuple[str, Module | None]], list[str] | None]:
-    """``(order, cycle)``: the modules whose code *module* needs, and what
-    those need, dependencies first, each once, as ``(address, parsed
-    module or None)`` (``None`` marks one that could not be found or
-    parsed); and, if there is no order, the addresses of a cycle of need
-    (first repeated at the end).
-
-    Which ``#References`` entries are followed is decided entry by entry
-    (DESIGN.md, "Listing, citing and loading"). A listing is followed when
-    the listing module *needs* the listed one: its code (body and claims)
-    refers to a name the listed module's code defines, less names the
-    listing module defines itself. A listing that is not needed is a
-    citation and loads nothing. When that cannot be told, because there is
-    no *kit*, the binding's reference extraction is not complete
-    (``kit.complete_references``), or either module cannot be read, the
-    address tree decides: a listing of a descendant is a citation, and
-    any other listing is followed."""
-    from .parser import parse_file
-    from .model import from_tree as _from_tree
-
-    root_addr = module_address(module.title)
-    parsed: dict[str, Module | None] = {root_addr: module}
-    defined: dict[str, set[str]] = {}
-    used:    dict[str, set[str]] = {}
-
-    def load(addr: str) -> Module | None:
-        if addr not in parsed:
-            try:
-                parsed[addr] = _from_tree(
-                    parse_file(resolve_module_path(addr, root)))
-            except Exception:
-                parsed[addr] = None
-        return parsed[addr]
-
-    def follows(user: str, listed: str) -> bool:
-        user_mod, listed_mod = load(user), load(listed)
-        if (kit is None or not kit.complete_references
-                or kit.extract_calls is None
-                or user_mod is None or listed_mod is None):
-            return not _is_descendant(listed, user)
-        if listed not in defined:
-            defined[listed] = _defined_names(listed_mod, kit)
-        if user not in used:
-            used[user] = _used_names(user_mod, kit)
-        return bool(defined[listed] & used[user])
-
-    visited: set[str] = set()
-    stack:   list[str] = [root_addr]
-    order:   list[tuple[str, Module | None]] = []
-    cycle:   list[str] | None = None
-
-    def visit(addr: str) -> None:
-        nonlocal cycle
-        visited.add(addr)
-        stack.append(addr)
-        dep = load(addr)
-        if dep is not None:
-            for child in module_lob_refs(dep):
-                if not follows(addr, child):
-                    continue
-                if child in stack:
-                    if cycle is None:
-                        cycle = stack[stack.index(child):] + [child]
-                elif child not in visited:
-                    visit(child)
-        stack.pop()
-        order.append((addr, dep))
-
-    for child in module_lob_refs(module):
-        if not follows(root_addr, child):
-            continue
-        if child in stack:
-            cycle = cycle or [root_addr, root_addr]
-        elif child not in visited:
-            visit(child)
-    return order, cycle
-
-
-def lob_ref_cycle(
-    module: Module, root: Path, kit=None,
-) -> list[str] | None:
-    """The addresses of a cycle among the modules whose code *module*
-    needs (see :func:`_plan`), or ``None``. A cycle made only of citations
-    is not one."""
-    return _plan(module, root, kit)[1]
-
-
-def _dependency_order(
-    module: Module, root: Path, kit=None,
-) -> list[tuple[str, Module | None]]:
-    order, cycle = _plan(module, root, kit)
-    if cycle is not None:
-        raise LobRefCycleError(cycle)
-    return order
-
-
-def transitive_lob_refs(
-    module: Module, root: Path, kit=None,
-) -> list[str]:
+def transitive_lob_refs(module: Module, root: Path) -> list[str]:
     """Return all transitive lob dependencies in topological order (deps first).
 
     Performs a depth-first traversal of the dependency graph rooted at
     *module*, following each module's own ``#References`` recursively.
     The root module itself is excluded — callers assemble it separately.
-    Duplicate nodes are emitted only once, in the order first encountered
-    via DFS post-order. Cycles: see :func:`_plan`; a code cycle raises
-    :class:`LobRefCycleError`.
+    Cycles are broken by tracking visited addresses; duplicate nodes are
+    emitted only once, in the order first encountered via DFS post-order.
     """
-    return [addr for addr, _ in _dependency_order(module, root, kit)]
+    visited: set[str] = set()
+    order: list[str] = []
 
+    from .parser import parse_file
+    from .model import from_tree as _from_tree
 
-def load_dependency_modules(
-    module: Module, root: Path, kit=None,
-) -> list[Module]:
-    """The modules *module*'s code needs in order to run, parsed: its
-    lob-refs, theirs, and so on, each once, dependencies first.
+    def _visit(addr: str) -> None:
+        if addr in visited:
+            return
+        visited.add(addr)
+        try:
+            dep_path = resolve_module_path(addr, root)
+            dep_mod  = _from_tree(parse_file(dep_path))
+            for child_addr in module_lob_refs(dep_mod):
+                _visit(child_addr)
+        except Exception:
+            pass
+        order.append(addr)
 
-    This is what every binding's runner and builder inlines before the
-    module itself. Loading is transitive because a module that works on
-    its own must work when something else uses it: ``Top`` lists only
-    ``Middle``, but ``Middle``'s code needs ``Base``. (What ``Top`` may
-    *use* is a separate matter: it should use only what it lists, which
-    lint enforces; loading everything does not widen that.) A dependency
-    that cannot be found or parsed is skipped; its absence surfaces where
-    it is used, as a name error or a compile error.
+    for addr in module_lob_refs(module):
+        _visit(addr)
 
-    Loading follows need, not listing: a module is loaded when the code of
-    the module that lists it uses a name it defines. A listing the code
-    does not use is a citation and loads nothing, so modules may list each
-    other (an overview that cites its parts, parts that list the
-    overview). Pass the binding's *kit* to tell; without it the address
-    tree decides (see :func:`_plan`). If each module's code does use the
-    other there is no order, and :class:`LobRefCycleError` is raised.
-    """
-    return [dep for _, dep in _dependency_order(module, root, kit)
-            if dep is not None]
+    return order
 
 
 def build_package(
@@ -424,7 +256,7 @@ def build_package(
     _add_external_nodes(graph, root)
 
     # Fourth pass: add REFERENCES edges from prose #Label cross-references.
-    add_references_edges(graph)
+    add_references_edges(graph, modules)
 
     # Fifth pass: add USES edges from statically visible call references.
     if call_extractor is not None:

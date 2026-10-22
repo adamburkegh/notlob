@@ -67,7 +67,6 @@ kit = BindingKit(
     lint=lint_python,
     build=build_python,
     comment_prefix="#",
-    complete_references=True,   # every ast.Name load, not only calls
 )
 
 __all__ = [

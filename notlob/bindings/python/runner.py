@@ -57,6 +57,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -66,11 +67,10 @@ from notlob.bindings.python.harness import (
     build_examples_harness, build_properties_harness, build_tests_harness,
 )
 from notlob.graph import (
-    NodeKind, claim_lines, claims_of, module_address,
-    property_address,
+    claim_address, module_address, property_address, subheading_address,
 )
 from notlob.model import (
-    Module, NamedTest, TestGroup, TestsSection,
+    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
 )
 
 
@@ -431,12 +431,14 @@ def _load_dep_modules(
     module: Module,
     file_path: Path | None,
 ) -> list[Module]:
-    """Return the modules *module*'s code needs, dependencies first.
+    """Return the lob-ref dependency modules of *module* in declaration order.
 
-    Its lob-refs, theirs, and so on, each once (see
-    ``project.load_dependency_modules``). Dependencies that cannot be
-    found or parsed are skipped -- the resulting NameError at execution
-    time surfaces the missing symbol, same as a real import error would.
+    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
+    section to its ``.lob`` file under the project root, parses it, and
+    returns the resulting Module objects. Dependencies that cannot be
+    found or parsed are silently skipped -- the resulting NameError at
+    execution time surfaces the missing symbol, same as a real import
+    error would.
 
     Returns an empty list when *file_path* is ``None`` (no project
     context available) or when no project root is found.
@@ -444,15 +446,25 @@ def _load_dep_modules(
     if file_path is None:
         return []
 
-    from notlob.bindings.python import kit  # noqa: PLC0415
     from notlob.project import (           # noqa: PLC0415
-        find_project_root, load_dependency_modules,
+        find_project_root, module_lob_refs, resolve_module_path,
     )
+    from notlob.parser import parse_file   # noqa: PLC0415
+    from notlob.model import from_tree     # noqa: PLC0415
 
     root = find_project_root(file_path)
     if root is None:
         return []
-    return load_dependency_modules(module, root, kit)
+
+    result: list[Module] = []
+    for dep_addr in module_lob_refs(module):
+        try:
+            dep_path = resolve_module_path(dep_addr, root)
+            result.append(from_tree(parse_file(dep_path)))
+        except Exception:
+            pass  # missing dep — will surface as a NameError at exec time
+
+    return result
 
 
 def _module_source(module: Module, file_path: Path | None) -> str:
@@ -461,14 +473,7 @@ def _module_source(module: Module, file_path: Path | None) -> str:
     execution time, so dependency source has to be inlined directly,
     same as ``build_python``."""
     dep_modules = _load_dep_modules(module, file_path)
-    # The module's own `__file__` is the .lob file it is written in, as
-    # it was under the original in-process loader; the harness script
-    # would otherwise be what code sees. Limitation: it is one shared
-    # namespace, so a dependency inlined before the module still sees the
-    # harness script when it loads, and the module's path afterwards.
-    prelude = (f"__file__ = {str(Path(file_path).resolve())!r}"
-               if file_path is not None else "")
-    return assemble_with_deps(module, dep_modules, prelude)
+    return assemble_with_deps(module, dep_modules)
 
 
 # ── Claim collection (parsing-only, no execution) ───────────────
@@ -477,17 +482,28 @@ def _collect_example_assertions(
     module: Module,
 ) -> list[tuple[str, str, int | None]]:
     """Return ``(addr, expr, source_line)`` for every ~example
-    assertion in *module*: wherever it is written (the body, a
-    subheading, an ``#Appendix``), as its claim node in the name-graph
-    has it."""
+    assertion in *module* (module body and subheadings)."""
+    mod_addr = module_address(module.title)
     assertions: list[tuple[str, str, int | None]] = []
-    for claim in claims_of(module):
-        if claim.kind != NodeKind.EXAMPLE:
-            continue
-        base = (claim.start_line + 1) if claim.start_line else None
-        for assertion, offset in _iter_assertions(claim_lines(claim)):
-            sl = (base + offset) if base else None
-            assertions.append((claim.address, assertion, sl))
+
+    def _collect(body: list, containing_addr: str) -> None:
+        example_n = 0
+        for item in body:
+            if not (isinstance(item, Claim) and item.sigil == "~example"):
+                continue
+            example_n += 1
+            addr = claim_address(containing_addr, "example", example_n)
+            base = (item.start_line + 1) if item.start_line else None
+            for assertion, offset in _iter_assertions(item.lines):
+                sl = (base + offset) if base else None
+                assertions.append((addr, assertion, sl))
+
+    _collect(module.body, mod_addr)
+    for item in module.body:
+        if isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            _collect(item.body, sub_addr)
+
     return assertions
 
 
@@ -567,15 +583,32 @@ def _collect_properties(
     module: Module,
 ) -> list[tuple[str, str, int | None, str]]:
     """Return ``(addr, sigil, source_line, prop_block_source)`` for
-    every ~property claim in *module*: wherever it is written (the body,
-    a subheading, an ``#Appendix``), as its claim node in the name-graph
-    has it."""
-    return [
-        (claim.address, claim.content["sigil"], claim.start_line,
-         "\n".join(claim_lines(claim)))
-        for claim in claims_of(module)
-        if claim.kind == NodeKind.PROPERTY
-    ]
+    every ~property claim in *module* (module body and subheadings)."""
+    mod_addr = module_address(module.title)
+    properties: list[tuple[str, str, int | None, str]] = []
+
+    def _collect(body: list, containing_addr: str) -> None:
+        prop_n = 0
+        for item in body:
+            if not (isinstance(item, Claim)
+                    and item.sigil.startswith("~property")):
+                continue
+            prop_n += 1
+            parts = item.sigil.split(None, 1)
+            if len(parts) > 1:
+                addr = property_address(containing_addr, parts[1].strip())
+            else:
+                addr = claim_address(containing_addr, "property", prop_n)
+            prop_block = textwrap.dedent("\n".join(item.lines))
+            properties.append((addr, item.sigil, item.start_line, prop_block))
+
+    _collect(module.body, mod_addr)
+    for item in module.body:
+        if isinstance(item, Subheading):
+            sub_addr = subheading_address(mod_addr, item.title)
+            _collect(item.body, sub_addr)
+
+    return properties
 
 
 def _iter_assertions(lines: list[str]):

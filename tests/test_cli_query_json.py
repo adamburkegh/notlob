@@ -162,21 +162,8 @@ class TestSingleNode:
         rc, doc = _run(capsys, cmd_query_content, "alpha")
         assert rc == 0
         _validate(doc, "NodeOrNull")
-        body = doc["content"]["body"]
-        assert any("An intro with a list." in e["text"] for e in body
-                   if e["kind"] == "prose")
-        assert any("def helper" in e["text"] for e in body
-                   if e["kind"] == "code")
-
-    def test_content_has_each_section_text_once(self, project, capsys):
-        """`query content` is the cheap way to read one section; it once
-        printed every paragraph and code block twice (flat `prose` and
-        `code` beside `body`)."""
-        _rc, doc = _run(capsys, cmd_query_content, "alpha")
-        dumped = json.dumps(doc)
-        assert dumped.count("An intro with a list.") == 1
-        assert dumped.count("def helper") == 1
-        assert "prose" not in doc["content"]
+        assert "An intro with a list." in doc["content"]["prose"]
+        assert "def helper" in doc["content"]["code"]
 
     def test_content_carries_the_bullet_count(self, project, capsys):
         """Real content from a section with a bullet list. The shape
@@ -205,10 +192,8 @@ class TestSchema:
         drift apart."""
         mine, graph = _schema()["definitions"], _schema("name_graph.json")[
             "definitions"]
-        shared = ("Node", "Content", "BodyItem", "ProseItem", "CodeItem",
-                  "BulletsItem", "ClaimItem", "Ref", "Import")
-        for name in shared:
-            assert mine[name] == graph[name], name
+        assert mine["Node"] == graph["Node"]
+        assert mine["Content"] == graph["Content"]
 
     def test_kind_enums_are_the_real_kinds(self):
         """Adding a NodeKind or EdgeKind without updating the schemas must

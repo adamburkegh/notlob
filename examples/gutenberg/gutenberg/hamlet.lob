@@ -42,16 +42,16 @@ it when the module is executed.
 
     def report() -> None:
         print(f"{'=' * 44}")
-        print("  Hamlet — text statistics")
+        print(f"  Hamlet — text statistics")
         print(f"{'=' * 44}")
         print(f"  Words  : {sum(WORDS.values()):>8,}  total")
         print(f"           {len(WORDS):>8,}  unique")
         print()
-        print("  Top 10 words:")
+        print(f"  Top 10 words:")
         for _w, _n in WORDS.most_common(10):
             print(f"    {_w:<16} {_n:>5,}")
         print()
-        print("  Top 10 speakers (turns):")
+        print(f"  Top 10 speakers (turns):")
         for _s, _n in _TOP:
             print(f"    {_s:<20} {_n:>4,}")
         print(f"{'=' * 44}")

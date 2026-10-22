@@ -60,7 +60,6 @@ class ProseBlock:
     surrounding text, preserving original whitespace.
     """
     spans: list[Span]
-    start_line: int | None = None
 
 
 @dataclass
@@ -183,7 +182,6 @@ class AppendixSection:
     """A #Appendix … post-text section."""
     title: str  # full token value, e.g. "#Appendix Notes"
     body: list[BodyItem]
-    start_line: int | None = None
 
 
 PostSection = Union[
@@ -317,8 +315,7 @@ def _prose_block(node: Tree) -> ProseBlock:
                 ))
             else:                           # PROSE_TEXT
                 spans.append(str(tok))
-    first = next((t for ln in lines for t in ln.children), None)
-    return ProseBlock(spans=spans, start_line=getattr(first, "line", None))
+    return ProseBlock(spans=spans)
 
 
 def _bullet_block(node: Tree) -> BulletBlock:
@@ -457,11 +454,10 @@ def _references_section(node: Tree) -> ReferencesSection:
 
 
 def _appendix_section(node: Tree) -> AppendixSection:
-    head = node.children[0]
+    title = str(node.children[0])
     return AppendixSection(
-        title=str(head),
+        title=title,
         body=_body_from_items(node.children[1:]),
-        start_line=getattr(head, "line", None),
     )
 
 
