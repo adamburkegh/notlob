@@ -10,6 +10,8 @@ an account of the evidence and one reading of it, not the final word.
 anything written in an `#Appendix` was invisible to the graph, to
 `notlob query`, to several checks, and (worst) to claim collection:
 `~example`, `~property` and `~run` blocks in an Appendix were never run.
+**Note, 2026-10-23:** the changes under "What changed" were backed out in
+`4230b04`; see `meta/retrospectives/2026-10-23-name-graph-redundancy/`.
 
 ## What happened
 

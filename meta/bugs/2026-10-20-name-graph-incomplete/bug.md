@@ -4,10 +4,13 @@
 walks a module instead of reading the graph.
 **Found by:** Adam, 2026-10-20, while reviewing the Appendix blind spot
 (`2026-10-19-appendix-not-in-graph`), which is one instance of this.
-**Status:** fixed for module, subheading and appendix bodies, 2026-10-21
-(see Progress). Open: `#Tests` fidelity, binding declarations, the Turtle
-export of bodies, and the assemblers and weaver (which still read the
-parse tree).
+**Status:** reopened, 2026-10-23. The fix below (`f4b9eb9`) was backed
+out in `4230b04`: the completeness contract stands, but the representation
+it used stored each section's text, claims and references several times
+and exported that through the graph schemas. See
+`meta/retrospectives/2026-10-23-name-graph-redundancy/`. "Progress" below
+describes the backed-out work, kept for the record. Was: fixed for module,
+subheading and appendix bodies, 2026-10-21.
 
 ## The design
 

@@ -4,7 +4,10 @@
 `notlob/bindings/python/runner.py` and `notlob/bindings/haskell/runner.py`
 (used by claims, and by `notlob build` for both).
 **Found by:** kamtrinia, notlob 0.5.4, Python binding, 2026-10-19.
-**Status:** fixed, 2026-10-21.
+**Status:** reopened, 2026-10-23: the fix (`1468f0f`) was backed out in
+`4230b04` with the name-graph refactor it was built on; see
+`meta/retrospectives/2026-10-23-name-graph-redundancy/`. Was: fixed,
+2026-10-21.
 
 ## Summary
 

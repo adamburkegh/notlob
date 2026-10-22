@@ -5,7 +5,10 @@ the claim collectors in all three bindings' runners,
 `notlob/bindings/__init__.py` (`collect_run_bodies`), and
 `notlob/commands.py` (`_collect_run_claims`, used by `notlob run`).
 **Found by:** kamtrinia, notlob 0.5.4, Python binding, 2026-10-19.
-**Status:** fixed, 2026-10-20. Retrospective:
+**Status:** reopened, 2026-10-23: the fix (`f4b9eb9`) was backed out in
+`4230b04` with the name-graph refactor; see
+`meta/retrospectives/2026-10-23-name-graph-redundancy/`. Was: fixed,
+2026-10-20. Retrospective:
 `meta/retrospectives/2026-10-19-appendix-blind-spot/retrospective.md`.
 Related core bug: `2026-10-20-name-graph-incomplete`.
 

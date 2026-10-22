@@ -5,8 +5,11 @@
 (`_test_module`).
 **Found by:** Adam, 2026-10-22, pressing on why the Gutenberg example's
 `##Gutenberg Hamlet` reference had "never resolved". Not reported by a user.
-**Status:** fixed in Python, 2026-10-22. TypeScript and Haskell fall back to
-the old loading (below).
+**Status:** reopened, 2026-10-23: the fix (`1468f0f`) was backed out in
+`4230b04` with the name-graph refactor it was built on; see
+`meta/retrospectives/2026-10-23-name-graph-redundancy/`. Was: fixed in
+Python, 2026-10-22, with TypeScript and Haskell falling back to the old
+loading (below).
 
 ## Summary
 
