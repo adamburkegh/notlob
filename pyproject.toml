@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 dependencies = ["lark>=1.2", "regex>=2024", "pytest>=8", "hypothesis>=6", "ruff>=0.4"]
 
 [project.optional-dependencies]
-dev = ["jsonschema>=4", "rdflib>=7"]
+dev = ["jsonschema>=4", "rdflib>=7", "shiv>=1.0"]
 
 [project.scripts]
 notlob = "notlob.cli:main"

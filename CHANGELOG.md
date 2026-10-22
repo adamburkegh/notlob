@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `build.py`: builds the release `.pyz` (`dist/notlob-<version>.pyz`) with
+  shiv from a git ref (`python build.py --ref v0.6.0`), so the same ref
+  gives the same artifact whatever is in the working tree. It refuses a
+  version with no dated changelog section or a ref other than the one the
+  version's tag points at, and smoke-tests what it built (version, shipped
+  docs and schemas, a real `notlob test`). It does not tag or publish.
+  `shiv` is added to the `dev` extra.
+
 ## [0.6.0] - 2026-10-22
 
 Changes that can break an existing project or a tool reading notlob's
