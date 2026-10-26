@@ -195,10 +195,8 @@ class TestMutualReferencesRun:
 class TestMutualReferencesAreInTheGraph:
     def test_both_imports_edges_exist(self, pair):
         graph = build_package(pair)
-        assert [n.address for n in graph.children("core", EdgeKind.IMPORTS)
-                ] == ["demo"]
-        assert [n.address for n in graph.children("demo", EdgeKind.IMPORTS)
-                ] == ["core"]
+        assert [n.address for n in graph.imports_of("core")] == ["demo"]
+        assert [n.address for n in graph.imports_of("demo")] == ["core"]
 
     def test_the_prose_reference_resolves_and_is_an_edge(self, pair):
         graph = build_package(pair)
@@ -255,11 +253,10 @@ class TestOverviewShape:
 
     def test_every_listing_is_in_the_graph(self, shop):
         graph = build_package(shop)
-        assert sorted(n.address for n in
-                      graph.children("shop", EdgeKind.IMPORTS)
+        assert sorted(n.address for n in graph.imports_of("shop")
                       ) == ["shop/prices", "shop/tax"]
-        assert [n.address for n in
-                graph.children("shop/prices", EdgeKind.IMPORTS)] == ["shop"]
+        assert [n.address for n in graph.imports_of("shop/prices")
+                ] == ["shop"]
 
 
 class TestWhenUseCannotBeDetermined:

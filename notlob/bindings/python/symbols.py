@@ -24,7 +24,8 @@ import builtins as _builtins_mod
 import textwrap
 from typing import Sequence
 
-from notlob.bindings import SymbolInfo
+from notlob.bindings import SymbolInfo, default_split_imports
+from notlob.model import ImportLine
 
 _PYTHON_BUILTINS = frozenset(dir(_builtins_mod))
 
@@ -106,3 +107,28 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
                 if name not in first_line or node.lineno < first_line[name]:
                     first_line[name] = node.lineno
     return sorted(first_line.items())
+
+
+def split_imports(
+    lines: Sequence[ImportLine],
+) -> list[tuple[str, int | None]]:
+    """Split the import lines of ``#References`` into Python statements.
+
+    The compiler decides where a statement ends, so an import in
+    parentheses over several lines, or one continued by a backslash at
+    the end of a line, is one statement. Each comes with its text,
+    dedented, and the line its first line is on. A comment line is no
+    statement. Lines that do not compile as a whole fall back to one
+    statement for each non-blank line.
+    """
+    block = textwrap.dedent("\n".join(line.text for line in lines))
+    try:
+        tree = ast.parse(block)
+    except SyntaxError:
+        return default_split_imports(lines)
+    rows = block.split("\n")
+    return [
+        ("\n".join(rows[node.lineno - 1:node.end_lineno]).rstrip(),
+         lines[node.lineno - 1].line)
+        for node in tree.body
+    ]

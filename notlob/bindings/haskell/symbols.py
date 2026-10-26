@@ -44,6 +44,7 @@ import textwrap
 from typing import Sequence
 
 from notlob.bindings import SymbolInfo
+from notlob.model import ImportLine
 
 
 # ── Per-line classifiers ──────────────────────────────────────
@@ -251,3 +252,28 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
             if name not in first_line:
                 first_line[name] = line
     return sorted(first_line.items())
+
+
+def split_imports(
+    lines: Sequence[ImportLine],
+) -> list[tuple[str, int | None]]:
+    """Split the import lines of ``#References`` into Haskell statements.
+
+    Layout decides: a line starts a statement when it is not indented
+    (once the whole block is dedented), and an indented line continues the
+    statement above it. Each comes with its text, dedented, and the line
+    its first line is on.
+    """
+    rows = textwrap.dedent("\n".join(line.text for line in lines)).split("\n")
+    statements: list[list] = []
+    pending: list[str] = []
+    for row, line in zip(rows, lines):
+        if not row.strip():
+            pending.append("")
+        elif row[0] in " \t" and statements:
+            statements[-1][0].extend(pending + [row])
+            pending = []
+        else:
+            statements.append([[row], line.line])
+            pending = []
+    return [("\n".join(rows_).rstrip(), first) for rows_, first in statements]

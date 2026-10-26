@@ -36,7 +36,9 @@ from notlob.bindings.typescript.runner import (
     _build_module_source,
     run_examples, run_properties, run_tests,
 )
-from notlob.bindings.typescript.symbols import extract_calls, extract_symbols
+from notlob.bindings.typescript.symbols import (
+    extract_calls, extract_symbols, split_imports,
+)
 from notlob.model import Module
 
 
@@ -122,6 +124,7 @@ kit = BindingKit(
     extension='ts',
     comment_prefix='//',
     build=build_typescript,
+    split_imports=split_imports,
 )
 
 __all__ = [

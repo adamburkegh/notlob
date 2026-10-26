@@ -28,7 +28,7 @@ SCHEMA = (
     Path(__file__).parent.parent / "notlob" / "schema" / "name_graph.json"
 )
 
-_LEAVES = {"PROSE", "CODE", "BULLETS"}
+_LEAVES = {"PROSE", "CODE", "BULLETS", "LISTING", "IMPORT", "DECLARATION"}
 
 #: A source with every kind of node in it.
 _EVERYTHING = (
@@ -319,7 +319,8 @@ class TestEveryExample:
         assert len({n["address"] for n in with_text}) == len(with_text)
         assert not [n for n in with_text if n["kind"] == "SYMBOL"]
         assert {n["kind"] for n in with_text} <= {
-            "PROSE", "CODE", "BULLETS", "EXAMPLE", "PROPERTY", "RUN", "TEST"}
+            "PROSE", "CODE", "BULLETS", "EXAMPLE", "PROPERTY", "RUN", "TEST",
+            "LISTING", "IMPORT", "DECLARATION"}
 
     def test_index_is_full_without_the_text(self, name, kit):
         graph = _project(name, kit)

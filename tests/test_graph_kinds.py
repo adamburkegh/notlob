@@ -38,7 +38,8 @@ class TestTheTable:
         ("opens_scope", {K.MODULE, K.PROPERTY, K.TESTS, K.TEST_GROUP}),
         ("claim", {K.EXAMPLE, K.PROPERTY, K.RUN}),
         ("runnable", {K.EXAMPLE, K.PROPERTY, K.RUN, K.TEST}),
-        ("block", {K.PROSE, K.CODE, K.BULLETS}),
+        ("hidden_at_outline", {K.PROSE, K.CODE, K.BULLETS, K.LISTING,
+                               K.IMPORT, K.DECLARATION}),
         ("section", {K.SUBHEADING, K.APPENDIX}),
         ("region", {K.POST_TEXT}),
         ("text_in_holder", {K.SYMBOL}),
@@ -52,15 +53,16 @@ class TestTheTable:
             K.PROSE: "prose", K.CODE: "code", K.BULLETS: "bullets",
             K.EXAMPLE: "example", K.RUN: "run", K.PROPERTY: "property",
             K.TEST: "test", K.APPENDIX: "appendix",
-            K.POST_TEXT: "post-text",
+            K.POST_TEXT: "post-text", K.LISTING: "listing",
+            K.IMPORT: "import", K.DECLARATION: "declaration",
         }
 
     def test_all_but_the_post_text_are_numbered(self):
         have_segment = {k for k in NodeKind if KINDS[k].segment}
         assert _with("numbered") == have_segment - {K.POST_TEXT}
 
-    def test_no_kind_is_both_a_block_and_a_section(self):
-        assert not _with("block") & _with("section")
+    def test_no_kind_is_both_hidden_at_outline_and_a_section(self):
+        assert not _with("hidden_at_outline") & _with("section")
 
 
 # ── Scope ────────────────────────────────────────────────────
@@ -120,6 +122,13 @@ Appendix prose.
 
     def helper():
         pass
+
+#References
+    #Util
+    import os
+
+#Binding
+    ~language python
 """
 
 
@@ -257,6 +266,11 @@ class TestAddressesAsWritten:
             f"{MOD}#Extras": "SUBHEADING",
             f"{MOD}#Extras#code#1": "CODE",
             f"{MOD}#helper": "SYMBOL",
+            f"{MOD}#References": "REFERENCES",
+            f"{MOD}#References#listing#1": "LISTING",
+            f"{MOD}#References#import#1": "IMPORT",
+            f"{MOD}#Binding": "BINDING",
+            f"{MOD}#Binding#declaration#1": "DECLARATION",
         }
 
     def test_every_kind_a_module_holds_is_among_them(self):

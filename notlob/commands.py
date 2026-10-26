@@ -275,12 +275,12 @@ def _graph_of_module(
     if root is not None:
         graph, collisions = _package_graph(root, binding)
         return graph, _collision_of(path, collisions)
-    _kit, extract_symbols = _get_binding_kit(
+    kit, extract_symbols = _get_binding_kit(
         binding.get("language") if binding else None,
     )
     try:
         graph = build(module)
-        enrich(graph, module, extract_symbols)
+        enrich(graph, module, extract_symbols, kit.split_imports)
     except AddressCollisionError as exc:
         return None, exc
     return graph, None
@@ -299,7 +299,7 @@ def _package_graph(root: Path, binding: dict | None):
     collisions: list = []
     graph = build_package(
         root, extract_symbols, call_extractor=kit.extract_calls,
-        collisions=collisions)
+        collisions=collisions, split_imports=kit.split_imports)
     return graph, collisions
 
 
@@ -588,7 +588,7 @@ def _test_module(
     if ref_graph is None:
         try:
             ref_graph = build(module)
-            enrich(ref_graph, module, extract_symbols)
+            enrich(ref_graph, module, extract_symbols, kit.split_imports)
         except AddressCollisionError as exc:
             collision = exc
 
@@ -784,7 +784,8 @@ def _run_check_advisory(
         )
         try:
             graph = build_package(
-                root, extract_symbols, call_extractor=kit.extract_calls)
+                root, extract_symbols, call_extractor=kit.extract_calls,
+                split_imports=kit.split_imports)
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
             return True
@@ -1015,7 +1016,7 @@ def _build_one(
     if graph is None:
         try:
             graph = build(module)
-            enrich(graph, module, kit.extract_symbols)
+            enrich(graph, module, kit.extract_symbols, kit.split_imports)
         except AddressCollisionError as exc:
             collision = exc
     if collision is not None:
@@ -1319,7 +1320,9 @@ def cmd_graph(
 
     if root is not None:
         try:
-            graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+            graph = build_package(
+                root, extract_symbols, call_extractor=kit.extract_calls,
+                split_imports=kit.split_imports)
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
             return 1
@@ -1332,7 +1335,7 @@ def cmd_graph(
             return 1
         try:
             graph = build(module)
-            enrich(graph, module, extract_symbols)
+            enrich(graph, module, extract_symbols, kit.split_imports)
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
             return 1
@@ -1384,7 +1387,9 @@ def _require_graph(
         binding.get("language") if binding else None
     )
     try:
-        return build_package(root, extract_symbols, call_extractor=kit.extract_calls)
+        return build_package(
+            root, extract_symbols, call_extractor=kit.extract_calls,
+            split_imports=kit.split_imports)
     except AddressCollisionError as exc:
         if raise_on_collision:
             raise
@@ -1402,7 +1407,7 @@ QUERY_EDGE_KINDS = tuple(k.name for k in EdgeKind)
 
 #: The kinds of node ``outline`` shows, for ``query search``.
 QUERY_NODE_KINDS = tuple(
-    k.name for k in NodeKind if not KINDS[k].block)
+    k.name for k in NodeKind if not KINDS[k].hidden_at_outline)
 
 
 def _print_nodes(nodes) -> int:
@@ -1461,7 +1466,7 @@ def cmd_query_search(
     kind = NodeKind[kind_str] if kind_str else None
     return _print_nodes(
         n for n in graph.search(pattern, kind)
-        if not KINDS[n.kind].block)
+        if not KINDS[n.kind].hidden_at_outline)
 
 
 def cmd_query_imports(address: str) -> int:
@@ -1469,7 +1474,7 @@ def cmd_query_imports(address: str) -> int:
     graph = _require_graph()
     if graph is None:
         return 1
-    return _print_nodes(graph.children(address, EdgeKind.IMPORTS))
+    return _print_nodes(graph.imports_of(address))
 
 
 def cmd_query_imported_by(address: str) -> int:
@@ -1477,7 +1482,7 @@ def cmd_query_imported_by(address: str) -> int:
     graph = _require_graph()
     if graph is None:
         return 1
-    return _print_nodes(graph.parents(address, EdgeKind.IMPORTS))
+    return _print_nodes(graph.imported_by(address))
 
 
 def cmd_query_callers(address: str) -> int:

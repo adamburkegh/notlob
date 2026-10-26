@@ -530,7 +530,7 @@ def check_imports(graph: NameGraph) -> list[Finding]:
 
     for mod_node in graph.nodes(kind=NodeKind.MODULE):
         mod_root = mod_node.address
-        for dep in graph.children(mod_root, EdgeKind.IMPORTS):
+        for dep in graph.imports_of(mod_root):
             dep_root = dep.address
             used = any(
                 graph.module_of(e.source) == mod_root

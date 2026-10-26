@@ -109,7 +109,7 @@ named_test:         TEST_SIGIL _body_line+
 
 binding_section:    BINDING_HEAD    (INDENT bind_detail_decl | BLANK)*
 bind_detail_decl:   LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL | KEEP_SRC_DECL
-references_section: REFERENCES_HEAD (INDENTED_LINE | BLANK)*
+references_section: REFERENCES_HEAD (LISTING_LINE | INDENTED_LINE | BLANK)*
 appendix_section:   APPENDIX_HEAD   body_item*
 
 // ── Terminal definitions ────────────────────────────────────
@@ -187,6 +187,13 @@ APPENDIX_HEAD.20:    "#Appendix" REST_OF_LINE
 
 INDENT:        /[ \t]+/
 INDENTED_LINE.8: INDENT REST_OF_LINE
+
+// A listing: an indented `#` and a module title, as MOD_HEAD writes one at
+// column zero. It outranks INDENTED_LINE, which matches the same text, and
+// is reachable only in references_section, so a `#` comment in a code
+// block is untouched. A `#` followed by a space or another `#` is not a
+// title: it stays an import line (a comment, say).
+LISTING_LINE.9: INDENT "#" /[^#\s]/ REST_OF_LINE
 BLANK.8:  "\n"
 BULLET.8: "*" ("\n" | /[ \t]/ REST_OF_LINE)
 

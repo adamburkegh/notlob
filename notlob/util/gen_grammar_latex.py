@@ -247,6 +247,7 @@ def render_bnf_block(productions: list[tuple[str, Node]]) -> str:
 _REGEX_OVERRIDES: dict[str, Node] = {
     r"[^\n]": D("any character other than newline"),
     r"[^#\n]": NT("NonHashLineChar"),
+    r"[^#\s]": D("any character other than # or whitespace"),
     r"[ \t]": Or(NT("Space"), NT("Tab")),
     r"[ \t]+": RepPlus(Or(NT("Space"), NT("Tab"))),
     # REF -- deliberately omits the "not preceded by a word char or /"
@@ -294,6 +295,7 @@ _PRIORITY_TIERS: dict[int, list[str]] = {
     20: ["SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
          "APPENDIX_HEAD"],
     10: ["MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL"],
+    9: ["LISTING_LINE"],
     8: ["INDENTED_LINE", "BLANK", "BULLET"],
     5: ["REF"],
     1: ["LINE_START_TEXT", "PROSE_TEXT"],

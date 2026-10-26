@@ -569,7 +569,14 @@ The shapes are specified by `schema/query_result.json`.
 `notlob graph` prints the graph itself, `{version, level, nodes, edges}`
 (`schema/name_graph.json`): one tree of nodes for each file, joined by
 `CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL`
-edges between them. `--level` (a name or a number) says how much to show:
+edges between them. `#References` and `#Binding` are nodes like the other
+sections (`REFERENCES`, `BINDING`): a listing is a `LISTING` (`#Title`),
+each import statement of the bound language one `IMPORT` (a statement over
+several lines is one node), and each `#Binding` line a `DECLARATION`, with
+`declares` (`language`, `external`, `on-build` or `keep-generated-src`) and
+`value`. An `IMPORTS` edge starts at the listing that makes it, and a
+`USES_EXTERNAL` edge at the declaration that names the file; at `outline`
+both start at their section. `--level` (a name or a number) says how much to show:
 `outline` (1, the default) every node but the paragraphs, code blocks and
 bullet lists, with their edges moved to the section that holds them;
 `index` (2) those too, the references a paragraph holds and a `size` for

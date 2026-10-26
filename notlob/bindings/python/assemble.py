@@ -50,7 +50,6 @@ from notlob.graph import module_address, named_address
 from notlob.model import (
     AppendixSection, Module, ReferencesSection, Subheading,
 )
-from notlob.project import parse_python_imports
 
 
 def _opens_with_definition(chunk: str) -> bool:
@@ -79,7 +78,7 @@ def assemble(module: Module) -> str:
     if module.post_text is not None:
         for section in module.post_text.sections:
             if isinstance(section, ReferencesSection):
-                import_lines = parse_python_imports(section.lines)
+                import_lines = [line.text for line in section.imports]
                 text = textwrap.dedent(
                     "\n".join(import_lines)
                 ).strip()

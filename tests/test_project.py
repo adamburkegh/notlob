@@ -7,8 +7,6 @@ import pytest
 from kitcalls import dependency_modules
 from notlob.project import (
     find_project_root,
-    parse_lob_refs,
-    parse_python_imports,
     resolve_module_path,
 )
 
@@ -82,81 +80,6 @@ class TestResolveModulePath:
         assert resolve_module_path("a/b/c", tmp_path) == (
             tmp_path / "a" / "b" / "c.lob"
         )
-
-
-# ── parse_lob_refs ────────────────────────────────────────────
-
-class TestParseLobRefs:
-    def test_single_ref(self):
-        lines = ["    #Roman Numerals"]
-        assert parse_lob_refs(lines) == ["roman/numerals"]
-
-    def test_multiword_title(self):
-        lines = ["    #Pricing Discount Strategies"]
-        assert parse_lob_refs(lines) == ["pricing/discount/strategies"]
-
-    def test_mixed_with_python_imports(self):
-        lines = [
-            "    #Roman Numerals",
-            "    from decimal import Decimal",
-            "    #Pricing Discounts",
-        ]
-        assert parse_lob_refs(lines) == ["roman/numerals", "pricing/discounts"]
-
-    def test_no_refs_returns_empty(self):
-        lines = ["    from pathlib import Path", "    import os"]
-        assert parse_lob_refs(lines) == []
-
-    def test_blank_lines_ignored(self):
-        lines = ["", "    #Roman Numerals", ""]
-        assert parse_lob_refs(lines) == ["roman/numerals"]
-
-    def test_empty_input(self):
-        assert parse_lob_refs([]) == []
-
-    def test_bare_hash_ignored(self):
-        # A bare "#" with no label should not produce a ref
-        lines = ["    #"]
-        assert parse_lob_refs(lines) == []
-
-    def test_single_word_title(self):
-        lines = ["    #Pricing"]
-        assert parse_lob_refs(lines) == ["pricing"]
-
-    def test_preserves_order(self):
-        lines = ["    #A B", "    #C D", "    #E F"]
-        assert parse_lob_refs(lines) == ["a/b", "c/d", "e/f"]
-
-
-# ── parse_python_imports ──────────────────────────────────────
-
-class TestParsePythonImports:
-    def test_returns_non_hash_lines(self):
-        lines = ["    from decimal import Decimal"]
-        assert parse_python_imports(lines) == lines
-
-    def test_filters_out_lob_refs(self):
-        lines = [
-            "    #Roman Numerals",
-            "    from decimal import Decimal",
-        ]
-        assert parse_python_imports(lines) == ["    from decimal import Decimal"]
-
-    def test_preserves_blank_lines(self):
-        lines = ["    import os", "", "    import sys"]
-        assert parse_python_imports(lines) == lines
-
-    def test_empty_input(self):
-        assert parse_python_imports([]) == []
-
-    def test_all_lob_refs_returns_empty(self):
-        lines = ["    #Roman Numerals", "    #Pricing Discounts"]
-        assert parse_python_imports(lines) == []
-
-    def test_preserves_indentation(self):
-        lines = ["    from pathlib import Path"]
-        result = parse_python_imports(lines)
-        assert result[0].startswith("    ")
 
 
 # ── load_dependencies ─────────────────────────────────────────

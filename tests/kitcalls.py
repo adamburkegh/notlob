@@ -31,6 +31,18 @@ def claims_in(source: str, *kinds: str) -> list[ClaimToRun]:
     return claims_of(from_tree(parse(source)), *kinds)
 
 
+def references_section(lines: list[str]):
+    """The `#References` section whose lines are *lines*, as the grammar
+    makes it (listings told from import lines), for a test that builds a
+    module by hand."""
+    from notlob.model import ReferencesSection
+    text = "#T\n\n---\n\n#References\n" + "".join(f"{x}\n" for x in lines)
+    module = from_tree(parse(text))
+    (section,) = [s for s in module.post_text.sections
+                  if isinstance(s, ReferencesSection)]
+    return section
+
+
 def dependency_modules(module, root: Path, kit=None) -> list:
     """The modules whose code *module* needs, parsed and in load order,
     as a command works them out from the package graph of the project at

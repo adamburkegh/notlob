@@ -32,6 +32,8 @@ import textwrap
 from typing import Sequence
 
 from notlob.bindings import SymbolInfo
+from notlob.bindings.typescript.tokenizer import is_complete
+from notlob.model import ImportLine
 
 # Keywords and global names that will never be notlob symbols.
 _TS_BUILTINS = frozenset({
@@ -130,3 +132,32 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
             if name not in first_line:
                 first_line[name] = line
     return sorted(first_line.items())
+
+
+def split_imports(
+    lines: Sequence[ImportLine],
+) -> list[tuple[str, int | None]]:
+    """Split the import lines of ``#References`` into TypeScript
+    statements.
+
+    A statement is complete when its brackets are balanced and no string
+    is left open (the tokenizer's rule, which the claim runner also uses),
+    so ``import {`` ... ``} from 'x'`` over several lines is one. Each
+    comes with its text, dedented, and the line its first line is on.
+    """
+    rows = textwrap.dedent("\n".join(line.text for line in lines)).split("\n")
+    found: list[tuple[str, int | None]] = []
+    buffer: list[str] = []
+    first: int | None = None
+    for row, line in zip(rows, lines):
+        if not buffer:
+            if not row.strip():
+                continue
+            first = line.line
+        buffer.append(row)
+        if is_complete("\n".join(buffer)):
+            found.append(("\n".join(buffer).rstrip(), first))
+            buffer = []
+    if buffer:
+        found.append(("\n".join(buffer).rstrip(), first))
+    return found

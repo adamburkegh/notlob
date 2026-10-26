@@ -171,13 +171,26 @@ class TestsSection:
 
 
 @dataclass
+class Declaration:
+    """One declaration in ``#Binding``: its *keyword* (``language``,
+    ``external``, ``on-build`` or ``keep-generated-src``), its *value*
+    (``None`` when it has none), the *line* it is on and the *text* of the
+    line as written, without its indentation."""
+    keyword: str
+    value:   str | None
+    line:    int | None
+    text:    str
+
+
+@dataclass
 class BindingSection:
     """The #Binding post-text section.
 
     Each declaration is a typed field; ``~language`` is required in
     practice (enforced at the grammar level — the lexer rejects unknown
     ``~sigil`` lines inside ``#Binding``).  ``externals`` is a list
-    because ``~external`` may appear more than once.
+    because ``~external`` may appear more than once.  *declarations* are
+    all of them in document order, each with its keyword, value and line.
     """
     language:           str | None       = None
     externals:          list[str]        = field(default_factory=list)
@@ -187,15 +200,41 @@ class BindingSection:
     keep_generated_src: str | None       = None
     start_line:         int | None       = None
     end_line:           int | None       = None
+    declarations:       list[Declaration] = field(default_factory=list)
+
+
+@dataclass
+class Listing:
+    """A module listed in ``#References``: the *title* after the ``#`` and
+    the *line* it is on."""
+    title: str
+    line:  int | None
+
+
+@dataclass
+class ImportLine:
+    """A line of ``#References`` that is not a listing: *text* as written
+    (indentation kept; empty for a blank line) and the *line* it is on.
+    They are the bound language's import statements, which that language
+    splits into statements."""
+    text: str
+    line: int | None
 
 
 @dataclass
 class ReferencesSection:
-    """The #References post-text section."""
+    """The #References post-text section.
+
+    *lines* are all its lines as written. The grammar tells them apart:
+    *listings* are the lines that list a module (``#Title``), and
+    *imports* all the others, blank lines included, both in document
+    order."""
     lines:        list[str]
     line_numbers: list[int | None] = field(default_factory=list)
     start_line:   int | None       = None
     end_line:     int | None       = None
+    listings:     list[Listing]    = field(default_factory=list)
+    imports:      list[ImportLine] = field(default_factory=list)
 
 
 @dataclass
@@ -521,6 +560,7 @@ def _binding_section(node: Tree) -> BindingSection:
     on_build           = None
     on_build_line: int | None = None
     keep_generated_src = None
+    declarations: list[Declaration] = []
     start = _line(node.children[0])
     end = start
     for child in node.children[1:]:   # skip BINDING_HEAD; INDENT and BLANK skipped below
@@ -531,15 +571,24 @@ def _binding_section(node: Tree) -> BindingSection:
         end  = _furthest(end, _line(decl))
         if decl.type == 'LANGUAGE_DECL':
             language = raw.removeprefix('~language ').strip()
+            declarations.append(
+                Declaration("language", language, _line(decl), raw))
         elif decl.type == 'EXTERNAL_DECL':
             externals.append(raw.removeprefix('~external ').strip())
             external_lines.append(getattr(decl, "line", None))
+            declarations.append(
+                Declaration("external", externals[-1], _line(decl), raw))
         elif decl.type == 'ON_BUILD_DECL':
             on_build = raw.removeprefix('~on-build ').strip()
             on_build_line = getattr(decl, "line", None)
+            declarations.append(
+                Declaration("on-build", on_build, _line(decl), raw))
         elif decl.type == 'KEEP_SRC_DECL':
             keep_generated_src = raw.removeprefix('~keep-generated-src').strip() or None
+            declarations.append(Declaration(
+                "keep-generated-src", keep_generated_src, _line(decl), raw))
     return BindingSection(
+        declarations=declarations,
         language=language,
         externals=externals,
         external_lines=external_lines,
@@ -559,6 +608,10 @@ def _references_section(node: Tree) -> ReferencesSection:
         line_numbers=[_line(c) for c in children],
         start_line=start,
         end_line=_last_text_line(children, start),
+        listings=[Listing(str(c).strip()[1:].strip(), _line(c))
+                  for c in children if c.type == "LISTING_LINE"],
+        imports=[ImportLine(str(c), _line(c))
+                 for c in children if c.type != "LISTING_LINE"],
     )
 
 

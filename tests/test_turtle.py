@@ -108,7 +108,9 @@ _EVERYTHING = (
     "##Sec\n\nSection text.\n\n    def g():\n        return f()\n\n"
     "---\n\n#Tests\n\n    f() == 1\n\nCommentary.\n\n"
     "##grp\n    g() == 1\n\n~test nm\n    g() == 1\n\n"
-    "#Appendix Notes\n\nAppendix text.\n"
+    "#Appendix Notes\n\nAppendix text.\n\n"
+    "#References\n    #Util\n    import os\n\n"
+    "#Binding\n    ~language python\n    ~external data.txt\n"
 )
 
 
@@ -433,6 +435,7 @@ _DATATYPES = {
     "address": XSD.string, "file": XSD.string, "startLine": XSD.integer,
     "endLine": XSD.integer, "named": XSD.boolean, "mode": XSD.string,
     "size": XSD.integer, "text": XSD.string, "sub": XSD.boolean,
+    "declares": XSD.string, "value": XSD.string,
 }
 
 

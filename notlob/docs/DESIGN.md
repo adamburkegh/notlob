@@ -414,11 +414,18 @@ access will also be exposed via MCP.
 **Name-graph:** The central data structure of the tooling layer: the
 parse tree, with cross-references. Every element of a `.lob` file is a
 node: modules, sections, prose paragraphs, code blocks, bullet lists,
-claims, tests and the names code defines. Nodes and `CONTAINS` edges
-are a forest, one tree per file: `CONTAINS` is position, where each node
-is written. `USES`, `CITES`, `IMPORTS` and `USES_EXTERNAL` are a
-directed graph over the forest: what each call, citation, listing and
-external declaration resolves to. What a node is (a claim, a paragraph,
+claims, tests, the modules `#References` lists and the import statements
+it holds, the declarations of `#Binding`, and the names code defines.
+Nodes and `CONTAINS` edges are a forest, one tree per file: `CONTAINS` is
+position, where each node is written. `USES`, `CITES`, `IMPORTS` and
+`USES_EXTERNAL` are a directed graph over the forest: what each call,
+citation, listing and external declaration resolves to, each starting at
+the line that makes it (an `IMPORTS` edge at its listing, a
+`USES_EXTERNAL` edge at the declaration that names the file). Who owns
+the syntax makes the node: a listing and a declaration are notlob's, and
+`build` makes them; an import statement is the bound language's, so the
+binding says where one ends (`BindingKit.split_imports`) and `enrich`
+makes one node for each. What a node is (a claim, a paragraph,
 a symbol) is its kind; which scope a name belongs to is derived from the
 tree. Each node has its file and its first and last line. Text is held
 once, on the leaf it was written in; a symbol's text is the lines of its

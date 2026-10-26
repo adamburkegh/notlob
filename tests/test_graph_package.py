@@ -144,7 +144,7 @@ class TestBuildPackage:
             "#B\n", encoding="utf-8"
         )
         g = build_package(tmp_path)
-        imported = list(g.children("a", EdgeKind.IMPORTS))
+        imported = g.imports_of("a")
         assert len(imported) == 1
         assert imported[0].address == "b"
 
@@ -155,7 +155,7 @@ class TestBuildPackage:
             encoding="utf-8",
         )
         g = build_package(tmp_path)
-        imported = list(g.children("a", EdgeKind.IMPORTS))
+        imported = g.imports_of("a")
         assert imported == []
 
     def test_duplicate_ref_produces_one_edge(self, tmp_path):
@@ -167,7 +167,7 @@ class TestBuildPackage:
             "#B\n", encoding="utf-8"
         )
         g = build_package(tmp_path)
-        imported = list(g.children("a", EdgeKind.IMPORTS))
+        imported = g.imports_of("a")
         assert len(imported) == 1
 
     def test_unparseable_file_is_skipped(self, tmp_path):
@@ -285,7 +285,7 @@ class TestCollisions:
     def test_imports_of_the_colliding_module_are_kept(self, tmp_path):
         graph = build_package(
             self._project(tmp_path), extract_symbols, collisions=[])
-        assert [(e.source, e.target)
+        assert [(graph.module_of(e.source), e.target)
                 for e in graph.edges(EdgeKind.IMPORTS)] == [
             ("client", "shapes")]
 
@@ -319,9 +319,7 @@ class TestGutenbergIntegration:
         assert pkg.node("gutenberg/hamlet") is not None
 
     def test_hamlet_imports_corpus(self, pkg):
-        imported = [
-            n for n in pkg.children("gutenberg/hamlet", EdgeKind.IMPORTS)
-        ]
+        imported = pkg.imports_of("gutenberg/hamlet")
         assert any(n.address == "gutenberg/corpus" for n in imported)
 
     def test_corpus_lists_hamlet_to_cite_it(self, pkg):
@@ -329,8 +327,7 @@ class TestGutenbergIntegration:
         # module of the same shape as #Gutenberg Hamlet"); hamlet lists
         # corpus because its code uses it. Mutual listing is ordinary.
         imported = [
-            n.address for n in
-            pkg.children("gutenberg/corpus", EdgeKind.IMPORTS)
+            n.address for n in pkg.imports_of("gutenberg/corpus")
         ]
         assert imported == ["gutenberg/hamlet"]
         cited = [

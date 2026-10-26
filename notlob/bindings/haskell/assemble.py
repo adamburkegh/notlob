@@ -34,7 +34,7 @@ import re
 from notlob.bindings import assemble_section, collect_blocks
 from notlob.graph import module_address, named_address
 from notlob.model import (
-    AppendixSection, Module, ReferencesSection, Subheading,
+    AppendixSection, ImportLine, Module, ReferencesSection, Subheading,
 )
 
 
@@ -60,27 +60,16 @@ def _module_name(title: str) -> str:
 
 # ── References parsing ────────────────────────────────────────
 
-def _haskell_imports(lines: list[str]) -> list[str]:
-    """Return Haskell import lines from a ``#References`` line list.
+def _haskell_imports(imports: list[ImportLine]) -> list[str]:
+    """Return the Haskell import lines of a ``#References`` section.
 
-    Drops blank lines and lob-ref lines (those whose stripped form
-    starts with ``#``).  All other lines are assumed to be Haskell
-    ``import`` statements.
-
-    >>> _haskell_imports([
-    ...     "    #Roman Numerals",
-    ...     "    import Data.List (sort)",
-    ...     "",
-    ...     "    import Data.Char (toLower)",
-    ... ])
-    ['import Data.List (sort)', 'import Data.Char (toLower)']
+    *imports* are its lines that list no module (the grammar tells them
+    apart). Blank lines are dropped; every other line is assumed to be
+    part of a Haskell ``import`` statement, and is kept, stripped.
     """
-    result = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            result.append(stripped)
-    return result
+    return [
+        line.text.strip() for line in imports if line.text.strip()
+    ]
 
 
 
@@ -107,7 +96,7 @@ def _assemble_body(
     if module.post_text is not None:
         for section in module.post_text.sections:
             if isinstance(section, ReferencesSection):
-                import_lines = _haskell_imports(section.lines)
+                import_lines = _haskell_imports(section.imports)
                 break
 
     code_chunks: list[str] = []

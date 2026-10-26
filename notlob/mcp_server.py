@@ -21,7 +21,8 @@ from notlob.graph import KINDS, EdgeKind, NodeKind
 #: The edge kinds a graph holds, and the kinds of node ``outline`` shows:
 #: what a query can be asked for.
 _EDGE_KINDS = [k.name for k in EdgeKind]
-_NODE_KINDS = [k.name for k in NodeKind if not KINDS[k].block]
+_NODE_KINDS = [
+    k.name for k in NodeKind if not KINDS[k].hidden_at_outline]
 
 
 # ── Tool definitions ─────────────────────────────────────────

@@ -84,10 +84,13 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Callable, Iterator
 
-from .bindings import ClaimToRun, Extractor, SymbolInfo
+from .bindings import (
+    ClaimToRun, Extractor, ImportSplitter, SymbolInfo, default_split_imports,
+)
 from .model import (
-    AppendixSection, BulletBlock, Claim, CodeBlock, Module, NamedTest,
-    ProseBlock, Ref, Subheading, TestGroup, TestsSection,
+    AppendixSection, BindingSection, BulletBlock, Claim, CodeBlock, Module,
+    NamedTest, ProseBlock, Ref, ReferencesSection, Subheading, TestGroup,
+    TestsSection,
 )
 
 
@@ -159,6 +162,11 @@ class NodeKind(Enum):
     TESTS      = auto()    # the #Tests section
     POST_TEXT  = auto()    # everything after the --- separator
     TEST_GROUP = auto()    # a ##group in #Tests, which holds tests
+    REFERENCES = auto()    # the #References section
+    BINDING    = auto()    # the #Binding section (binding.lob)
+    LISTING    = auto()    # a module listed in #References: #Title
+    IMPORT     = auto()    # one import statement of the bound language
+    DECLARATION = auto()   # a ~language, ~external, ... in #Binding
 
 
 @dataclass(frozen=True)
@@ -169,8 +177,10 @@ class KindFacts:
     opens_scope      a name written in a node of this kind belongs to it
     claim            an ``~example``, ``~property`` or ``~run``
     runnable         a binding runs it: a claim, or a test
-    block            a paragraph, code block or bullet list: what the
-                     ``outline`` leaves out
+    hidden_at_outline
+                     the ``outline`` leaves it out, and moves its edges to
+                     the section that holds it: a paragraph, code block,
+                     bullet list, listing, import statement or declaration
     section          a section of the document
     region           a region of the tree, no part of an address
     text_in_holder   its text is lines of the node that holds it
@@ -181,7 +191,7 @@ class KindFacts:
     opens_scope:    bool = False
     claim:          bool = False
     runnable:       bool = False
-    block:          bool = False
+    hidden_at_outline: bool = False
     section:        bool = False
     region:         bool = False
     text_in_holder: bool = False
@@ -205,16 +215,24 @@ KINDS: dict[NodeKind, KindFacts] = {
         runnable=True, segment="test", numbered=True),
     NodeKind.EXTERNAL: KindFacts(),
     NodeKind.PROSE: KindFacts(
-        block=True, segment="prose", numbered=True),
+        hidden_at_outline=True, segment="prose", numbered=True),
     NodeKind.CODE: KindFacts(
-        block=True, segment="code", numbered=True),
+        hidden_at_outline=True, segment="code", numbered=True),
     NodeKind.BULLETS: KindFacts(
-        block=True, segment="bullets", numbered=True),
+        hidden_at_outline=True, segment="bullets", numbered=True),
     NodeKind.APPENDIX: KindFacts(
         section=True, segment="appendix", numbered=True),
     NodeKind.TESTS: KindFacts(opens_scope=True),
     NodeKind.POST_TEXT: KindFacts(region=True, segment="post-text"),
     NodeKind.TEST_GROUP: KindFacts(opens_scope=True),
+    NodeKind.REFERENCES: KindFacts(),
+    NodeKind.BINDING: KindFacts(),
+    NodeKind.LISTING: KindFacts(
+        hidden_at_outline=True, segment="listing", numbered=True),
+    NodeKind.IMPORT: KindFacts(
+        hidden_at_outline=True, segment="import", numbered=True),
+    NodeKind.DECLARATION: KindFacts(
+        hidden_at_outline=True, segment="declaration", numbered=True),
 }
 
 
@@ -238,6 +256,10 @@ class Node:
     refs        the references written in a ``PROSE`` leaf, as parsed
     mode        when a ``RUN`` runs: ``"on-load"`` or ``"on-invocation"``
                 (what a bare ``~run`` means); ``None`` on every other node
+    declares    what a ``DECLARATION`` declares (``"language"``,
+                ``"external"``, ``"on-build"`` or ``"keep-generated-src"``);
+                ``None`` on every other node
+    value       the value a ``DECLARATION`` gives it, when it has one
     name        the name written in the document for a heading, a
                 ``##group``, a ``~property`` or a ``~test``; ``None`` for
                 an anonymous node (an unnamed ``~property``, a run of
@@ -268,6 +290,12 @@ class Node:
         default=None, hash=False, compare=False,
     )
     name: str | None = field(
+        default=None, hash=False, compare=False,
+    )
+    declares: str | None = field(
+        default=None, hash=False, compare=False,
+    )
+    value: str | None = field(
         default=None, hash=False, compare=False,
     )
 
@@ -370,8 +398,9 @@ def _turtle_node(node: dict) -> list[str]:
     ]
     if node.get("named"):
         parts.append("notlob:named true")
-    if "mode" in node:
-        parts.append(f"notlob:mode {_turtle_lit(node['mode'])}")
+    for key in ("mode", "declares", "value"):
+        if key in node:
+            parts.append(f"notlob:{key} {_turtle_lit(node[key])}")
     if "file" in node:
         parts.append(f"notlob:file {_turtle_lit(node['file'])}")
     for key, prop in (("start_line", "startLine"), ("end_line", "endLine"),
@@ -558,6 +587,43 @@ class NameGraph:
             node = self.parent_of(node.address)
         return node.address if node is not None else None
 
+    def post_section(self, module: str, kind: NodeKind) -> Node | None:
+        """The node of *kind* among the sections after the ``---`` of the
+        module at *module* (``REFERENCES``, ``BINDING`` or ``TESTS``), or
+        ``None`` if it has none."""
+        for region in self.children(module):
+            if KINDS[region.kind].region:
+                for node in self.children(region.address):
+                    if node.kind == kind:
+                        return node
+        return None
+
+    def imports_of(self, module: str) -> list[Node]:
+        """The modules the module at *module* lists, in document order,
+        each once: the targets of the ``IMPORTS`` edges from the listings
+        written in its tree. An edge starts at the line that makes it, so
+        this is how a module, not a listing, is the answer."""
+        found: dict[str, Node] = {}
+        for edge in self._edges:
+            if (edge.kind == EdgeKind.IMPORTS
+                    and self.module_of(edge.source) == module):
+                target = self._nodes.get(edge.target)
+                if target is not None:
+                    found.setdefault(target.address, target)
+        return list(found.values())
+
+    def imported_by(self, module: str) -> list[Node]:
+        """The modules that list the module at *module*, each once, in
+        the order their listings were added."""
+        found: dict[str, Node] = {}
+        for edge in self._edges:
+            if edge.kind == EdgeKind.IMPORTS and edge.target == module:
+                address = self.module_of(edge.source)
+                source = self._nodes.get(address) if address else None
+                if source is not None:
+                    found.setdefault(source.address, source)
+        return list(found.values())
+
     def edges(self, kind: EdgeKind | None = None) -> Iterator[Edge]:
         """Iterate over every edge, or every edge of *kind*, in the order
         they were added."""
@@ -644,13 +710,12 @@ class NameGraph:
         Implements the three-step resolution order from DESIGN.md:
           1. Symbol defined in the current module.
           2. Subheading of the current module.
-          3. A module explicitly imported by the current module
-             (requires an IMPORTS edge from *context*).
+          3. A module the current module lists (see :meth:`imports_of`).
 
         *context* is a module address (e.g. ``"roman/numerals"``).
-        When context is given, step 3 is restricted to modules
-        reachable via a declared IMPORTS edge — unimported modules
-        are invisible even if they exist in the same package graph.
+        When context is given, step 3 is restricted to the modules it
+        lists — unlisted modules are invisible even if they exist in the
+        same package graph.
 
         Without context, only a full MODULE scan is attempted
         (useful for tooling / package-level lookup; never for
@@ -666,12 +731,10 @@ class NameGraph:
             if node is not None:
                 if node.kind in (NodeKind.SYMBOL, NodeKind.SUBHEADING):
                     return node
-            # Step 3: explicitly imported module (IMPORTS edges)
-            for edge in self._out.get(context, []):
-                if edge.kind == EdgeKind.IMPORTS:
-                    target = self._nodes.get(edge.target)
-                    if target and target.label == label:
-                        return target
+            # Step 3: a module the current module lists
+            for target in self.imports_of(context):
+                if target.label == label:
+                    return target
         else:
             # No context: scan all MODULE nodes (tooling use only)
             for node in self._nodes.values():
@@ -992,6 +1055,66 @@ def _build_tree(graph: NameGraph, module: Module, file: str | None) -> None:
             _add_items(graph, section.body, app_addr, file)
         elif isinstance(section, TestsSection):
             _add_tests(graph, section, post_addr, file)
+        elif isinstance(section, ReferencesSection):
+            _add_references(graph, section, post_addr, file)
+        elif isinstance(section, BindingSection):
+            _add_binding(graph, section, post_addr, file)
+
+
+def _add_references(
+    graph:   NameGraph,
+    section: ReferencesSection,
+    parent:  str,
+    file:    str | None,
+) -> None:
+    """Add the ``#References`` section, named in the scope of the node at
+    *parent*, to it, and a ``LISTING`` for each module it lists. The
+    import statements of the bound language are added by :func:`enrich`,
+    which has the binding that knows where one ends."""
+    address = named_address(graph.scope_of(parent), "References")
+    _add_child(graph, parent, Node(
+        address=address, label="References", kind=NodeKind.REFERENCES,
+        start_line=section.start_line, end_line=section.end_line,
+        file=file,
+    ))
+    ordinals = _Ordinals()
+    for listing in section.listings:
+        listing_address, label = _anonymous_identity(
+            address, NodeKind.LISTING, ordinals.next(NodeKind.LISTING))
+        _add_child(graph, address, Node(
+            address=listing_address, label=label, kind=NodeKind.LISTING,
+            text=f"#{listing.title}",
+            start_line=listing.line, end_line=listing.line, file=file,
+        ))
+
+
+def _add_binding(
+    graph:   NameGraph,
+    section: BindingSection,
+    parent:  str,
+    file:    str | None,
+) -> None:
+    """Add the ``#Binding`` section, named in the scope of the node at
+    *parent*, to it, and a ``DECLARATION`` for each line it declares
+    something on."""
+    address = named_address(graph.scope_of(parent), "Binding")
+    _add_child(graph, parent, Node(
+        address=address, label="Binding", kind=NodeKind.BINDING,
+        start_line=section.start_line, end_line=section.end_line,
+        file=file,
+    ))
+    ordinals = _Ordinals()
+    for declaration in section.declarations:
+        decl_address, label = _anonymous_identity(
+            address, NodeKind.DECLARATION,
+            ordinals.next(NodeKind.DECLARATION))
+        _add_child(graph, address, Node(
+            address=decl_address, label=label, kind=NodeKind.DECLARATION,
+            text=declaration.text,
+            start_line=declaration.line, end_line=declaration.line,
+            file=file, declares=declaration.keyword,
+            value=declaration.value,
+        ))
 
 
 def _add_items(
@@ -1134,19 +1257,25 @@ def _add_assertions(
 # ── Symbol enrichment ────────────────────────────────────────
 
 def enrich(
-    graph:     NameGraph,
-    module:    Module,
-    extractor: Extractor,
+    graph:         NameGraph,
+    module:        Module,
+    extractor:     Extractor,
+    split_imports: ImportSplitter | None = None,
 ) -> None:
-    """Enrich a graph made by :func:`build` with symbol nodes.
+    """Enrich a graph made by :func:`build` with symbol nodes, and the
+    import statements of the bound language.
 
     Reads the graph: every ``CODE`` leaf and every ``PROPERTY`` node in
     the module's tree, wherever it is written (a subheading, an
     ``#Appendix`` or one of its subheadings too), and extracts symbols
     from its text with the provided language-specific extractor.  A
     symbol is contained by the ``CODE`` leaf it is written in, and the
-    functions a ``~property`` defines by its ``PROPERTY`` node.  *module*
-    is used only for its address.
+    functions a ``~property`` defines by its ``PROPERTY`` node.  The
+    lines of ``#References`` that list no module are split into
+    statements by *split_imports* (the binding's rule for where a
+    statement ends; one statement for each non-blank line when there is
+    none), and each is an ``IMPORT`` node in the section.  *module* is
+    used for its address and its ``#References``.
 
     The symbol's address is that of its scope and its name: a code
     block's is module-scoped,
@@ -1173,6 +1302,41 @@ def enrich(
             _add_child(graph, holder.address, _symbol_node(
                 named_address(scope, info.name), info, holder, first,
                 holder.file))
+    _add_imports(graph, module, split_imports or default_split_imports)
+
+
+def _add_imports(
+    graph: NameGraph, module: Module, split_imports: ImportSplitter,
+) -> None:
+    """Add an ``IMPORT`` node to the ``#References`` node of *module* for
+    each statement *split_imports* finds in its import lines, and put the
+    section's children in the order they are written."""
+    if module.post_text is None:
+        return
+    section = next((s for s in module.post_text.sections
+                    if isinstance(s, ReferencesSection)), None)
+    node = graph.post_section(
+        module_address(module.title), NodeKind.REFERENCES)
+    if section is None or node is None:
+        return
+    ordinals = _Ordinals()
+    for text, first_line in split_imports(section.imports):
+        address, label = _anonymous_identity(
+            node.address, NodeKind.IMPORT, ordinals.next(NodeKind.IMPORT))
+        _add_child(graph, node.address, Node(
+            address=address, label=label, kind=NodeKind.IMPORT, text=text,
+            start_line=first_line,
+            end_line=(None if first_line is None
+                      else first_line + text.count("\n")),
+            file=node.file,
+        ))
+    in_order = sorted(graph.children(node.address),
+                      key=lambda child: child.start_line or 0)
+    for child in in_order:
+        graph.release(child.address)
+        graph.add_edge(Edge(
+            source=node.address, target=child.address,
+            kind=EdgeKind.CONTAINS))
 
 
 def _symbol_node(
@@ -1434,7 +1598,8 @@ def _node_entry(node: Node, level: str, sizes: dict[str, int]) -> dict:
     }
     if node.name is not None:
         d["named"] = True
-    for field_name in ("mode", "file", "start_line", "end_line"):
+    for field_name in ("mode", "declares", "value", "file", "start_line",
+                       "end_line"):
         value = getattr(node, field_name)
         if value is not None:
             d[field_name] = value
@@ -1457,7 +1622,7 @@ def _document_nodes(graph: NameGraph, level: str) -> list[dict]:
     sizes = _sizes(graph) if level != "outline" else {}
     return [
         _node_entry(node, level, sizes) for node in graph.nodes()
-        if not (level == "outline" and KINDS[node.kind].block)
+        if not (level == "outline" and KINDS[node.kind].hidden_at_outline)
     ]
 
 
@@ -1470,7 +1635,7 @@ def _document_edges(graph: NameGraph, level: str) -> list[dict]:
     def hidden(address: str) -> bool:
         node = graph.node(address)
         return (level == "outline" and node is not None
-                and KINDS[node.kind].block)
+                and KINDS[node.kind].hidden_at_outline)
 
     def shown(address: str) -> str | None:
         while hidden(address):
@@ -1572,7 +1737,7 @@ def cites_of(graph: NameGraph, address: str) -> list[Node]:
     node = graph.node(address)
     if node is None:
         return []
-    if KINDS[node.kind].block:
+    if KINDS[node.kind].hidden_at_outline:
         targets = [e.target for e in graph.edges(EdgeKind.CITES)
                    if e.source == address]
     else:

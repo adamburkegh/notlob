@@ -30,7 +30,7 @@ import textwrap
 from notlob.bindings import assemble_section, collect_blocks
 from notlob.graph import module_address, named_address
 from notlob.model import (
-    AppendixSection, Module, ReferencesSection, Subheading,
+    AppendixSection, ImportLine, Module, ReferencesSection, Subheading,
 )
 
 
@@ -45,7 +45,7 @@ def assemble(module: Module) -> str:
     if module.post_text is not None:
         for section in module.post_text.sections:
             if isinstance(section, ReferencesSection):
-                import_lines = _ts_imports(section.lines)
+                import_lines = _ts_imports(section.imports)
                 text = textwrap.dedent('\n'.join(import_lines)).strip()
                 if text:
                     chunks.append(text)
@@ -89,17 +89,15 @@ def assemble(module: Module) -> str:
 
 # ── Helpers ───────────────────────────────────────────────────
 
-def _ts_imports(lines: list[str]) -> list[str]:
-    """Return TypeScript import lines, dropping lob-refs.
+def _ts_imports(imports: list[ImportLine]) -> list[str]:
+    """Return the TypeScript import lines of a ``#References`` section.
 
-    A lob-ref line is any line whose stripped form starts with ``#``.
-    All other non-blank lines are assumed to be TypeScript ``import``
-    statements or other top-level declarations and are kept verbatim.
+    *imports* are its lines that list no module (the grammar tells them
+    apart). Every non-blank one is assumed to be a TypeScript ``import``
+    statement or other top-level declaration and is kept, stripped.
     """
     return [
-        line.strip()
-        for line in lines
-        if line.strip() and not line.strip().startswith('#')
+        line.text.strip() for line in imports if line.text.strip()
     ]
 
 

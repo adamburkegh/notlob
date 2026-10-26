@@ -77,7 +77,12 @@
             "APPENDIX",
             "TESTS",
             "POST_TEXT",
-            "TEST_GROUP"
+            "TEST_GROUP",
+            "REFERENCES",
+            "BINDING",
+            "LISTING",
+            "IMPORT",
+            "DECLARATION"
           ]
         },
         "named": {
@@ -91,6 +96,20 @@
             "on-load",
             "on-invocation"
           ]
+        },
+        "declares": {
+          "description": "What a DECLARATION declares; present on a DECLARATION only.",
+          "type": "string",
+          "enum": [
+            "language",
+            "external",
+            "on-build",
+            "keep-generated-src"
+          ]
+        },
+        "value": {
+          "description": "The value a DECLARATION gives it (the language, or the file), when it has one; present on a DECLARATION only.",
+          "type": "string"
         },
         "file": {
           "description": "The .lob file it is written in, relative to the project root, with '/' separators. Absent for an external file and for a module built on its own.",

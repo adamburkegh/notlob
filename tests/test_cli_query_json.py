@@ -424,7 +424,8 @@ class TestMcpTools:
     def test_search_kinds_are_those_outline_shows(self):
         kinds = self._tool("notlob_query_search")["kind"]["enum"]
         assert set(kinds) == {k.name for k in NodeKind} - {
-            "PROSE", "CODE", "BULLETS"}
+            "PROSE", "CODE", "BULLETS", "LISTING", "IMPORT",
+            "DECLARATION"}
 
     def test_content_takes_a_depth(self):
         depth = self._tool("notlob_query_content")["depth"]

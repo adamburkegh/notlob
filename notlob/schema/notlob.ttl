@@ -104,6 +104,31 @@ notlob:TestGroup a owl:Class ;
     rdfs:label "Test group" ;
     rdfs:comment "A ##group in #Tests, which holds tests." .
 
+notlob:References a owl:Class ;
+    rdfs:subClassOf notlob:Node ;
+    rdfs:label "References" ;
+    rdfs:comment "The #References section of a module, holding the modules it lists and the import statements of the bound language." .
+
+notlob:Binding a owl:Class ;
+    rdfs:subClassOf notlob:Node ;
+    rdfs:label "Binding" ;
+    rdfs:comment "The #Binding section of binding.lob, holding its declarations." .
+
+notlob:Listing a owl:Class ;
+    rdfs:subClassOf notlob:Node ;
+    rdfs:label "Listing" ;
+    rdfs:comment "A module listed in #References (#Title). An imports edge starts at it." .
+
+notlob:Import a owl:Class ;
+    rdfs:subClassOf notlob:Node ;
+    rdfs:label "Import" ;
+    rdfs:comment "One import statement of the bound language in #References; a statement over several lines is one node." .
+
+notlob:Declaration a owl:Class ;
+    rdfs:subClassOf notlob:Node ;
+    rdfs:label "Declaration" ;
+    rdfs:comment "A declaration in #Binding: ~language, ~external, ~on-build or ~keep-generated-src. A uses_external edge starts at the one that names a file." .
+
 # ── What a node carries ──────────────────────────────────────
 # A node's human-readable name is `rdfs:label`.
 
@@ -140,6 +165,18 @@ notlob:mode a owl:DatatypeProperty ;
     rdfs:label "mode" ;
     rdfs:comment "When a Run runs: on-load or on-invocation (what a bare ~run means)." ;
     rdfs:domain notlob:Run ;
+    rdfs:range xsd:string .
+
+notlob:declares a owl:DatatypeProperty ;
+    rdfs:label "declares" ;
+    rdfs:comment "What a Declaration declares: language, external, on-build or keep-generated-src." ;
+    rdfs:domain notlob:Declaration ;
+    rdfs:range xsd:string .
+
+notlob:value a owl:DatatypeProperty ;
+    rdfs:label "value" ;
+    rdfs:comment "The value a Declaration gives what it declares (the language, or the file), when it has one." ;
+    rdfs:domain notlob:Declaration ;
     rdfs:range xsd:string .
 
 notlob:size a owl:DatatypeProperty ;

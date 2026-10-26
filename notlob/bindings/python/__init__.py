@@ -27,7 +27,9 @@ from notlob.bindings.python.lint import lint_python
 from notlob.bindings.python.runner import (
     run_examples, run_tests, run_properties,
 )
-from notlob.bindings.python.symbols import extract_calls, extract_symbols
+from notlob.bindings.python.symbols import (
+    extract_calls, extract_symbols, split_imports,
+)
 from notlob.model import Module
 
 
@@ -76,6 +78,7 @@ kit = BindingKit(
     build=build_python,
     comment_prefix="#",
     complete_references=True,   # every ast.Name load, not only calls
+    split_imports=split_imports,
 )
 
 __all__ = [

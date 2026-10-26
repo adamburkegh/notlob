@@ -15,6 +15,7 @@ Key invariants:
 import textwrap
 
 
+from kitcalls import references_section
 from notlob.bindings.haskell.assemble import (
     _module_name,
     _haskell_imports,
@@ -23,10 +24,10 @@ from notlob.bindings.haskell.assemble import (
 from notlob.model import (
     AppendixSection,
     CodeBlock,
+    ImportLine,
     Module,
     PostText,
     ProseBlock,
-    ReferencesSection,
     Subheading,
 )
 
@@ -38,10 +39,13 @@ def _module(title, body=None, refs=None):
     body = body or []
     post = None
     if refs is not None:
-        post = PostText(sections=[
-            ReferencesSection(lines=refs)
-        ])
+        post = PostText(sections=[references_section(refs)])
     return Module(title=title, body=body, post_text=post)
+
+
+def _import_lines(*texts):
+    """The import lines of a `#References` section, as the model has them."""
+    return [ImportLine(text, n) for n, text in enumerate(texts, start=1)]
 
 
 def _code(text):
@@ -87,36 +91,45 @@ class TestModuleName:
 # ── _haskell_imports ──────────────────────────────────────────
 
 class TestHaskellImports:
+    """Which lines of ``#References`` are listings is the grammar's: they
+    never reach here (see tests/test_references_binding.py)."""
+
     def test_drops_lob_refs(self):
-        lines = ["    #Roman Numerals", "    import Data.List (sort)"]
-        assert _haskell_imports(lines) == ["import Data.List (sort)"]
+        refs = ["    #Roman Numerals", "    import Data.List (sort)"]
+        (section,) = _module("M", refs=refs).post_text.sections
+        assert _haskell_imports(section.imports) == [
+            "import Data.List (sort)"]
 
     def test_drops_blank_lines(self):
-        lines = ["    import Data.List (sort)", "", "    import Data.Char"]
+        lines = _import_lines(
+            "    import Data.List (sort)", "", "    import Data.Char")
         assert _haskell_imports(lines) == [
             "import Data.List (sort)",
             "import Data.Char",
         ]
 
     def test_strips_indent(self):
-        lines = ["        import Data.Map.Strict (Map)"]
+        lines = _import_lines("        import Data.Map.Strict (Map)")
         assert _haskell_imports(lines) == ["import Data.Map.Strict (Map)"]
 
     def test_empty_input(self):
         assert _haskell_imports([]) == []
 
     def test_only_lob_refs(self):
-        assert _haskell_imports(["    #Foo", "    #Bar"]) == []
+        (section,) = _module("M", refs=["    #Foo", "    #Bar"]
+                             ).post_text.sections
+        assert _haskell_imports(section.imports) == []
 
     def test_mixed(self):
-        lines = [
+        refs = [
             "    #Roman Numerals",
             "    import Data.List (sort)",
             "",
             "    #Pricing",
             "    import Data.Map (Map)",
         ]
-        assert _haskell_imports(lines) == [
+        (section,) = _module("M", refs=refs).post_text.sections
+        assert _haskell_imports(section.imports) == [
             "import Data.List (sort)",
             "import Data.Map (Map)",
         ]

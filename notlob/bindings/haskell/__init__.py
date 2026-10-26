@@ -28,7 +28,9 @@ from notlob.bindings.haskell.lint import lint_haskell
 from notlob.bindings.haskell.runner import (
     run_examples, run_tests, run_properties,
 )
-from notlob.bindings.haskell.symbols import extract_calls, extract_symbols
+from notlob.bindings.haskell.symbols import (
+    extract_calls, extract_symbols, split_imports,
+)
 from notlob.model import Module
 
 
@@ -90,6 +92,7 @@ kit = BindingKit(
     extension="hs",
     comment_prefix="--",
     build=build_haskell,
+    split_imports=split_imports,
 )
 
 __all__ = [

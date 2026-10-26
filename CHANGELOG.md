@@ -76,8 +76,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   document order: paragraphs (`PROSE`), code blocks (`CODE`), bullet
   lists (`BULLETS`), claims, `#Tests` (`TESTS`) with its `##groups`
   (`TEST_GROUP`) and tests (`TEST`, a `~test` or a run of bare
-  assertions), each `#Appendix` (`APPENDIX`), and what follows `---`
-  (`POST_TEXT`). Text is held once, on the leaf that holds it; a symbol
+  assertions), each `#Appendix` (`APPENDIX`), `#References`
+  (`REFERENCES`) with a `LISTING` for each module it lists and an
+  `IMPORT` for each import statement of the bound language (one node for a
+  statement over several lines, found by the binding), `#Binding`
+  (`BINDING`) with a `DECLARATION` for each line, which has `declares`
+  and `value` fields, and what follows `---` (`POST_TEXT`). `IMPORTS` and
+  `USES_EXTERNAL` edges start at the line that makes them, the listing or
+  the declaration, not at the module. Text is held once, on the leaf that
+  holds it; a symbol
   holds its first and last line and none of the text, which is read from
   its code block. A `~run` of any mode is a `RUN` node with its `mode`
   (`on-load`, or `on-invocation` for a bare `~run`); a `~run on-load` was
@@ -88,8 +95,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   that holds the reference, which keeps the references as written (`refs`).
   The document is `{version: 2, level, nodes, edges}`, at one of three
   levels: `outline` (the default) has every node but paragraphs, code
-  blocks and bullet lists, with their edges moved to the nearest node
-  shown; `index` adds those, each paragraph's `refs`, and each node's
+  blocks, bullet lists, listings, import statements and declarations,
+  with their edges moved to the nearest node shown; `index` adds those, each paragraph's `refs`, and each node's
   `size`; `full` adds the text. A node written in a `.lob` file has its
   `file`, `start_line` and `end_line`; a node the document names has
   `"named": true`. `--content`
@@ -129,8 +136,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   (`bindings/python/loader.py`). New: `complete_references` (default
   `False`), which a binding sets when its call extraction sees every
   name its code uses (see the next entry), and `SymbolInfo.first_line`
-  and `last_line`, a symbol's lines within its block. A binding that
-  collected its own claims or loaded its own dependencies must stop.
+  and `last_line`, a symbol's lines within its block, and
+  `split_imports`, which says where an import statement of the language
+  ends in the lines of `#References` (one statement for each non-blank
+  line by default, so a binding that does not say keeps working). A
+  binding that collected its own claims or loaded its own dependencies
+  must stop. The grammar now tells a listing (`    #Title`) from an
+  import line, so a `    # comment` or `    ##Notes` line in
+  `#References` is an import line, not a listing of a module named by the
+  comment's words or of one called "#notes"; `project.parse_lob_refs` and
+  `parse_python_imports`, which filtered on `#`, are gone, and the
+  model's `ReferencesSection` has `listings` and `imports`.
   From `notlob`: `subheading_address`, `symbol_address`,
   `property_address` and `claim_address` are gone, replaced by
   `named_address` and `anonymous_address`; `project.transitive_lob_refs`

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Generator, Sequence
 
-from ..model import CodeBlock, Module
+from ..model import CodeBlock, ImportLine, Module
 
 
 # ── What a binding is handed to run ──────────────────────────
@@ -147,6 +147,22 @@ CallExtractor = Callable[[str], list[tuple[str, int]]]
 #: Callable that assembles a Module into one executable string.
 Assembler = Callable[[Module], str]
 
+#: Callable that splits the import lines of ``#References`` (the lines that
+#: list no module, blank ones included) into statements: where one ends is
+#: the bound language's rule. Gives each statement's text, dedented, and
+#: the line of the file its first line is on.
+ImportSplitter = Callable[
+    [Sequence[ImportLine]], list[tuple[str, int | None]]]
+
+
+def default_split_imports(
+    lines: Sequence[ImportLine],
+) -> list[tuple[str, int | None]]:
+    """One statement for each non-blank line: what a binding that does not
+    say where a statement ends gets."""
+    return [(line.text.strip(), line.line) for line in lines
+            if line.text.strip()]
+
 
 # ── Binding kit ───────────────────────────────────────────────
 
@@ -204,6 +220,12 @@ class BindingKit:
                      loaded.  False (the default) means use cannot be
                      determined, and every listing except one of a
                      descendant module is loaded.
+    split_imports    (lines) -> list[(text, first_line)]: the import
+                     statements in the lines of ``#References`` that list
+                     no module (see :data:`ImportSplitter`), by the
+                     language's own rule for where a statement ends. The
+                     default is one statement for each non-blank line, so
+                     a binding that does not say keeps working.
 
     ``claims`` is a list of :class:`ClaimToRun`: the claims and tests of
     *module* that notlob found, which the binding runs. notlob collects
@@ -245,6 +267,7 @@ class BindingKit:
     comment_prefix:  str                        = "#"
     build:           Callable[..., str]  | None = None
     complete_references: bool                   = False
+    split_imports:   ImportSplitter             = default_split_imports
 
 
 # ── Lint result type ──────────────────────────────────────────

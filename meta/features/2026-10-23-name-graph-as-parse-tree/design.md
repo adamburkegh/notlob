@@ -606,6 +606,11 @@ first, a list of files it may touch, and a stop point. Order:
      the model keeping each declaration with its line, listings told
      from imports by the grammar, `IMPORTS` and `USES_EXTERNAL` starting
      at their lines. Brief: `slice-8b-brief.md`.
+   * **8c, `query content` answers with the source** (Adam, 2026-10-27,
+     from notlob-vids' measurement and kamtrinia's usage): text by
+     default, the node's own lines with `address  file:start-end`; a
+     narrow nested JSON for programs. `query` answers a question about
+     one thing; `graph` is the export. Brief: `slice-8c-brief.md`.
 7. **Duplicate-name warning** (D10): a `notlob check` advisory for the
    same name in different scopes, beside the `typos` check. It also makes
    the doubtful `USES` edges of the global label index visible until

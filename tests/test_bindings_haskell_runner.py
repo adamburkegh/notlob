@@ -17,7 +17,7 @@ import textwrap
 
 import pytest
 
-from kitcalls import collecting
+from kitcalls import collecting, references_section
 from notlob import from_tree, parse
 from notlob.bindings import Status
 from notlob.bindings.haskell import runner
@@ -33,7 +33,6 @@ from notlob.model import (
     Module,
     NamedTest,
     PostText,
-    ReferencesSection,
     Subheading,
     TestsSection,
     TestGroup,
@@ -59,7 +58,7 @@ def _module(title, body=None, refs=None, tests=None):
     body = body or []
     sections = []
     if refs is not None:
-        sections.append(ReferencesSection(lines=refs))
+        sections.append(references_section(refs))
     if tests is not None:
         sections.append(tests)
     post = PostText(sections=sections) if sections else None

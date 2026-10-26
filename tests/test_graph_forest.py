@@ -24,8 +24,9 @@ from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import extract_symbols, kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
 from notlob.model import (
-    AppendixSection, BulletBlock, Claim, CodeBlock, NamedTest, ProseBlock,
-    Subheading, TestGroup, TestsSection,
+    AppendixSection, BindingSection, BulletBlock, Claim, CodeBlock,
+    NamedTest, ProseBlock, ReferencesSection, Subheading, TestGroup,
+    TestsSection,
 )
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
@@ -100,6 +101,16 @@ def expected(module) -> tuple:
                 held.append(("TESTS", section.start_line, section.end_line,
                              _assertions(section.items,
                                          section.line_offsets or {})))
+            elif isinstance(section, ReferencesSection):
+                held.append(("REFERENCES", section.start_line,
+                             section.end_line,
+                             [("LISTING", item.line, item.line, [])
+                              for item in section.listings]))
+            elif isinstance(section, BindingSection):
+                held.append(("BINDING", section.start_line,
+                             section.end_line,
+                             [("DECLARATION", item.line, item.line, [])
+                              for item in section.declarations]))
         children.append(("POST_TEXT", post_text.start_line,
                          post_text.end_line, held))
     return ("MODULE", module.start_line, module.end_line, children)
@@ -447,11 +458,13 @@ class TestPostText:
         assert (node.start_line, node.end_line) == (5, 5)
         assert list(graph.children("m#post-text")) == []
 
-    def test_binding_and_references_are_not_nodes(self):
+    def test_binding_and_references_are_nodes(self):
         graph = self._graph(
             "#M\n\n---\n\n#Binding\n    ~language python\n\n"
             "#References\n    import json\n")
-        assert list(graph.children("m#post-text")) == []
+        assert [(c.address, c.kind) for c in graph.children("m#post-text")
+                ] == [("m#Binding", NodeKind.BINDING),
+                      ("m#References", NodeKind.REFERENCES)]
 
     def test_the_sections_of_a_module_still_include_the_appendices(self):
         graph = self._graph(
