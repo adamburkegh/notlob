@@ -528,7 +528,7 @@ notlob weave [file]             render as Markdown
 notlob new <name>               create a new module
 notlob docs [--output DIR]      write this reference to notlob-docs/
 notlob query search <pattern>   find nodes by label (bare word = substring)
-notlob query content <address> [--depth N]  the subtree at an address, with text
+notlob query content <address> [--format json [--depth N]]  the source at an address
 notlob query children <address> list child nodes
 notlob query imports <address>  modules imported by an address
 notlob query imported-by <addr> modules that import an address
@@ -561,11 +561,20 @@ with exit code 1 when it does not resolve. `children` follows any edge kind
 the graph holds (`CONTAINS` by default, and a section's paragraphs and code
 blocks are among its children); `search` finds the nodes `outline` shows;
 `cites` and `cited-by` give a section for a paragraph.
-`content` prints the subtree at an address as a `notlob graph --level full`
-document with a `root`: each line of text once, on the leaf it is written
-in, except that a symbol whose code block is not in the answer carries its
-text; `--depth N` stops N containment steps down (0 is the node alone).
-The shapes are specified by `schema/query_result.json`.
+`content` prints the source at an address, as written: a header line, the
+address and the span (`roman/numerals#Decoding  roman/numerals.lob:40-60`),
+then the node's own lines from its file, which the `.lob` syntax already
+labels (a heading, an indented code block, a sigil). An address with no
+lines (an external file) is an error. With `--format json` it prints the
+subtree instead, nested and narrow: each node has `address`, `kind`,
+`start_line`, and `named`, `mode`, `declares` and `value` where they apply,
+its `text` if it holds text (each line of text once, on the leaf it is
+written in, except that a symbol whose code block is not in the answer
+carries its text) and its `children`; the root also has `file` and
+`end_line`. There are no edges, labels, sizes or references: nesting is the
+containment, and the other queries answer the cross-references. `--depth N`
+(JSON only) stops N containment steps down (0 is the node alone). The
+shapes are specified by `schema/query_result.json`.
 `notlob graph` prints the graph itself, `{version, level, nodes, edges}`
 (`schema/name_graph.json`): one tree of nodes for each file, joined by
 `CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL`

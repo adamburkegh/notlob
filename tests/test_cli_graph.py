@@ -365,10 +365,9 @@ class TestCmdQueryContent:
         root = _project(tmp_path)
         _write(root, "t.lob", "#T\n    def f(): pass\n")
         monkeypatch.chdir(root)
-        rc = cmd_query_content("t#f")
-        data = json.loads(capsys.readouterr().out)
+        rc = cmd_query_content("t#f", None, "json")
+        node = json.loads(capsys.readouterr().out)
         assert rc == 0
-        (node,) = data["nodes"]
         assert node["address"] == "t#f"
         assert node["kind"] == "SYMBOL"
         assert "content" not in node
@@ -381,11 +380,11 @@ class TestCmdQueryContent:
         _write(root, "lib.lob",
                "#Lib\nThis module provides helpers.\n")
         monkeypatch.chdir(root)
-        rc = cmd_query_content("lib")
-        data = json.loads(capsys.readouterr().out)
+        rc = cmd_query_content("lib", None, "json")
+        module = json.loads(capsys.readouterr().out)
         assert rc == 0
-        assert data["root"] == "lib"
-        module, prose = data["nodes"]
+        assert module["address"] == "lib"
+        (prose,) = module["children"]
         assert module["kind"] == "MODULE"
         assert "helpers" in prose["text"]
 
@@ -396,10 +395,10 @@ class TestCmdQueryContent:
         _write(root, "t.lob",
                "#T\n##Decoding\nConverts input.\n    def f(): pass\n")
         monkeypatch.chdir(root)
-        cmd_query_content("t#Decoding")
+        cmd_query_content("t#Decoding", None, "json")
         data = json.loads(capsys.readouterr().out)
-        nodes = {n["address"]: n for n in data["nodes"]}
-        assert nodes["t#Decoding"]["kind"] == "SUBHEADING"
+        nodes = {n["address"]: n for n in data["children"]}
+        assert data["kind"] == "SUBHEADING"
         assert "Converts" in nodes["t#Decoding#prose#1"]["text"]
         assert "def f" in nodes["t#Decoding#code#1"]["text"]
 
@@ -409,7 +408,7 @@ class TestCmdQueryContent:
         root = _project(tmp_path)
         _write(root, "t.lob", "#T\n")
         monkeypatch.chdir(root)
-        rc = cmd_query_content("t#nonexistent")
+        rc = cmd_query_content("t#nonexistent", None, "json")
         data = json.loads(capsys.readouterr().out)
         assert rc == 1
         assert data is None

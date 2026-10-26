@@ -2,11 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/query-result",
   "title": "QueryResult",
-  "description": "What the `notlob query ...` commands print to stdout, each a JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `cites`, `cited-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull. `content` prints a SubtreeOrNull: the subtree at an address as a document in the shape of `notlob graph --level full` with a `root`. All print `null` and exit 1 when the address or label does not resolve. A node, a reference and an edge here are the name-graph's (`Node`, `GraphRef` and `Edge` are identical to `GraphNode`, `GraphRef` and `GraphEdge` in name_graph.json; a test keeps them identical); a query prints a node as `notlob graph --level outline` does. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
+  "description": "What the `notlob query ...` commands print to stdout, each a JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `cites`, `cited-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull. `content` prints, with `--format json`, a ContentOrNull: the subtree at an address, nested and narrow (by default it prints the source as text, which is not JSON). All print `null` and exit 1 when the address or label does not resolve. A node, a reference and an edge here are the name-graph's (`Node`, `GraphRef` and `Edge` are identical to `GraphNode`, `GraphRef` and `GraphEdge` in name_graph.json; a test keeps them identical); a query prints a node as `notlob graph --level outline` does. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
   "anyOf": [
     {"$ref": "#/definitions/NodeList"},
     {"$ref": "#/definitions/Node"},
-    {"$ref": "#/definitions/Subtree"},
+    {"$ref": "#/definitions/Content"},
     {"type": "null"}
   ],
   "definitions": {
@@ -22,44 +22,98 @@
         {"type": "null"}
       ]
     },
-    "Subtree": {
-      "description": "The node at `root` and what it contains, down the depth asked for, at the `full` level: the nodes in document order, and the edges whose source is among them (CONTAINS within the subtree, and the citations, uses and imports from it). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not among the nodes.",
+    "Content": {
+      "description": "A node and what it contains, down the depth asked for, nested: `children` are what the node contains, in document order. There are no edges (nesting is the containment; the other queries answer the cross-references), no label (the address carries it), no size and no references (they are written in the text). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not in the answer. The root also has its `file` and `end_line`.",
       "type": "object",
       "required": [
-        "version",
-        "level",
-        "root",
-        "nodes",
-        "edges"
+        "address",
+        "kind"
       ],
       "additionalProperties": false,
       "properties": {
-        "version": {
-          "description": "The version of this document format; that of `notlob graph`.",
-          "const": 2
-        },
-        "level": {
-          "description": "Always `full`.",
-          "const": "full"
-        },
-        "root": {
-          "description": "The address the subtree is of.",
+        "address": {
+          "description": "Globally unique machine identifier, e.g. 'roman/numerals#to_roman'.",
           "type": "string"
         },
-        "nodes": {
-          "type": "array",
-          "items": {"$ref": "#/definitions/Node"}
+        "kind": {
+          "description": "What kind of element this node is.",
+          "type": "string",
+          "enum": [
+            "MODULE",
+            "SUBHEADING",
+            "SYMBOL",
+            "PROPERTY",
+            "EXAMPLE",
+            "RUN",
+            "TEST",
+            "EXTERNAL",
+            "PROSE",
+            "CODE",
+            "BULLETS",
+            "APPENDIX",
+            "TESTS",
+            "POST_TEXT",
+            "TEST_GROUP",
+            "REFERENCES",
+            "BINDING",
+            "LISTING",
+            "IMPORT",
+            "DECLARATION"
+          ]
         },
-        "edges": {
+        "named": {
+          "description": "True where the document gives the node a name; absent otherwise.",
+          "const": true
+        },
+        "mode": {
+          "description": "When a RUN runs; present on a RUN only.",
+          "type": "string",
+          "enum": [
+            "on-load",
+            "on-invocation"
+          ]
+        },
+        "declares": {
+          "description": "What a DECLARATION declares; present on a DECLARATION only.",
+          "type": "string",
+          "enum": [
+            "language",
+            "external",
+            "on-build",
+            "keep-generated-src"
+          ]
+        },
+        "value": {
+          "description": "The value a DECLARATION gives it, when it has one.",
+          "type": "string"
+        },
+        "file": {
+          "description": "The .lob file the root is written in, relative to the project root, with '/' separators. On the root only.",
+          "type": "string"
+        },
+        "start_line": {
+          "description": "1-based line of its file where it begins.",
+          "type": "integer"
+        },
+        "end_line": {
+          "description": "1-based last non-blank line of its file that it occupies. On the root only.",
+          "type": "integer"
+        },
+        "text": {
+          "description": "The text the node holds: a paragraph with its references written with their sigils, a dedented code block, a bullet list's items one to a line, a claim's dedented lines, a run of assertions or a named test as written. Absent on a node that holds none.",
+          "type": "string"
+        },
+        "children": {
+          "description": "What the node contains, in document order. Absent when it contains nothing, or at the depth asked for.",
           "type": "array",
-          "items": {"$ref": "#/definitions/Edge"}
+          "items": {"$ref": "#/definitions/Content"}
         }
       }
     },
-    "SubtreeOrNull": {
-      "description": "A subtree, or null when the address does not resolve.",
+    "ContentOrNull": {
+      "description": "A node's content, or null when the address does not resolve.",
       "anyOf": [
-        {"$ref": "#/definitions/Subtree"},
+        {"$ref": "#/definitions/Content"},
         {"type": "null"}
       ]
     },

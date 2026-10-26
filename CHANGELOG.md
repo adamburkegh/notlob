@@ -37,12 +37,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   to the `[dev]` extra; notlob itself does not depend on it) and fail if
   the ontology and the emitter drift apart.
 - A JSON Schema for the `notlob query` outputs (`schema/query_result.json`):
-  node arrays, the single node or `null` of `resolve`, and the subtree of
-  `content`. Nodes and edges are the name-graph's, with identical
-  definitions kept in step by a test. The query outputs are bare JSON
-  values; `content`'s subtree carries the graph document's `version`.
-- `notlob query content --depth N`: the subtree at an address, down N
-  containment steps (`0` is the node alone; the default is all of it).
+  node arrays, the single node or `null` of `resolve`, and the nested
+  content of `content --format json`. Nodes and edges are the
+  name-graph's, with identical definitions kept in step by a test. The
+  query outputs are bare JSON values.
+- `notlob query content --format json --depth N`: the subtree at an
+  address, down N containment steps (`0` is the node alone; the default is
+  all of it).
 - `notlob graph --level outline|index|full` (or `1|2|3`), for JSON and
   Turtle alike. See "Changed" for the graph itself.
 - Every example project is run end to end by the test suite (`notlob
@@ -117,8 +118,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   across the module. These addresses appear in `notlob test` output
   (text and `--json`) and in every graph and query output.
 - **Breaking: `notlob query`.** Each query prints nodes as `notlob graph`
-  does at `outline`. `content` prints the subtree at an address as a
-  graph document at `full` (see "Added"). `children --kind` no longer
+  does at `outline`. `content` prints the source at an address as it is
+  written: a header line (`address  file:first-last`), then the node's own
+  lines from its file, which the `.lob` syntax already labels; asking for
+  one section costs what the section is. `--format json` prints the
+  subtree instead, nested and narrow (no edges, labels, sizes or
+  references; the file and last line on the root only), and `--depth` is
+  for it alone. The MCP tool `notlob_query_content` answers with text by
+  default and takes `format`. `children --kind` no longer
   offers `DEFINES`. `references` and `referenced-by` are now `cites` and
   `cited-by`, to match the `CITES` edge: they read the citations each
   paragraph holds, and `cited-by` reports a paragraph as the section that

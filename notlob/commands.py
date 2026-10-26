@@ -40,8 +40,8 @@ from notlob.bindings import (
 from notlob.bindings.python.runner import _resolve_python_interpreter
 from notlob.bindings import ClaimToRun
 from notlob.graph import (
-    KINDS, NameGraph, cited_by, cites_of, claims_to_run, module_address,
-    node_summary, parse_level, subtree,
+    KINDS, NameGraph, cited_by, cites_of, claims_to_run, content_tree,
+    module_address, node_summary, parse_level,
 )
 from notlob.model import BindingSection
 from notlob.project import (
@@ -1622,24 +1622,70 @@ def cmd_weave(
     return 0
 
 
-def cmd_query_content(address: str, depth: int | None = None) -> int:
-    """Print the subtree at *address* as a document (see
-    :func:`notlob.graph.subtree`): the node, what it contains and the
-    text of each leaf, once.
+def _content_text(graph: NameGraph, root: Path, address: str) -> str:
+    """The source of the node at *address*: a header line, the address and
+    the span (``address  file:first-last``), then the node's own lines
+    from its file under *root*, as written.
 
-    *depth* counts ``CONTAINS`` steps from the node (``0`` the node
-    alone); by default there is no limit. Returns exit code 0 when the
-    address resolves, 1 (with ``null``) when it does not.
+    Raises ``ValueError`` with the reason when there is no such node, or
+    it has no lines in a ``.lob`` file (an external file), or its file
+    cannot be read."""
+    node = graph.node(address)
+    if node is None:
+        raise ValueError(f"no node at address {address!r}")
+    if node.file is None or node.start_line is None or node.end_line is None:
+        raise ValueError(
+            f"{address!r} has no lines in a .lob file to show")
+    try:
+        lines = (root / node.file).read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValueError(f"cannot read {node.file}: {exc}") from exc
+    body = "\n".join(lines[node.start_line - 1:node.end_line])
+    return (f"{address}  {node.file}:{node.start_line}-{node.end_line}\n"
+            f"{body}\n")
+
+
+def cmd_query_content(
+    address: str, depth: int | None = None, fmt: str = "text",
+) -> int:
+    """Print the node at *address* as it is written.
+
+    ``text`` (the default) is a header line, the address and the span, and
+    then the node's own lines from its file, as written (see
+    :func:`_content_text`). ``json`` is the subtree, nested and narrow (see
+    :func:`notlob.graph.content_tree`), with ``null`` and exit code 1 when
+    the address does not resolve. *depth* counts ``CONTAINS`` steps from
+    the node (``0`` the node alone; by default there is no limit) and is
+    for ``json`` only: with ``text`` it is an error.
     """
+    if fmt not in ("text", "json"):
+        print(f"ERROR  <query>  unknown format {fmt!r}: choose text or "
+              f"json", file=sys.stderr)
+        return 1
+    if depth is not None and fmt != "json":
+        print("ERROR  <query>  depth is for --format json only",
+              file=sys.stderr)
+        return 1
     if depth is not None and depth < 0:
         print("ERROR  <query>  depth must be 0 or more", file=sys.stderr)
+        return 1
+    project, _binding = _require_root()
+    if project is None:
         return 1
     graph = _require_graph()
     if graph is None:
         return 1
-    document = subtree(graph, address, depth)
-    print(json.dumps(document, indent=2))
-    return 0 if document else 1
+    if fmt == "json":
+        document = content_tree(graph, address, depth)
+        print(json.dumps(document, indent=2))
+        return 0 if document else 1
+    try:
+        text = _content_text(graph, project, address)
+    except ValueError as exc:
+        print(f"ERROR  <query>  {exc}", file=sys.stderr)
+        return 1
+    print(text, end="")
+    return 0
 
 
 # ── Docs / Init / New ─────────────────────────────────────────

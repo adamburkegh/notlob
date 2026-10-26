@@ -1672,61 +1672,63 @@ def node_summary(node: Node) -> dict:
     return _node_entry(node, "outline", {})
 
 
-def subtree(
+def content_tree(
     graph: NameGraph, address: str, depth: int | None = None,
 ) -> dict | None:
-    """The document for the subtree at *address*, or ``None`` if there is
-    no such node.
+    """The subtree at *address*, nested and narrow, or ``None`` if there
+    is no such node.
 
-    The nodes are the node and what it contains, in document order, down
-    *depth* ``CONTAINS`` steps (``0`` the node alone, ``None`` all of
-    them), written as ``full`` writes them. The edges are those whose
-    source is among them: ``CONTAINS`` within the subtree, and the
-    citations, uses and imports from it. Text is held once, so a symbol
-    has none, its lines being in the code block it is written in; but a
-    symbol whose code block is not among the nodes carries its text, so
-    the answer still shows each line of source. That is the symbol asked
-    for itself: a symbol is a child of its code block, so *depth* never
-    leaves one without it.
+    Each node has its ``address``, ``kind`` and ``start_line``,
+    ``"named": true`` when the document names it, its ``mode``,
+    ``declares`` and ``value`` when set, its ``text`` when it holds text,
+    and its ``children`` (what it contains, in document order) when it has
+    any, down *depth* ``CONTAINS`` steps (``0`` the node alone, ``None``
+    all of them). The root also has its ``file`` and ``end_line``. There
+    are no edges, labels, sizes or references: nesting is the containment,
+    the address carries the label, and the references are written in the
+    text.
+
+    Text is held once, so a symbol has none, its lines being in the code
+    block it is written in; but a symbol whose code block is not in the
+    answer carries its text, so the answer still shows each line of
+    source. That is the symbol asked for itself: a symbol is a child of
+    its code block, so *depth* never leaves one without it.
     """
     root = graph.node(address)
     if root is None:
         return None
-    found: list[Node] = []
 
-    def walk(node: Node, remaining: int | None) -> None:
-        found.append(node)
-        if remaining == 0:
-            return
-        for child in graph.children(node.address):
-            walk(child, None if remaining is None else remaining - 1)
-
-    walk(root, depth)
-    inside = {node.address for node in found}
-    sizes = _sizes(graph)
-    nodes = []
-    for node in found:
-        entry = _node_entry(node, "full", sizes)
+    def entry(node: Node, remaining: int | None, holder_in: bool) -> dict:
+        d: dict = {"address": node.address, "kind": node.kind.name}
+        if node.name is not None:
+            d["named"] = True
+        for field_name in ("mode", "declares", "value"):
+            value = getattr(node, field_name)
+            if value is not None:
+                d[field_name] = value
+        if node is root:
+            if node.file is not None:
+                d["file"] = node.file
+        if node.start_line is not None:
+            d["start_line"] = node.start_line
+        if node is root and node.end_line is not None:
+            d["end_line"] = node.end_line
         if KINDS[node.kind].text_in_holder:
-            holder = graph.parent_of(node.address)
-            if holder is None or holder.address not in inside:
-                text = graph.text(node.address)
-                if text is not None:
-                    entry["text"] = text
-        nodes.append(entry)
-    edges = []
-    for edge in graph.edges():
-        if edge.source not in inside:
-            continue
-        if edge.kind == EdgeKind.CONTAINS and edge.target not in inside:
-            continue
-        entry = {"source": edge.source, "target": edge.target,
-                 "kind": edge.kind.name}
-        if edge.start_line is not None:
-            entry["start_line"] = edge.start_line
-        edges.append(entry)
-    return {"version": DOCUMENT_VERSION, "level": "full",
-            "root": address, "nodes": nodes, "edges": edges}
+            text = None if holder_in else graph.text(node.address)
+        else:
+            text = node.text
+        if text is not None:
+            d["text"] = text
+        if remaining != 0:
+            children = [
+                entry(child, None if remaining is None else remaining - 1,
+                      True)
+                for child in graph.children(node.address)]
+            if children:
+                d["children"] = children
+        return d
+
+    return entry(root, depth, False)
 
 
 def cites_of(graph: NameGraph, address: str) -> list[Node]:

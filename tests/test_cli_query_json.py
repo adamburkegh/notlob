@@ -5,8 +5,8 @@ the graph itself and print its nodes in the shape ``notlob graph`` prints
 at ``outline``, so the two schemas carry identical definitions of a node
 (and of a reference and an edge), and a test keeps them identical. Unlike
 ``test --json`` and ``check --json`` these outputs are bare JSON values
-(an array, a node, or ``null``) or, for ``content``, the subtree as a
-document.
+(an array, a node, or ``null``) or, for ``content`` with ``--format
+json``, the subtree, nested.
 """
 
 from __future__ import annotations
@@ -105,6 +105,15 @@ def _addresses(doc) -> set[str]:
 
 def _in_order(doc) -> list[str]:
     return [n["address"] for n in doc]
+
+
+def _flatten(node: dict) -> list[dict]:
+    """The nodes of a nested ``content`` answer, parents first, in the
+    order they are written."""
+    found = [node]
+    for child in node.get("children", []):
+        found.extend(_flatten(child))
+    return found
 
 
 class TestNodeLists:
@@ -267,25 +276,25 @@ class TestNamed:
         """(`notlob graph` at every level is tested in test_graph_levels.)"""
         _rc, doc = _run(capsys, cmd_query_search, "*")
         assert all("name" not in n for n in doc)
-        _rc, content = _run(capsys, cmd_query_content, "roman/numerals")
-        assert all("name" not in n for n in content["nodes"])
+        _rc, content = _run(capsys, cmd_query_content, "roman/numerals",
+                            None, "json")
+        assert all("name" not in n for n in _flatten(content))
 
 
 class TestQueryContent:
     ROOT = "roman/numerals#Decoding"
 
-    def _content(self, capsys, address=None, *depth):
+    def _content(self, capsys, address=None, depth=None):
         rc, doc = _run(capsys, cmd_query_content, address or self.ROOT,
-                       *depth)
+                       depth, "json")
         return rc, doc
 
     def test_the_whole_subtree_in_document_order(self, roman, capsys):
         rc, doc = self._content(capsys)
         assert rc == 0
-        _validate(doc, "SubtreeOrNull")
-        assert (doc["version"], doc["level"], doc["root"]) == (
-            2, "full", self.ROOT)
-        assert _in_order(doc["nodes"]) == [
+        _validate(doc, "ContentOrNull")
+        assert doc["address"] == self.ROOT
+        assert _in_order(_flatten(doc)) == [
             self.ROOT, f"{self.ROOT}#prose#1", f"{self.ROOT}#code#1",
             "roman/numerals#from_roman", f"{self.ROOT}#example#1"]
 
@@ -293,7 +302,7 @@ class TestQueryContent:
         self, roman, capsys,
     ):
         _rc, doc = self._content(capsys)
-        nodes = {n["address"]: n for n in doc["nodes"]}
+        nodes = {n["address"]: n for n in _flatten(doc)}
         assert "def from_roman" in nodes[f"{self.ROOT}#code#1"]["text"]
         assert "Decoding is the inverse" in nodes[
             f"{self.ROOT}#prose#1"]["text"]
@@ -301,34 +310,33 @@ class TestQueryContent:
         assert "text" not in nodes["roman/numerals#from_roman"]
         assert "text" not in nodes[self.ROOT]
 
-    def test_the_edges_are_those_from_the_subtree(self, roman, capsys):
+    def test_the_containment_is_the_nesting_and_there_are_no_edges(
+        self, roman, capsys,
+    ):
         _rc, doc = self._content(capsys)
-        inside = _addresses(doc["nodes"])
-        assert all(e["source"] in inside for e in doc["edges"])
-        assert {"source": self.ROOT, "target": f"{self.ROOT}#prose#1",
-                "kind": "CONTAINS"} in doc["edges"]
-        assert {"source": "roman/numerals#from_roman",
-                "target": "roman/numerals#NUMERALS", "kind": "USES",
-                "start_line": 47} in doc["edges"]
-        assert not [e for e in doc["edges"] if e["target"] == self.ROOT]
+        assert "edges" not in doc
+        assert [c["address"] for c in doc["children"]] == [
+            f"{self.ROOT}#prose#1", f"{self.ROOT}#code#1",
+            f"{self.ROOT}#example#1"]
+        assert [c["address"] for c in doc["children"][1]["children"]] == [
+            "roman/numerals#from_roman"]
 
     def test_depth_zero_is_the_node_alone(self, roman, capsys):
         _rc, doc = self._content(capsys, self.ROOT, 0)
-        _validate(doc, "SubtreeOrNull")
-        assert _in_order(doc["nodes"]) == [self.ROOT]
-        assert doc["edges"] == []
+        _validate(doc, "ContentOrNull")
+        assert _in_order(_flatten(doc)) == [self.ROOT]
+        assert "children" not in doc
 
     def test_depth_one_adds_the_children(self, roman, capsys):
         _rc, doc = self._content(capsys, self.ROOT, 1)
-        assert _in_order(doc["nodes"]) == [
+        assert _in_order(_flatten(doc)) == [
             self.ROOT, f"{self.ROOT}#prose#1", f"{self.ROOT}#code#1",
             f"{self.ROOT}#example#1"]
 
     def test_a_symbol_alone_shows_its_code(self, roman, capsys):
-        rc, doc = self._content(capsys, "roman/numerals#to_roman")
+        rc, node = self._content(capsys, "roman/numerals#to_roman")
         assert rc == 0
-        _validate(doc, "SubtreeOrNull")
-        (node,) = doc["nodes"]
+        _validate(node, "ContentOrNull")
         assert node["address"] == "roman/numerals#to_roman"
         assert node["text"].startswith("def to_roman(n: int) -> str:")
         assert "return result" in node["text"]
@@ -338,13 +346,13 @@ class TestQueryContent:
         self, project, capsys,
     ):
         _rc, doc = self._content(capsys, "alpha#helper")
-        assert doc["nodes"][0]["text"] == "def helper():\n    return 1"
+        assert doc["text"] == "def helper():\n    return 1"
 
     def test_a_symbol_has_no_text_when_its_code_block_is(
         self, project, capsys,
     ):
         _rc, doc = self._content(capsys, "alpha#code#1")
-        nodes = {n["address"]: n for n in doc["nodes"]}
+        nodes = {n["address"]: n for n in _flatten(doc)}
         assert "def helper" in nodes["alpha#code#1"]["text"]
         assert "text" not in nodes["alpha#helper"]
 
@@ -354,7 +362,7 @@ class TestQueryContent:
         _write(project, "prop.lob",
                "#Prop\n\n~property p\n    @given()\n    def prop(): pass\n")
         _rc, doc = self._content(capsys, "prop#p")
-        nodes = {n["address"]: n for n in doc["nodes"]}
+        nodes = {n["address"]: n for n in _flatten(doc)}
         assert "def prop" in nodes["prop#p"]["text"]
         assert "text" not in nodes["prop#p#prop"]
 
@@ -362,19 +370,20 @@ class TestQueryContent:
         self, roman, capsys,
     ):
         _rc, doc = self._content(capsys, "roman/numerals")
-        texts = [n["text"] for n in doc["nodes"] if "text" in n]
+        texts = [n["text"] for n in _flatten(doc) if "text" in n]
         assert sum(texts.count(t) for t in set(texts)) == len(texts)
-        assert not [n for n in doc["nodes"]
+        assert not [n for n in _flatten(doc)
                     if n["kind"] == "SYMBOL" and "text" in n]
 
     def test_an_unknown_address_is_null_and_exit_one(self, project, capsys):
-        rc, doc = _run(capsys, cmd_query_content, "no/such#address")
+        rc, doc = _run(capsys, cmd_query_content, "no/such#address",
+                       None, "json")
         assert rc == 1
         assert doc is None
-        _validate(doc, "SubtreeOrNull")
+        _validate(doc, "ContentOrNull")
 
     def test_a_negative_depth_is_an_error(self, project, capsys):
-        assert cmd_query_content("alpha", -1) == 1
+        assert cmd_query_content("alpha", -1, "json") == 1
         assert "depth" in capsys.readouterr().err
 
 
@@ -400,8 +409,8 @@ class TestNothingReadsTheLayer:
             (cmd_query_callees, ("alpha#caller",)),
             (cmd_query_cites, ("beta",)),
             (cmd_query_cited_by, ("alpha",)),
-            (cmd_query_content, ("alpha",)),
-            (cmd_query_content, ("alpha", 1)),
+            (cmd_query_content, ("alpha", None, "json")),
+            (cmd_query_content, ("alpha", 1, "json")),
         ]
         for func, args in calls:
             assert func(*args) == 0
@@ -434,9 +443,10 @@ class TestMcpTools:
     def test_content_depth_reaches_the_command(self, project):
         from notlob.mcp_server import _dispatch
         result = _dispatch("notlob_query_content",
-                           {"address": "alpha", "depth": 0})
+                           {"address": "alpha", "depth": 0,
+                            "format": "json"})
         document = json.loads(result["content"][0]["text"])
-        assert [n["address"] for n in document["nodes"]] == ["alpha"]
+        assert _in_order(_flatten(document)) == ["alpha"]
 
 
 class TestSchema:
@@ -476,7 +486,6 @@ class TestSchema:
             _validate([{"address": "x", "label": "x", "kind": "MODULE",
                         "content": {"prose": "p"}}], "NodeList")
 
-    def test_a_subtree_document_needs_its_root(self):
+    def test_a_content_node_needs_its_address(self):
         with pytest.raises(jsonschema.ValidationError):
-            _validate({"version": 2, "level": "full", "nodes": [],
-                       "edges": []}, "SubtreeOrNull")
+            _validate({"kind": "MODULE"}, "ContentOrNull")

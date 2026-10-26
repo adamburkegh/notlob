@@ -611,6 +611,9 @@ first, a list of files it may touch, and a stop point. Order:
      default, the node's own lines with `address  file:start-end`; a
      narrow nested JSON for programs. `query` answers a question about
      one thing; `graph` is the export. Brief: `slice-8c-brief.md`.
+   * **8d, UTF-8 output:** notlob writes UTF-8 on every platform and
+     JSON stops escaping non-ASCII (Adam, 2026-10-27). Brief:
+     `slice-8d-brief.md`.
 7. **Duplicate-name warning** (D10): a `notlob check` advisory for the
    same name in different scopes, beside the `typos` check. It also makes
    the doubtful `USES` edges of the global label index visible until

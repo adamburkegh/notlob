@@ -129,8 +129,10 @@ TOOLS = [
     {
         "name": "notlob_query_content",
         "description": (
-            "Show the subtree at a name-graph address, with the text "
-            "(prose and code) of each node that holds text, once."
+            "Show the source at a name-graph address, as written: a "
+            "header line (address, file and lines) and the node's own "
+            "lines. With format json, the subtree instead, nested, with "
+            "the text of each node that holds text, once."
         ),
         "inputSchema": {
             "type": "object",
@@ -141,12 +143,21 @@ TOOLS = [
                         "Node address, e.g. roman/numerals#to_roman"
                     ),
                 },
+                "format": {
+                    "type": "string",
+                    "enum": ["text", "json"],
+                    "description": (
+                        "text (the default): the source as written; "
+                        "json: the subtree, nested"
+                    ),
+                },
                 "depth": {
                     "type": "integer",
                     "minimum": 0,
                     "description": (
-                        "Stop this many containment steps below the node "
-                        "(0: the node alone; default: the whole subtree)"
+                        "With format json, stop this many containment "
+                        "steps below the node (0: the node alone; "
+                        "default: the whole subtree)"
                     ),
                 },
             },
@@ -248,7 +259,7 @@ def _dispatch(name: str, arguments: dict) -> dict:
         elif name == "notlob_query_content":
             out, rc = _capture(
                 cmd_query_content, arguments["address"],
-                arguments.get("depth"),
+                arguments.get("depth"), arguments.get("format", "text"),
             )
         elif name == "notlob_query_children":
             out, rc = _capture(

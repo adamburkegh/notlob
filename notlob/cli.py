@@ -299,17 +299,24 @@ def main() -> None:
     qcitedby.add_argument("address")
 
     qcont = qsub.add_parser(
-        "content", help="show the subtree at an address, with its text"
+        "content", help="show the source at an address, as written"
     )
     qcont.add_argument(
         "address",
         help="node address, e.g. roman/numerals#to_roman",
     )
     qcont.add_argument(
+        "--format", choices=("text", "json"), default="text",
+        help=(
+            "text (the default): a header line and the node's lines from "
+            "its file; json: the subtree, nested"
+        ),
+    )
+    qcont.add_argument(
         "--depth", type=int, default=None, metavar="N",
         help=(
-            "stop N containment steps below the node (0: the node alone; "
-            "default: the whole subtree)"
+            "with --format json, stop N containment steps below the node "
+            "(0: the node alone; default: the whole subtree)"
         ),
     )
 
@@ -394,7 +401,8 @@ def main() -> None:
         elif op == "cited-by":
             sys.exit(cmd_query_cited_by(args.address))
         elif op == "content":
-            sys.exit(cmd_query_content(args.address, args.depth))
+            sys.exit(cmd_query_content(
+                args.address, args.depth, args.format))
         else:
             query_p.print_help()
             sys.exit(1)
