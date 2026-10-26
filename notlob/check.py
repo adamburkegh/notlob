@@ -18,7 +18,15 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from notlob.graph import EdgeKind, NameGraph, NodeKind
+from notlob.graph import (
+    KINDS, EdgeKind, NameGraph, Node, NodeKind, named_address,
+)
+
+
+def _is_module_or_section(node: Node) -> bool:
+    """Whether *node* is a module or a section of one, an ``#Appendix``
+    included: what holds prose of its own to check."""
+    return node.kind == NodeKind.MODULE or KINDS[node.kind].section
 
 
 @dataclass(frozen=True)
@@ -87,9 +95,9 @@ def coverage_summary(graph: NameGraph) -> str:
     mods_with_examples: set[str] = set()
     mods_with_tests: set[str] = set()
     for node in graph.nodes(kind=NodeKind.EXAMPLE):
-        mods_with_examples.add(node.address.split("#")[0])
+        mods_with_examples.add(graph.module_of(node.address))
     for node in graph.nodes(kind=NodeKind.TEST):
-        mods_with_tests.add(node.address.split("#")[0])
+        mods_with_tests.add(graph.module_of(node.address))
 
     parts = [
         f"{n_modules} module{'s' if n_modules != 1 else ''}",
@@ -118,7 +126,7 @@ def check_typos(graph: NameGraph) -> list[Finding]:
 
     by_module: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for node in symbols:
-        mod = node.address.split("#", 1)[0]
+        mod = graph.module_of(node.address)
         by_module[mod].append((node.label, node.address))
 
     siblings: dict[str, list[str]] = defaultdict(list)
@@ -249,7 +257,7 @@ def check_titles(graph: NameGraph) -> list[Finding]:
     """Flag similar but non-identical module/subheading titles."""
     titles: list[tuple[str, str, frozenset[str]]] = []
     for node in graph.nodes():
-        if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
+        if not _is_module_or_section(node):
             continue
         words = frozenset(node.label.lower().split())
         if len(words) < _MIN_TITLE_WORDS:
@@ -322,7 +330,7 @@ def check_references(
     """
     mod_symbols: dict[str, set[str]] = defaultdict(set)
     for node in graph.nodes(kind=NodeKind.SYMBOL):
-        mod = node.address.split("#", 1)[0]
+        mod = graph.module_of(node.address)
         if (len(node.label) >= _MIN_REF_NAME_LENGTH
                 and _REFABLE.match(node.label)):
             mod_symbols[mod].add(node.label)
@@ -334,15 +342,10 @@ def check_references(
         if not symbols:
             continue
 
-        prose_parts: list[str] = []
-        if mod_node.content and mod_node.content.get("prose"):
-            prose_parts.append(mod_node.content["prose"])
-        for child in graph.children(mod_node.address):
-            if (child.kind == NodeKind.SUBHEADING
-                    and child.content
-                    and child.content.get("prose")):
-                prose_parts.append(child.content["prose"])
-        prose = " ".join(prose_parts)
+        prose_parts = [graph.prose(mod_node.address)]
+        prose_parts += [graph.prose(s.address)
+                        for s in graph.sections(mod_node.address)]
+        prose = " ".join(p for p in prose_parts if p)
         if not prose:
             continue
 
@@ -358,7 +361,7 @@ def check_references(
                         f"'{sym}' appears in prose but is never "
                         f"#-referenced"
                     ),
-                    addresses=(f"{mod_node.address}#{sym}",),
+                    addresses=(named_address(mod_node.address, sym),),
                 ))
 
     return findings
@@ -370,9 +373,9 @@ def check_style(graph: NameGraph) -> list[Finding]:
     """Flag modules or sections with excessive bullet-point use."""
     findings: list[Finding] = []
     for node in graph.nodes():
-        if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
+        if not _is_module_or_section(node):
             continue
-        n = (node.content or {}).get("bullet_block_count", 0)
+        n = graph.bullet_list_count(node.address)
         if n > 1:
             findings.append(Finding(
                 check="style",
@@ -483,14 +486,14 @@ def check_quantifier(graph: NameGraph) -> list[Finding]:
     """
     findings: list[Finding] = []
     for node in graph.nodes():
-        if node.kind not in (NodeKind.MODULE, NodeKind.SUBHEADING):
+        if not _is_module_or_section(node):
             continue
-        prose = (node.content or {}).get("prose")
+        prose = graph.prose(node.address)
         if not prose:
             continue
         has_claim = any(
-            child.kind in (NodeKind.EXAMPLE, NodeKind.PROPERTY)
-            for child in graph.children(node.address, EdgeKind.DEFINES)
+            claim.kind in (NodeKind.EXAMPLE, NodeKind.PROPERTY)
+            for claim in graph.claims(node.address)
         )
         if has_claim:
             continue
@@ -526,15 +529,13 @@ def check_imports(graph: NameGraph) -> list[Finding]:
     findings: list[Finding] = []
 
     for mod_node in graph.nodes(kind=NodeKind.MODULE):
-        mod_root    = mod_node.address
-        mod_prefix  = mod_root + "#"
+        mod_root = mod_node.address
         for dep in graph.children(mod_root, EdgeKind.IMPORTS):
-            dep_root   = dep.address
-            dep_prefix = dep_root + "#"
+            dep_root = dep.address
             used = any(
-                (e.source == mod_root or e.source.startswith(mod_prefix))
-                and (e.target == dep_root or e.target.startswith(dep_prefix))
-                for e in graph._edges
+                graph.module_of(e.source) == mod_root
+                and graph.module_of(e.target) == dep_root
+                for e in graph.edges()
                 if e.kind in (EdgeKind.USES, EdgeKind.REFERENCES)
             )
             if not used:

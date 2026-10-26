@@ -16,6 +16,13 @@ import json
 import sys
 from pathlib import Path
 
+from notlob.graph import KINDS, EdgeKind, NodeKind
+
+#: The edge kinds a graph holds, and the kinds of node ``outline`` shows:
+#: what a query can be asked for.
+_EDGE_KINDS = [k.name for k in EdgeKind]
+_NODE_KINDS = [k.name for k in NodeKind if not KINDS[k].block]
+
 
 # ── Tool definitions ─────────────────────────────────────────
 
@@ -77,15 +84,20 @@ TOOLS = [
         "description": (
             "Export the package name-graph as JSON: all modules, "
             "subheadings, symbols, examples, tests, properties, "
-            "and their relationships."
+            "and their relationships, at a level of detail."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "content": {
-                    "type": "boolean",
+                "level": {
+                    "type": ["string", "integer"],
+                    "enum": ["outline", "index", "full", 1, 2, 3],
                     "description": (
-                        "Include prose and code content on nodes"
+                        "How much to show: outline (1, the default) is "
+                        "every node but the paragraphs, code blocks and "
+                        "bullet lists; index (2) adds those, the "
+                        "references a paragraph holds and a size for each "
+                        "node; full (3) adds the text, once"
                     ),
                 },
             },
@@ -106,9 +118,7 @@ TOOLS = [
                 },
                 "kind": {
                     "type": "string",
-                    "enum": [
-                        "MODULE", "SUBHEADING", "SYMBOL", "PROPERTY",
-                    ],
+                    "enum": _NODE_KINDS,
                     "description": "Restrict to a node kind",
                 },
             },
@@ -118,8 +128,8 @@ TOOLS = [
     {
         "name": "notlob_query_content",
         "description": (
-            "Show source content (prose and code) at a "
-            "name-graph address."
+            "Show the subtree at a name-graph address, with the text "
+            "(prose and code) of each node that holds text, once."
         ),
         "inputSchema": {
             "type": "object",
@@ -128,6 +138,14 @@ TOOLS = [
                     "type": "string",
                     "description": (
                         "Node address, e.g. roman/numerals#to_roman"
+                    ),
+                },
+                "depth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": (
+                        "Stop this many containment steps below the node "
+                        "(0: the node alone; default: the whole subtree)"
                     ),
                 },
             },
@@ -146,9 +164,7 @@ TOOLS = [
                 },
                 "kind": {
                     "type": "string",
-                    "enum": [
-                        "CONTAINS", "DEFINES", "IMPORTS", "USES", "USES_EXTERNAL", "REFERENCES",
-                    ],
+                    "enum": _EDGE_KINDS,
                     "description": "Edge kind (default: CONTAINS)",
                 },
             },
@@ -221,8 +237,7 @@ def _dispatch(name: str, arguments: dict) -> dict:
                 cmd_check, only=only, json_mode=True,
             )
         elif name == "notlob_graph":
-            content = arguments.get("content", False)
-            out, rc = _capture(cmd_graph, include_content=content)
+            out, rc = _capture(cmd_graph, level=arguments.get("level"))
         elif name == "notlob_query_search":
             out, rc = _capture(
                 cmd_query_search,
@@ -232,6 +247,7 @@ def _dispatch(name: str, arguments: dict) -> dict:
         elif name == "notlob_query_content":
             out, rc = _capture(
                 cmd_query_content, arguments["address"],
+                arguments.get("depth"),
             )
         elif name == "notlob_query_children":
             out, rc = _capture(

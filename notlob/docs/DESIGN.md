@@ -78,7 +78,7 @@ extension point for domain-specific appendices.
 
 **Claims as a distinct layer.** Claims (`~example`, `~property`, `~proof`)
 are not comments and not code. They have one face pointing at the prose
-(they are part of the explanation, attached to a doc-node) and another
+(they are part of the explanation, attached to a section) and another
 face pointing at the formal layer (they make checkable assertions). The
 claim layer is not a gradient between prose and code; it is a separate
 layer with its own syntax.
@@ -133,8 +133,10 @@ a `@given`-decorated function body. The literate processor does not
 invent a property mini-language; the binding owns the syntax entirely.
 
 **`~property` naming.** A `~property` claim may optionally carry a name
-(`~property commutativity`), which creates a named node in the name-graph
-at the level of its containing doc-node. Named properties are like named
+(`~property commutativity`), which creates a named node in the name-graph.
+The name belongs to the module's namespace, since sections are not
+scopes, so a named property's address is `roman/numerals#commutativity`
+wherever in the module it is written. Named properties are like named
 theorems in a formal paper — some properties are significant enough to
 deserve a name that can be cross-referenced in prose (`#commutativity`);
 others are anonymous lemmas, identified only by their position in the
@@ -148,25 +150,30 @@ this is an anonymous witness whose identity is its location in the
 argument.
 
 Functions defined inside a named `~property` (other than `_`) become
-`NodeKind.SYMBOL` nodes in the name-graph under the property node:
+`NodeKind.SYMBOL` nodes in the name-graph, contained by the property node.
+A property opens a scope, so a function's address is the property's
+address and its name:
 
 ```
-roman/numerals#Round-Trip#commutativity        ← property node
-roman/numerals#Round-Trip#commutativity#prop   ← named function within
+roman/numerals#commutativity        ← property node
+roman/numerals#commutativity#prop   ← named function within
 ```
 
-Unnamed `~property` claims have no property node in the name-graph; the
-runner addresses them by ordinal within their containing doc-node.
+An unnamed `~property` is a node too, addressed by position: its
+section's address, `property` and its ordinal within the section
+(`roman/numerals#Round-Trip#property#1`).
 
 **Test names are navigational.** In a large test appendix, `##` heading
 groups provide navigation. Unnamed tests are anonymous witnesses —
 epistemically humble, just facts. Individual assertions can also be
-named with `~test <name>`, mirroring `~property` naming: the whole
-block gets one address (`property_address(group_addr, name)`), shared
-by every assertion line within it rather than a per-line ordinal — the
-same addressing rule `~example`/`~property` already use. Unlike
-`~property`, `~test` has no bare (nameless) form; naming is the entire
-reason to reach for it over a plain assertion line.
+named with `~test <name>`, for the same reason a `~property` is named:
+to be significant enough to cite. The whole block gets one address,
+shared by every assertion line within it rather than a per-line ordinal,
+as an `~example` or `~property` block does. A `#Tests` group opens a
+scope, so that address is the group's address and the test's name
+(`roman/numerals#Tests#encoding#mcmxciv`), where a named property's is
+its module's. Unlike `~property`, `~test` has no bare (nameless) form;
+naming is the entire reason to reach for it over a plain assertion line.
 
 `~test` is its own grammar terminal (`TEST_SIGIL`), illegal outside a
 `#Tests` `##group` by construction, not by a semantic check in
@@ -210,6 +217,70 @@ signal they belong in one module. Explicit imports make the dependency
 graph readable directly from source; the `#References` list is a true
 bibliography.
 
+**Listing, citing and loading.** A `#References` entry records one
+fact, that this module is in conversation with that one, and the tooling
+reads it three ways. Keeping the three apart is what lets modules list
+each other.
+
+*Terms.* A module A *lists* B when A's `#References` contains `#B`: an
+`IMPORTS` edge from A to B. A *cites* B when A's prose mentions `#B`. A
+*needs* B when A lists B and the name-graph has a `USES` edge from a node
+in A's tree (its code, its claims, its tests) to a symbol that B's own
+code defines, less the names A's code defines itself. B's own code is
+what is written in its code blocks (body, subheadings, `#Appendix`), not
+a function one of its `~property` claims defines. The `USES` edges come
+from the binding's call extraction, so a name in a string or a comment
+does not count. notlob reads need from those edges; a binding does not
+decide it.
+
+1. **Citing needs listing.** A prose `#B` that names a module resolves
+   only if A lists B. The scope of a citation is authored, never ambient:
+   not the package, not the project. A bare name resolved project-wide
+   would collide as projects, and chains of libraries, grow, and
+   traceability is the point: which modules is this argument in
+   conversation with, and why. That is a scholarly paper's bibliography,
+   and like one it is written by the author, not discovered. This is
+   also why there is no implicit sibling scope (the Java package rule
+   rejected above): siblings list each other to cite, as to use.
+2. **Listing is free.** Any module may list any other, including two that
+   list each other: an overview that lists the parts it explains, parts
+   that list the overview or anything above it, siblings that cite one
+   another. Listing creates an `IMPORTS` edge and nothing else.
+3. **Loading follows need.** A's code is loaded after the code of every
+   module A needs, and of what those need, each once, in listing order.
+   A listing that A needs nothing from is a citation and loads nothing.
+   `notlob test`, `run` and `build` load the same set: notlob works it
+   out from the package graph and hands those modules to the binding,
+   which inlines them.
+4. **Visibility.** A may use only names from modules it lists. Lint
+   enforces it where the binding can.
+5. **A cycle of need is an error.** It is reported with the cycle named
+   (`a -> b -> a`), wherever the modules sit in the address tree. Modules
+   are inlined into one namespace and run top to bottom, so no order
+   exists. A cycle of citations is not a cycle.
+6. **When use cannot be determined**, because the binding's reference
+   extraction is not complete, the address tree decides: a listing of a
+   descendant is a citation, and any other listing is treated as a need.
+   The tree is a fallback, never a rule for resolving references. A
+   binding says whether its extraction is complete
+   (`BindingKit.complete_references`). Python's is: every name the code
+   refers to. TypeScript's sees only calls and Haskell's only lowercase
+   names, so today they load every listing except one of a descendant,
+   and two sibling modules that list each other are a cycle there until
+   their extraction is widened.
+7. **Listing is not a request for side effects.** A module the listing
+   module does not need is not loaded, so its top-level effects do not
+   run. To depend on a module's code, use it.
+
+The scale this is for: an overview module that explains the structure of
+a part of the project and lists the parts; parts that list their overview
+or the shared modules above them; a library chain in which the label
+namespace is large and a reader needs to see why one module mentions
+another. The Gutenberg example is the small case: `corpus` cites `hamlet`
+in prose (a second text "would be a module of the same shape") and lists
+it; `hamlet` lists `corpus` and uses its code. Only the second listing
+loads anything.
+
 **Python-level imports are transitive across lob boundaries — by binding
 design, not by notlob rule.** When module B declares
 `from decimal import Decimal`, that name is visible to any lob module
@@ -222,7 +293,7 @@ module boundaries and will not exhibit this behaviour. The take-away: lob
 module boundaries govern notlob theory (explicit, declared, navigable);
 language-level name visibility is governed by the language binding.
 
-**Node addresses and labels are distinct.** Every named node in the
+**Node addresses and labels are distinct.** Every node in the
 name-graph has two representations:
 
 - *Address* — the globally unique machine identifier, derived
@@ -232,13 +303,23 @@ name-graph has two representations:
   Addresses are not written by authors; they are computed by tooling.
 
 - *Label* — the human-readable name as written in the source file:
-  `Stacking Discounts`. Labels are locally unique within their parent
-  node. The address is derived from the label plus context.
+  `Stacking Discounts`. A named node's label is unique within its scope
+  (below): a second node with the same name in the same scope is an
+  error, since the address would name two nodes. The same name in
+  different scopes is legal. An anonymous node's label is its kind and
+  ordinal (`prose#1`, `example#2`). The address is derived from the
+  label plus context.
 
-The two are mechanically related: `address = parent_address + "#" +
-label`. This mirrors the URI fragment convention and is isomorphic to
-an RDF URI, enabling a mechanical export to RDF/Turtle as a build
-artifact (planned, not yet implemented).
+The two are mechanically related. A named node's address is its scope's
+address, `#`, and its name: `roman/numerals#from_roman`. The scope is the
+nearest enclosing node, along `CONTAINS`, whose kind opens one: `MODULE`,
+`PROPERTY`, `TESTS` or a `#Tests` group. Sections do not. An anonymous
+node (a prose paragraph, a code block, an unnamed claim, an Appendix) is
+addressed by position instead: its parent's address, its kind and its
+ordinal, as in `roman/numerals#Decoding#example#1` and
+`roman/numerals#appendix#1`. This mirrors the URI fragment convention and
+is isomorphic to an RDF URI, enabling the mechanical export to RDF/Turtle
+(`notlob graph --format turtle`).
 
 **Cross-references use heading sigil syntax and are scope-resolved.**
 A reference in prose reuses the heading sigils but in reference
@@ -260,11 +341,12 @@ is a live cross-reference to the constant definition, with the same
 hyperlink semantics as a subheading or module reference. All named
 things are first-class in prose.
 
-This means `#References` does double duty: it is a bibliography
-(acknowledging what the argument depends on) and a scope declaration
-(bringing module labels into reference resolution context). An
-unresolved reference is an error; the name-graph is closed-world.
-Cross-references are machine-validated against the name-graph.
+`#References` is both a bibliography (acknowledging what the argument
+depends on or mentions) and a scope declaration (bringing module labels
+into reference resolution context); see "Listing, citing and loading"
+above for what each reading means to the tooling. An unresolved
+reference is an error; the name-graph is closed-world. Cross-references
+are machine-validated against the name-graph.
 
 **`binding.lob` is a reserved structural filename.** Each project root
 contains a `binding.lob` that declares the execution substrate and
@@ -299,10 +381,10 @@ block ends at the first non-blank line with less indentation than the
 body. There are no special-case terminators; headings and `~sigils`
 terminate blocks only because they start at column zero.
 
-**Cross-references use `##Name` syntax.** A cross-reference to a doc-node
+**Cross-references use `##Name` syntax.** A cross-reference to a section
 in prose uses the same `##Name` sigil as a subheading. A `##` at the
 start of a line is a heading; `##` mid-prose is a reference. The tooling
-validates references against the doc-node graph.
+validates references against the name-graph.
 
 ---
 
@@ -329,24 +411,40 @@ markers/newlines) and checks reserved sigils, then hands a Lark `Tree`
 serialisable to JSON for use by tooling and LLM context. Parse tree
 access will also be exposed via MCP.
 
-**Name-graph:** The central data structure of the tooling layer. Every
-named thing in a `.lob` file or package is a node; relationships between
-them are edges. The name-graph accumulates in layers, each adding richer
-information:
+**Name-graph:** The central data structure of the tooling layer: the
+parse tree, with cross-references. Every element of a `.lob` file is a
+node: modules, sections, prose paragraphs, code blocks, bullet lists,
+claims, tests and the names code defines. Nodes and `CONTAINS` edges
+are a forest, one tree per file: `CONTAINS` is position, where each node
+is written. `USES`, `REFERENCES`, `IMPORTS` and `USES_EXTERNAL` are a
+directed graph over the forest: what each call, reference, listing and
+external declaration resolves to. What a node is (a claim, a paragraph,
+a symbol) is its kind; which scope a name belongs to is derived from the
+tree. Each node has its file and its first and last line. Text is held
+once, on the leaf it was written in; a symbol's text is the lines of its
+code block. What a consumer wants as one string is derived. An element of
+the document that is missing from the graph is a bug.
 
-- *Structure.* Module addresses and subheading nodes, derived from the
-  `.lob` parser alone. No language binding required. Sufficient for
-  cross-reference validation, doc-node navigation, and LLM context.
-  This layer is binding-agnostic and always available.
+The graph is exported at three levels of detail (`outline`, `index`,
+`full`), each a view of the same structure written by its own
+serialiser; the in-memory layout is not the wire format.
+
+The name-graph accumulates in layers, each adding richer information:
+
+- *Structure.* Every element of a file is a node, in one tree per file
+  (`CONTAINS`), derived from the `.lob` parser alone. No language binding
+  required. Sufficient for cross-reference validation, navigating the
+  document, and LLM context. This layer is binding-agnostic and always
+  available.
 
 - *Symbols.* Code-level names extracted from code blocks and named
   `~property` claims by a language-specific analyser. Code block names
   (functions, classes, top-level assignments) become `NodeKind.SYMBOL`
-  nodes under their containing structural node. Named `~property` claims
-  become `NodeKind.PROPERTY` nodes, with any named functions defined
-  within them as `NodeKind.SYMBOL` children. The `_` convention marks
-  anonymous witness functions and they are not extracted. This layer is
-  where the binding earns its keep.
+  nodes, contained by the `CODE` leaf they are written in; any named
+  functions defined within a `~property` claim are `SYMBOL` children of
+  the `PROPERTY` node. A symbol holds its lines, not a copy of its text.
+  The `_` convention marks anonymous witness functions and they are not
+  extracted. This layer is where the binding earns its keep.
 
 - *Cross-references.* Prose `#Label` and `##Label` mentions are
   first-class `Ref` objects extracted by the lexer. The tooling validates
@@ -354,25 +452,29 @@ information:
   or subheading in the current module, then module reached via a declared
   `IMPORTS` edge. Unresolved references are build errors, reported
   alongside address mismatches before any claim runs. Successfully resolved
-  mentions become `REFERENCES` edges (MODULE/SUBHEADING → target node)
-  emitted in a fourth `build_package` pass, enabling navigation and
-  cross-reference analysis via `notlob query references` and
-  `notlob query referenced-by`.
+  mentions become `REFERENCES` edges, from the `PROSE` leaf that holds the
+  mention to the target node, emitted by `build_package` once the
+  modules and their imports are known, enabling navigation and
+  cross-reference analysis via `notlob query references` and `notlob
+  query referenced-by`. The leaf also holds the references as written
+  (`refs`); an unresolved one has a `refs` entry and no edge.
 
 - *Package graph.* Module addresses resolved across a package, with
   `binding.lob` providing the project root. IMPORTS edges connect
   modules via their declared `#References`; the name-graph spans the
   full package.
 
-- *Call graph.* A fourth build pass — `add_uses_edges` — uses each
-  binding's `extract_calls` to scan SYMBOL source text for references to
-  other symbols and emits `USES` edges.  The edges are intra- and
-  cross-module; the distinction is derivable from the address prefixes.
+- *Call graph.* A build pass after symbol extraction, `add_uses_edges`,
+  uses each binding's `extract_calls` to scan the code of symbols, claims
+  and tests for references to other symbols and emits `USES` edges.  The
+  edges are intra- and cross-module; the distinction is derivable from the
+  tree (a node's module is the root of its tree), not from address
+  strings.
   Absence of a `USES` edge means the reference was not found by static
   analysis, not that the call does not exist — see each binding's
   "Static call analysis" section for fidelity ceilings.  `USES_EXTERNAL`
-  is a separate edge kind connecting a binding module to files declared
-  with `~external`.
+  is a separate edge kind, from a `~external` declaration (a leaf of
+  `binding.lob`'s tree) to the file it declares.
 
 The seam between the structural and symbolic layers is the binding
 boundary. The structural layer is the common vocabulary across all
@@ -386,10 +488,9 @@ assembles the kit and exposes `kit: BindingKit` plus `extract_symbols`.
 The three built-in bindings broadly share a shape — `assemble.py`,
 `symbols.py`, `runner.py`, `lint.py` — with binding-specific extras
 where a language's toolchain needs them (TypeScript's `tokenizer.py`
-for claim-completion scanning, Python's `loader.py` for cross-file
-dependency caching). See each directory directly for its current file
-layout, rather than a listing here that only one of us remembers to
-update.
+for claim-completion scanning). See each directory directly for its
+current file layout, rather than a listing here that only one of us
+remembers to update.
 
 Each binding directory carries a `BINDING.md` documenting its toolchain,
 linter, and supported claims — the binding is the unit that determines
@@ -485,7 +586,9 @@ binding's implementation is tied to a specific library.
   `dist/`).  After assembly, runs the `~on-build` hook if declared in
   `binding.lob`.  The primary entry point for browser-target languages.
 - `notlob weave` — render a `.lob` file (or project) as Markdown.
-- `notlob graph` — export the package name-graph as JSON.
+- `notlob graph` — export the package name-graph as JSON, at one of
+  three levels of detail (`outline`, `index`, `full`), as JSON or as
+  Turtle.
 - `notlob query` — navigate the name-graph from the command line
   (`children`, `resolve`, `search`, `imports`, `imported-by`,
   `content`).
@@ -522,7 +625,7 @@ The weave operation exposes the same validated cross-reference structure
 that the runtime uses — a rendered document cannot contain a dead link
 to a node that does not exist.
 
-**Diagnostics:** Failures report by doc-node address, not line number. A
+**Diagnostics:** Failures report by node address, not line number. A
 failing claim in `##Stacking Discounts` says so. The node has a prose
 face, a claim face, and an executable face; all three are candidates for
 being wrong.
@@ -619,8 +722,11 @@ static assets.  Two declarations in `binding.lob` handle this:
 **`~external <filename>`** — declares a file relative to the project
 root that `notlob build` should be aware of.  The file is not
 assembled, tested, or owned by notlob; it is passed to the build hook
-and appears as a `NodeKind.EXTERNAL` node in the name-graph (connected
-to the binding module via a `USES_EXTERNAL` edge, visible via `notlob query`).
+and appears as a `NodeKind.EXTERNAL` node in the name-graph, outside the
+module trees (connected from its declaration, a leaf of `binding.lob`'s
+tree, by a `USES_EXTERNAL` edge, visible via `notlob query`). The node's
+identity is the declared string, verbatim; notlob does not normalise or
+resolve it.
 
 **`~on-build <script>`** — a hook script in the binding's own language
 (TypeScript for TypeScript projects, Python for Python projects).
@@ -689,7 +795,7 @@ today (see `examples/ts-media/inject-script.ts`); native bundling in
 `build_typescript` would make it the default.
 
 **Cross-reference aliasing.** Cross-references use `##Name` syntax in
-prose, validated against the doc-node graph. A future extension would
+prose, validated against the name-graph. A future extension would
 allow aliasing long reference names — display text separate from the
 node address, as in LaTeX `\ref` with custom text or named imports in
 programming languages.
@@ -714,11 +820,12 @@ to the TypeScript runner while the rest of the file runs Python.  This
 keeps single-language projects unchanged and makes full-stack
 colocations expressible without a new file format or filesystem
 discovery mechanism.  The grammar already distinguishes sigils by
-position; the binding could follow the same scope hierarchy the
-name-graph already tracks.  How full-stack projects will naturally
-organise themselves — colocated concepts in one file, or separate
-subtrees — is an open question best answered by real usage before the
-scoped-binding dispatch is extended.  (The registry that makes
+position, and a language declared on a section would apply to that
+section's subtree of the name-graph: a language scope, separate from the
+name scopes that modules and properties open.  How full-stack projects
+will naturally organise themselves — colocated concepts in one file, or
+separate subtrees — is an open question best answered by real usage
+before the scoped-binding dispatch is extended.  (The registry that makes
 third-party bindings possible is already implemented; see the Binding
 registry section above.)
 

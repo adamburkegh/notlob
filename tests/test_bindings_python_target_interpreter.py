@@ -22,7 +22,13 @@ from pathlib import Path
 
 import pytest
 
+from kitcalls import collecting
 from notlob import from_tree, parse_file
+from notlob.bindings.python import runner
+
+run_examples = collecting(runner.run_examples, "EXAMPLE")
+run_properties = collecting(runner.run_properties, "PROPERTY")
+run_tests = collecting(runner.run_tests, "TEST")
 
 
 class TestSitePackagesResolvesByImportNotPrefix:
@@ -115,7 +121,7 @@ class TestThirdPartyAndNotlobToolingBothResolve:
     def test_example_resolves_target_third_party_import(
         self, target_venv, project,
     ):
-        from notlob.bindings.python.runner import Status, run_examples
+        from notlob.bindings.python.runner import Status
         module = from_tree(parse_file(project))
         results = _run_with_target_venv_on_path(
             target_venv, run_examples, module, file_path=project,
@@ -126,7 +132,7 @@ class TestThirdPartyAndNotlobToolingBothResolve:
     def test_property_resolves_hypothesis_from_notlob(
         self, target_venv, project,
     ):
-        from notlob.bindings.python.runner import Status, run_properties
+        from notlob.bindings.python.runner import Status
         module = from_tree(parse_file(project))
         results = _run_with_target_venv_on_path(
             target_venv, run_properties, module, file_path=project,
@@ -137,7 +143,7 @@ class TestThirdPartyAndNotlobToolingBothResolve:
     def test_tests_section_resolves_both_simultaneously(
         self, target_venv, project,
     ):
-        from notlob.bindings.python.runner import Status, run_tests
+        from notlob.bindings.python.runner import Status
         module = from_tree(parse_file(project))
         results = _run_with_target_venv_on_path(
             target_venv, run_tests, module, file_path=project,
@@ -151,7 +157,7 @@ class TestThirdPartyAndNotlobToolingBothResolve:
         """`~example` has `approx` like `#Tests` does, even when the
         target interpreter has no pytest of its own: the notlob
         site-packages fallback must be on the path before the import."""
-        from notlob.bindings.python.runner import Status, run_examples
+        from notlob.bindings.python.runner import Status
         (tmp_path / "binding.lob").write_text(
             "#Scratch\n\n---\n\n#Binding\n    ~language python\n",
             encoding="utf-8",

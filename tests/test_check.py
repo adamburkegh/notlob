@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -18,10 +20,10 @@ from notlob.bindings.python.symbols import extract_symbols, extract_calls
 
 
 def _sym(module: str, name: str) -> tuple[Node, Edge]:
-    """Create a SYMBOL node and its DEFINES edge."""
+    """Create a SYMBOL node and the CONTAINS edge from its module."""
     addr = f"{module}#{name}"
     node = Node(address=addr, label=name, kind=NodeKind.SYMBOL)
-    edge = Edge(source=module, target=addr, kind=EdgeKind.DEFINES)
+    edge = Edge(source=module, target=addr, kind=EdgeKind.CONTAINS)
     return node, edge
 
 
@@ -507,6 +509,22 @@ class TestCheckImports:
         findings = check_imports(graph)
         assert findings == []
 
+    def test_symbol_used_only_in_an_appendix_not_flagged(self, tmp_path):
+        # A function written in an #Appendix is code like any other: an
+        # import that only it uses is used.
+        self._write(tmp_path, "binding.lob",
+                    "#P\n\n---\n\n#Binding\n    ~language python\n")
+        self._write(tmp_path, "util.lob",
+                    "#Util\n\n    def helper(): return 1\n")
+        self._write(tmp_path, "main.lob",
+                    "#Main\n\n    x = 42\n\n"
+                    "---\n\n#Appendix Notes\n\n"
+                    "    def later():\n        return helper()\n\n"
+                    "#References\n    #Util\n")
+        graph = build_package(tmp_path, extract_symbols, call_extractor=extract_calls)
+        findings = check_imports(graph)
+        assert findings == []
+
     def test_hash_ref_in_prose_not_flagged(self, tmp_path):
         # #Name notation in prose is explicit module usage — should satisfy
         # the unused import checker even when no symbol names appear in text.
@@ -744,3 +762,23 @@ class TestCheckQuantifier:
         )
         graph = build_package(tmp_path, extract_symbols)
         assert not has_errors(check_quantifier(graph))
+
+
+# ── The checks read the graph through its methods ─────────────
+
+class TestChecksReadTheGraphOnlyThroughItsMethods:
+    """How the graph holds a document is its own business; the checks ask
+    it questions. A check that reaches into node content, an edge kind
+    used for structure, the edge list or an address string breaks when
+    the representation changes, so none may."""
+
+    FORBIDDEN = (
+        ".content", "EdgeKind.DEFINES", "EdgeKind.CONTAINS",
+        "._edges", 'split("#"', '+ "#"',
+    )
+
+    def test_check_py_does_not_read_the_representation(self):
+        import notlob.check as check_module
+        source = inspect.getsource(check_module)
+        found = [text for text in self.FORBIDDEN if text in source]
+        assert not found, f"notlob.check reads the representation: {found}"

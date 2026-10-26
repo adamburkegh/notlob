@@ -17,15 +17,15 @@ import textwrap
 
 import pytest
 
+from kitcalls import collecting
+from notlob import from_tree, parse
 from notlob.bindings import Status
+from notlob.bindings.haskell import runner
 from notlob.bindings.haskell.runner import (
     _hs_string_escape,
     _iter_assertions,
     _build_examples_harness,
     _parse_output,
-    run_examples,
-    run_tests,
-    run_properties,
 )
 from notlob.model import (
     Claim,
@@ -38,6 +38,10 @@ from notlob.model import (
     TestsSection,
     TestGroup,
 )
+
+run_examples = collecting(runner.run_examples, "EXAMPLE")
+run_tests = collecting(runner.run_tests, "TEST")
+run_properties = collecting(runner.run_properties, "PROPERTY")
 
 
 # ── Skip marker ───────────────────────────────────────────────
@@ -410,14 +414,14 @@ class TestRunTestsIntegration:
 
     def test_tests_address_format(self):
         results = self._run("x = 1", bare_lines=["    x == 1"])
-        assert results[0].address == "test/module#Tests"
+        assert results[0].address == "test/module#Tests#test#1"
 
     def test_group_address_format(self):
         results = self._run(
             "f x = x",
             groups=[("MyGroup", ["    f 1 == 1"])],
         )
-        assert results[0].address == "test/module#Tests#MyGroup"
+        assert results[0].address == "test/module#Tests#MyGroup#test#1"
 
     def test_named_test_in_group(self):
         results = self._run(
@@ -430,7 +434,7 @@ class TestRunTestsIntegration:
         assert len(results) == 2
         assert all(r.status == Status.PASS for r in results)
         addrs = {r.address for r in results}
-        assert "test/module#Tests#Doubling" in addrs
+        assert "test/module#Tests#Doubling#test#1" in addrs
         assert "test/module#Tests#Doubling#zero_case" in addrs
 
     def test_named_test_failure_reported(self):
@@ -443,6 +447,38 @@ class TestRunTestsIntegration:
         assert len(results) == 1
         assert results[0].status == Status.FAIL
         assert results[0].address == "test/module#Tests#Doubling#broken"
+
+
+class TestTestsLinesAfterCommentary:
+    """Each assertion in #Tests is reported at its own line, with
+    commentary between it and the assertions before it. See
+    meta/bugs/2026-10-25-tests-commentary-line-drift. The runner is
+    stood in for: the lines come from what it is handed to run."""
+
+    def test_an_assertion_after_commentary_reports_its_own_line(
+        self, monkeypatch,
+    ):
+        monkeypatch.setattr(runner, "_run_harness", lambda *a, **k: (
+            "CLAIM\tt#Tests#g\tf 1 == 1\nPASS\n"
+            "CLAIM\tt#Tests#g\tf 1 == 1\nPASS\n", "", 0))
+        module = from_tree(parse(
+            "#T\n"                      # 1
+            "\n"                        # 2
+            "    f x = x\n"             # 3
+            "\n"                        # 4
+            "---\n"                     # 5
+            "\n"                        # 6
+            "#Tests\n"                  # 7
+            "\n"                        # 8
+            "##g\n"                     # 9
+            "    f 1 == 1\n"            # 10
+            "\n"                        # 11
+            "Commentary.\n"             # 12
+            "\n"                        # 13
+            "    f 1 == 1\n"            # 14
+        ))
+        results = run_tests(module)
+        assert [r.source_line for r in results] == [10, 14]
 
 
 # ── Integration: run_properties ──────────────────────────────

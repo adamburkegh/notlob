@@ -8,7 +8,7 @@ Unnamed ~property claims produce no graph nodes.
 from notlob import (
     parse, from_tree, build, enrich,
     NameGraph, NodeKind, EdgeKind,
-    property_address,
+    named_address,
 )
 from notlob.bindings.python import extract_symbols
 
@@ -20,18 +20,18 @@ def enriched(source: str) -> NameGraph:
     return graph
 
 
-# ── property_address helper ───────────────────────────────────
+# ── a property's address ──────────────────────────────────────
 
 class TestPropertyAddress:
     def test_module_level(self):
         assert (
-            property_address("roman/numerals", "commutativity")
+            named_address("roman/numerals", "commutativity")
             == "roman/numerals#commutativity"
         )
 
     def test_subheading_level(self):
         assert (
-            property_address("roman/numerals#Round-Trip", "identity")
+            named_address("roman/numerals#Round-Trip", "identity")
             == "roman/numerals#Round-Trip#identity"
         )
 
@@ -58,11 +58,11 @@ class TestNamedPropertyNodes:
     def test_property_in_subheading(self):
         src = "#T\n##S\n~property myp\n    @given()\n    def _(): pass\n"
         g = enriched(src)
-        node = g.node("t#S#myp")
+        node = g.node("t#myp")
         assert node is not None
         assert node.kind == NodeKind.PROPERTY
 
-    def test_module_level_property_not_under_subheading(self):
+    def test_a_property_is_in_its_modules_scope_not_its_sections(self):
         src = (
             "#T\n"
             "~property top\n    @given()\n    def _(): pass\n"
@@ -71,24 +71,24 @@ class TestNamedPropertyNodes:
         )
         g = enriched(src)
         assert g.node("t#top")    is not None
-        assert g.node("t#S#inner") is not None
-        assert g.node("t#inner")   is None
+        assert g.node("t#inner")   is not None
+        assert g.node("t#S#inner") is None
         assert g.node("t#S#top")   is None
 
 
-# ── DEFINES edges ─────────────────────────────────────────────
+# ── CONTAINS edges ────────────────────────────────────────────
 
-class TestDefinesEdges:
-    def test_module_defines_named_property(self):
+class TestContainsEdges:
+    def test_module_contains_named_property(self):
         g = enriched("#T\n~property myp\n    @given()\n    def _(): pass\n")
-        defined = {n.label for n in g.children("t", EdgeKind.DEFINES)}
-        assert "myp" in defined
+        contained = {n.label for n in g.children("t", EdgeKind.CONTAINS)}
+        assert "myp" in contained
 
-    def test_subheading_defines_named_property(self):
+    def test_subheading_contains_named_property(self):
         src = "#T\n##S\n~property myp\n    @given()\n    def _(): pass\n"
         g = enriched(src)
-        defined = {n.label for n in g.children("t#S", EdgeKind.DEFINES)}
-        assert "myp" in defined
+        contained = {n.label for n in g.children("t#S", EdgeKind.CONTAINS)}
+        assert "myp" in contained
 
 
 # ── Symbols under named properties ────────────────────────────
@@ -110,15 +110,15 @@ class TestPropertySymbols:
         g = enriched(src)
         assert g.node("t#myp#_") is None
 
-    def test_property_defines_symbol(self):
+    def test_property_contains_symbol(self):
         src = (
             "#T\n~property myp\n"
             "    @given()\n"
             "    def prop(): pass\n"
         )
         g = enriched(src)
-        defined = {n.label for n in g.children("t#myp", EdgeKind.DEFINES)}
-        assert "prop" in defined
+        contained = {n.label for n in g.children("t#myp", EdgeKind.CONTAINS)}
+        assert "prop" in contained
 
     def test_no_symbols_for_unnamed_property(self):
         src = "#T\n~property\n    @given()\n    def named(): pass\n"

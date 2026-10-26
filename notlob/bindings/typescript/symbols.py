@@ -73,26 +73,32 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
     *lines* are the raw (indented) lines of a notlob CodeBlock.  They
     are dedented before scanning so that patterns anchor correctly at
     column 0.  Each SymbolInfo carries the full source block (header
-    line plus all continuation lines) so call extraction can scan it.
+    line plus all continuation lines) so call extraction can scan it,
+    and the first and last non-blank lines of that block within *lines*.
     """
     dedented = textwrap.dedent('\n'.join(lines))
     result: list[SymbolInfo] = []
     current_name: str | None = None
     current_block: list[str] = []
+    current_first = 0
 
     def _flush() -> None:
         if current_name is not None:
+            held = [i for i, text in enumerate(current_block) if text.strip()]
             result.append(SymbolInfo(
                 name=current_name,
                 source='\n'.join(current_block).rstrip(),
+                first_line=current_first,
+                last_line=current_first + held[-1],
             ))
 
-    for line in dedented.splitlines():
+    for number, line in enumerate(dedented.splitlines(), 1):
         m = _DECL_RE.match(line)
         if m and (not line[:1].isspace()):
             _flush()
             current_name = next(g for g in m.groups() if g is not None)
             current_block = [line]
+            current_first = number
         elif current_name is not None:
             current_block.append(line)
 

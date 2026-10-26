@@ -26,6 +26,7 @@ from notlob.commands import (
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
     cmd_query_callers, cmd_query_callees,
     cmd_query_references, cmd_query_referenced_by,
+    QUERY_EDGE_KINDS, QUERY_NODE_KINDS,
 )
 from notlob.project import find_project_root, resolve_module_path
 
@@ -168,8 +169,14 @@ def main() -> None:
     )
     _add_file_arg(graph_p, required=False)
     graph_p.add_argument(
-        "--content", action="store_true", default=False,
-        help="include source content (prose/code) on every node",
+        "--level", "-l", default=None, metavar="LEVEL",
+        help=(
+            "how much to show (either format): outline (1, the default) "
+            "is every "
+            "node but the paragraphs, code blocks and bullet lists; "
+            "index (2) adds those, the references a paragraph holds and "
+            "a size for each node; full (3) adds the text, once"
+        ),
     )
     graph_p.add_argument(
         "--format", "-f", default="json",
@@ -245,8 +252,7 @@ def main() -> None:
     qc = qsub.add_parser("children", help="list direct children of a node")
     qc.add_argument("address")
     qc.add_argument(
-        "--kind", default="CONTAINS",
-        choices=["CONTAINS", "DEFINES", "IMPORTS"],
+        "--kind", default="CONTAINS", choices=QUERY_EDGE_KINDS,
         help="edge kind to follow (default: CONTAINS)",
     )
 
@@ -260,8 +266,7 @@ def main() -> None:
     qs = qsub.add_parser("search", help="search nodes by label pattern")
     qs.add_argument("pattern", help="fnmatch-style pattern, e.g. '*discount*'")
     qs.add_argument(
-        "--kind", default=None,
-        choices=["MODULE", "SUBHEADING", "SYMBOL", "PROPERTY"],
+        "--kind", default=None, choices=QUERY_NODE_KINDS,
         help="restrict to a node kind",
     )
 
@@ -294,11 +299,18 @@ def main() -> None:
     qrefby.add_argument("address")
 
     qcont = qsub.add_parser(
-        "content", help="show source content at an address"
+        "content", help="show the subtree at an address, with its text"
     )
     qcont.add_argument(
         "address",
         help="node address, e.g. roman/numerals#to_roman",
+    )
+    qcont.add_argument(
+        "--depth", type=int, default=None, metavar="N",
+        help=(
+            "stop N containment steps below the node (0: the node alone; "
+            "default: the whole subtree)"
+        ),
     )
 
     args = parser.parse_args()
@@ -336,8 +348,8 @@ def main() -> None:
     elif args.command == "graph":
         sys.exit(cmd_graph(
             _opt_path(args.file, args.module_mode),
-            include_content=args.content,
             fmt=args.format,
+            level=args.level,
         ))
     elif args.command == "check":
         sys.exit(cmd_check(
@@ -382,7 +394,7 @@ def main() -> None:
         elif op == "referenced-by":
             sys.exit(cmd_query_referenced_by(args.address))
         elif op == "content":
-            sys.exit(cmd_query_content(args.address))
+            sys.exit(cmd_query_content(args.address, args.depth))
         else:
             query_p.print_help()
             sys.exit(1)

@@ -32,19 +32,24 @@ from pathlib import Path
 
 from notlob import (
     build, enrich, from_tree, parse_file, validate_refs,
-    Edge, EdgeKind, NodeKind, AddressCollisionError,
+    EdgeKind, NodeKind, AddressCollisionError,
 )
 from notlob.bindings import (
     ClaimResult, LintResult, LintToolUnavailable, Status,
 )
-from notlob.bindings.python.loader import ModuleCache
 from notlob.bindings.python.runner import _resolve_python_interpreter
-from notlob.graph import module_address
-from notlob.model import BindingSection, Claim, Subheading
+from notlob.bindings import ClaimToRun
+from notlob.graph import (
+    KINDS, NameGraph, claims_to_run, module_address, node_summary,
+    parse_level, referenced_by, references_of, subtree,
+)
+from notlob.model import BindingSection
 from notlob.project import (
+    LobRefCycleError,
     address_from_path,
     build_package,
-    find_project_root, module_lob_refs, resolve_module_path,
+    find_project_root,
+    load_dependencies,
 )
 
 
@@ -249,62 +254,73 @@ def _print_lint_result(r: LintResult) -> None:
     print(f"LINT   {r.address}  {r.code}: {r.message} (col {r.col})")
 
 
-# ── Reference-graph builder ───────────────────────────────────
+# ── The graph of a command ────────────────────────────────────
 
-def _build_ref_graph(module, root, extract_symbols):
-    """Build a NameGraph sufficient for validate_refs.
+def _collision_of(path: Path, collisions: list | None):
+    """The collision found for the module at *path* among *collisions*
+    (``(path, error)`` as :func:`_package_graph` returns them), or
+    ``None``."""
+    return next(
+        (exc for where, exc in collisions or ()
+         if where.resolve() == path.resolve()), None)
 
-    Builds the structural graph for *module*, enriches it with
-    symbols, then merges in a MODULE node for each directly imported
-    module and adds the corresponding IMPORTS edge.  Only direct
-    imports are added; transitive imports are not needed because
-    validate_refs only resolves one hop via step 3.
 
-    *extract_symbols* is the language-specific extractor from the
-    binding kit; it is passed explicitly so the ref graph uses the
-    same language as the active kit.
-
-    Import errors (missing files) are silently skipped — they will
-    surface as claim execution errors later.
-    """
-    graph    = build(module)
-    enrich(graph, module, extract_symbols)
-    mod_addr = module_address(module.title)
-
+def _graph_of_module(
+    path: Path, module, root: Path | None, binding: dict | None,
+):
+    """``(graph, collision)`` for a command that reads one module: the
+    package graph in a project, otherwise the module built and enriched on
+    its own. *collision* is the error if the module's names collide, and
+    then the graph is not to be read."""
     if root is not None:
-        for dep_addr in module_lob_refs(module):
-            try:
-                dep_path = resolve_module_path(dep_addr, root)
-                dep_mod  = from_tree(parse_file(dep_path))
-                graph.merge(build(dep_mod))
-                graph.add_edge(Edge(
-                    source=mod_addr,
-                    target=dep_addr,
-                    kind=EdgeKind.IMPORTS,
-                ))
-            except Exception:
-                pass  # missing dep — caught later as a claim error
+        graph, collisions = _package_graph(root, binding)
+        return graph, _collision_of(path, collisions)
+    _kit, extract_symbols = _get_binding_kit(
+        binding.get("language") if binding else None,
+    )
+    try:
+        graph = build(module)
+        enrich(graph, module, extract_symbols)
+    except AddressCollisionError as exc:
+        return None, exc
+    return graph, None
 
-    return graph
+
+def _package_graph(root: Path, binding: dict | None):
+    """The package graph of the project at *root*, built once for a
+    command, and the collisions found in it as ``(path, error)``.
+
+    A module whose names collide is in the graph without its symbols;
+    what is read from it for another module is not affected, and the
+    command reports the collision as that module's own error."""
+    kit, extract_symbols = _get_binding_kit(
+        binding.get("language") if binding else None,
+    )
+    collisions: list = []
+    graph = build_package(
+        root, extract_symbols, call_extractor=kit.extract_calls,
+        collisions=collisions)
+    return graph, collisions
+
+
+def _dependencies(graph, module, root: Path | None, kit):
+    """``(deps, error)`` for a command that runs, tests or builds
+    *module*: the modules whose code it needs, parsed and in load order,
+    to hand to the binding (see :func:`notlob.project.load_order`). Worked
+    out once, from *graph*. There is nothing to load without a project
+    *root*. *error* is the ``ERROR  <imports>`` line when the modules'
+    code needs each other in a cycle, and then the module's claims do
+    not run."""
+    if root is None or graph is None:
+        return [], None
+    try:
+        return load_dependencies(
+            graph, module_address(module.title), root, kit), None
+    except LobRefCycleError as exc:
+        return [], f"ERROR  <imports>  {exc}"
 
 
 # ── Commands ──────────────────────────────────────────────────
-
-def _collect_run_claims(module) -> list[Claim]:
-    """Return all ~run claims (bare, ``on-load``, or ``on-invocation``)
-    from the module body and subheadings, in document order.
-    """
-    claims = []
-    for item in module.body:
-        if isinstance(item, Claim) and item.sigil.startswith("~run"):
-            claims.append(item)
-        elif isinstance(item, Subheading):
-            for sub_item in item.body:
-                if (isinstance(sub_item, Claim)
-                        and sub_item.sigil.startswith("~run")):
-                    claims.append(sub_item)
-    return claims
-
 
 def _resolve_keep_dir(
     cli_path: str | None,
@@ -327,9 +343,11 @@ def _resolve_keep_dir(
 
 def _cmd_run_haskell(
     module,
+    claims: list[ClaimToRun],
     path: Path,
     keep_dir: Path | None = None,
     args: list[str] | None = None,
+    deps: list | None = None,
 ) -> int:
     """Assemble a Haskell module (with inlined deps) and run with runghc.
 
@@ -348,7 +366,7 @@ def _cmd_run_haskell(
     from notlob.bindings.haskell.runner import _run_harness
 
     try:
-        source = build_haskell(module, path)
+        source = build_haskell(module, claims, path, deps=deps or ())
     except ValueError as exc:
         print(f"ERROR  <run>  {exc}", file=sys.stderr)
         return 1
@@ -377,9 +395,11 @@ def _cmd_run_haskell(
 
 def _cmd_run_typescript(
     module,
+    claims: list[ClaimToRun],
     path: Path,
     keep_dir: Path | None = None,
     args: list[str] | None = None,
+    deps: list | None = None,
 ) -> int:
     """Assemble a TypeScript module (with inlined deps) and run with
     tsx/ts-node.
@@ -398,7 +418,7 @@ def _cmd_run_typescript(
 
     root = find_project_root(path)
     try:
-        source = build_typescript(module, path)
+        source = build_typescript(module, claims, path, deps=deps or ())
     except Exception as exc:
         print(f"ERROR  <run>  {exc}", file=sys.stderr)
         return 1
@@ -450,22 +470,35 @@ def cmd_run(
     language = binding.get("language")
     root     = find_project_root(path)
 
+    graph, collision = _graph_of_module(path, module, root, binding)
+    if collision is not None:
+        print(f"ERROR  <names>  {collision}", file=sys.stderr)
+        return 1
+    claims = claims_to_run(graph, module_address(module.title))
+
+    py_kit, _ = _get_binding_kit(language)
+    deps, deps_err = _dependencies(graph, module, root, py_kit)
+    if deps_err:
+        print(deps_err, file=sys.stderr)
+        return 1
+
     if language == "haskell":
         keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
-        return _cmd_run_haskell(module, path, keep_dir=keep_dir, args=args)
+        return _cmd_run_haskell(
+            module, claims, path, keep_dir=keep_dir, args=args, deps=deps)
 
     if language == "typescript":
         keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
-        return _cmd_run_typescript(module, path, keep_dir=keep_dir, args=args)
+        return _cmd_run_typescript(
+            module, claims, path, keep_dir=keep_dir, args=args, deps=deps)
 
     addr_err = _check_address(module, path, root)
     if addr_err:
         print(f"ERROR  <address>  {addr_err}", file=sys.stderr)
         return 1
 
-    py_kit, _ = _get_binding_kit(language)
     try:
-        source = py_kit.build(module, path)
+        source = py_kit.build(module, claims, path, deps=deps)
     except Exception as exc:
         print(f"ERROR  <assembly>  {exc}", file=sys.stderr)
         return 1
@@ -514,11 +547,17 @@ def _test_module(
     keep_generated_src: str | None      = None,
     only:               set[str] | None = None,
     json_out:           dict | None     = None,
+    graph:              NameGraph | None = None,
+    collisions:         list | None     = None,
 ) -> tuple[int, int, int]:
     """Test one module; print per-claim output (or collect into *json_out*).
 
     *json_out*, when given, is a dict with ``"claims"`` and ``"lint"``
     lists that this call appends to instead of printing.
+
+    *graph* is the package graph of the project the module is in, with
+    the *collisions* found building it (see :func:`_package_graph`);
+    without one the module is built and enriched on its own.
 
     Returns *(n_pass, n_fail, n_lint)*.  Parse or document errors count
     as one failure and short-circuit claim execution.
@@ -531,7 +570,6 @@ def _test_module(
 
     language = binding.get("language")
     kit, extract_symbols = _get_binding_kit(language)
-    cache    = ModuleCache(root) if (root and language != "haskell") else None
     keep_dir = _resolve_keep_dir(keep_generated_src, binding, root)
 
     run_lint     = only is None or "lint"     in only
@@ -545,26 +583,42 @@ def _test_module(
     if addr_err:
         doc_errors.append(f"ERROR  <address>  {addr_err}")
 
-    try:
-        ref_graph = _build_ref_graph(module, root, extract_symbols)
-    except AddressCollisionError as exc:
-        doc_errors.append(f"ERROR  <names>  {exc}")
-        ref_graph = None
+    collision = _collision_of(path, collisions)
+    ref_graph = graph
+    if ref_graph is None:
+        try:
+            ref_graph = build(module)
+            enrich(ref_graph, module, extract_symbols)
+        except AddressCollisionError as exc:
+            collision = exc
 
-    if ref_graph is not None:
+    deps: list = []
+    if collision is not None:
+        doc_errors.append(f"ERROR  <names>  {collision}")
+    else:
         for ref_err in validate_refs(ref_graph, module):
             doc_errors.append(f"ERROR  <refs>  {ref_err}")
+        deps, deps_err = _dependencies(ref_graph, module, root, kit)
+        if deps_err:
+            doc_errors.append(deps_err)
 
     if doc_errors:
         for msg in doc_errors:
             print(msg, file=sys.stderr)
         return 0, 1, 0
 
+    # What notlob found to run, from the graph: each binding is handed the
+    # kinds it runs.
+    claims = claims_to_run(ref_graph, module_address(module.title))
+
+    def _of(kind: str) -> list[ClaimToRun]:
+        return [c for c in claims if c.kind == kind]
+
     # ── Lint ──────────────────────────────────────────────────
     lint_results: list[LintResult] = []
     if run_lint and kit.lint is not None:
         try:
-            lint_results = kit.lint(module, root=root)
+            lint_results = kit.lint(module, claims, root=root)
         except LintToolUnavailable as exc:
             # The binding declares a linter but its tool is missing.
             # Fail loudly rather than silently skip — a missing checker
@@ -579,17 +633,18 @@ def _test_module(
     kinded: list[tuple[str, ClaimResult]] = []
     if run_examples:
         kinded += [("EXAMPLE", r) for r in kit.run_examples(
-            module, file_path=path, cache=cache, keep_dir=keep_dir,
+            module, _of("EXAMPLE"), file_path=path, root=root,
+            keep_dir=keep_dir, deps=deps,
         )]
     if run_props:
         kinded += [("PROPERTY", r) for r in kit.run_properties(
-            module, binding=binding, file_path=path,
-            cache=cache, keep_dir=keep_dir,
+            module, _of("PROPERTY"), binding=binding, file_path=path,
+            root=root, keep_dir=keep_dir, deps=deps,
         )]
     if run_tests_:
         kinded += [("TEST", r) for r in kit.run_tests(
-            module, binding=binding, file_path=path,
-            cache=cache, keep_dir=keep_dir,
+            module, _of("TEST"), binding=binding, file_path=path,
+            root=root, keep_dir=keep_dir, deps=deps,
         )]
     results = [r for _, r in kinded]
 
@@ -614,6 +669,8 @@ def cmd_test(
     keep_generated_src: str | None       = None,
     only:               set[str] | None  = None,
     json_mode:          bool             = False,
+    graph:              NameGraph | None = None,
+    collisions:         list | None      = None,
 ) -> int:
     """Run claims in *path* (or all project modules) and return an exit code.
 
@@ -624,6 +681,14 @@ def cmd_test(
     Valid values in the set: ``"lint"``, ``"examples"``, ``"props"``,
     ``"tests"``.  Lint failures produce exit code 1 just like claim
     failures.
+
+    In a project the package graph is built once, before the modules are
+    tested (or given as *graph*, with its *collisions*, by a command that
+    already built it): each module's references are validated against it
+    and the closing checks read it.  A module whose names collide is
+    reported as an error of its own and the others are still tested; the
+    closing checks then report the collision instead of running on a
+    graph that lacks that module's symbols.
     """
     json_out: dict | None = (
         {"claims": [], "lint": []} if json_mode else None
@@ -632,21 +697,25 @@ def cmd_test(
     if path is not None:
         root    = find_project_root(path)
         binding = _find_binding(path)
+        if root is not None and graph is None:
+            graph, collisions = _package_graph(root, binding)
         n_pass, n_fail, n_lint = _test_module(
             path, root, binding, keep_generated_src, only,
-            json_out=json_out,
+            json_out=json_out, graph=graph, collisions=collisions,
         )
     else:
         root, binding = _require_root()
         if root is None:
             return 1
+        if graph is None:
+            graph, collisions = _package_graph(root, binding)
         n_pass = n_fail = n_lint = 0
         for lob_path in sorted(root.glob("**/*.lob")):
             if lob_path.name == "binding.lob":
                 continue
             p, f, lint = _test_module(
                 lob_path, root, binding, keep_generated_src, only,
-                json_out=json_out,
+                json_out=json_out, graph=graph, collisions=collisions,
             )
             n_pass += p
             n_fail += f
@@ -655,24 +724,17 @@ def cmd_test(
     check_errors = False
     check_findings: list[dict] = []
     if path is None:
-        if json_mode:
+        if json_mode and collisions:
+            check_findings = [_collision_finding(collisions[0][1])]
+            check_errors = True
+        elif json_mode:
             from notlob.check import has_errors, run_checks
-            _kit, _extr = _get_binding_kit(
-                binding.get("language") if binding else None,
-            )
-            try:
-                graph = build_package(
-                    root, _extr, call_extractor=_kit.extract_calls,
-                )
-            except AddressCollisionError as exc:
-                check_findings = [_collision_finding(exc)]
-                check_errors = True
-            else:
-                findings, _ = run_checks(graph)
-                check_findings = [_finding_dict(f) for f in findings]
-                check_errors = has_errors(findings)
+            findings, _ = run_checks(graph)
+            check_findings = [_finding_dict(f) for f in findings]
+            check_errors = has_errors(findings)
         else:
-            check_errors = _run_check_advisory(root, binding)
+            check_errors = _run_check_advisory(
+                root, binding, graph, collisions)
 
     if json_mode:
         output = {
@@ -699,21 +761,33 @@ def cmd_test(
     return 1 if (n_fail or n_lint or check_errors) else 0
 
 
-def _run_check_advisory(root: Path, binding: dict) -> bool:
+def _run_check_advisory(
+    root: Path, binding: dict, graph: NameGraph | None = None,
+    collisions: list | None = None,
+) -> bool:
     """Run semantic checks and print findings.
 
+    Reads *graph*, the package graph, or builds it when none is given.
+    If any module's names *collided* building it, the first collision is
+    reported, as an error, and the checks do not run: the graph lacks
+    that module's symbols, so another module could get a false finding.
     Returns True if any error-severity findings were found.
     """
     from notlob.check import has_errors, run_checks
 
-    kit, extract_symbols = _get_binding_kit(
-        binding.get("language") if binding else None,
-    )
-    try:
-        graph = build_package(root, extract_symbols, call_extractor=kit.extract_calls)
-    except AddressCollisionError as exc:
-        print(f"ERROR  <names>  {exc}", file=sys.stderr)
+    if collisions:
+        print(f"ERROR  <names>  {collisions[0][1]}", file=sys.stderr)
         return True
+    if graph is None:
+        kit, extract_symbols = _get_binding_kit(
+            binding.get("language") if binding else None,
+        )
+        try:
+            graph = build_package(
+                root, extract_symbols, call_extractor=kit.extract_calls)
+        except AddressCollisionError as exc:
+            print(f"ERROR  <names>  {exc}", file=sys.stderr)
+            return True
     findings, _ = run_checks(graph)
     for f in findings:
         prefix = "ERROR" if f.severity == "error" else "CHECK"
@@ -913,25 +987,55 @@ def _build_header(
     )
 
 
-def _build_one(path: Path, kit, output_dir: Path) -> Path | None:
+def _build_one(
+    path:       Path,
+    kit,
+    output_dir: Path,
+    graph:      NameGraph | None = None,
+    collisions: list | None      = None,
+) -> tuple[Path | None, bool]:
     """Build a single module and write the artifact to *output_dir*.
 
-    Returns the output path on success, None on error.
+    Returns ``(output path, is an entry point)``: the path is None on
+    error, and a module is an entry point when it has a ``~run``.
     Prints ``BUILD  <out_path>`` on success, or an ERROR line on failure.
+    A module whose names collide is not built.
+
+    *graph* is the package graph of the project the module is in, with
+    the *collisions* found building it (see :func:`_package_graph`);
+    without one the module is built and enriched on its own.
     """
     try:
         module = from_tree(parse_file(path))
     except Exception as exc:
         print(f"ERROR  <parse>  {exc}", file=sys.stderr)
-        return None
+        return None, False
 
+    collision = _collision_of(path, collisions)
+    if graph is None:
+        try:
+            graph = build(module)
+            enrich(graph, module, kit.extract_symbols)
+        except AddressCollisionError as exc:
+            collision = exc
+    if collision is not None:
+        print(f"ERROR  <names>  {collision}", file=sys.stderr)
+        return None, False
+
+    runs = [c for c in claims_to_run(graph, module_address(module.title))
+            if c.kind == "RUN"]
+    deps, deps_err = _dependencies(
+        graph, module, find_project_root(path), kit)
+    if deps_err:
+        print(deps_err, file=sys.stderr)
+        return None, False
     try:
-        source = kit.build(module, path)
+        source = kit.build(module, runs, path, deps=deps)
     except Exception as exc:
         print(f"ERROR  <build>  {exc}", file=sys.stderr)
-        return None
+        return None, False
     if not source:
-        return None  # prose-only module — skip silently, not an error
+        return None, False  # prose-only module — skip silently, not an error
 
     mod_addr = module_address(module.title)
     header   = _build_header(kit.comment_prefix, mod_addr, path.name)
@@ -940,7 +1044,7 @@ def _build_one(path: Path, kit, output_dir: Path) -> Path | None:
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(header + "\n" + source, encoding="utf-8")
     print(f"BUILD  {out_path}")
-    return out_path
+    return out_path, bool(runs)
 
 
 #: Version of the ``~on-build`` manifest (``notlob/schema/build_manifest.json``).
@@ -1096,9 +1200,12 @@ def cmd_build(
                 file=sys.stderr,
             )
             return 1
+        graph = collisions = None
+        if root is not None:
+            graph, collisions = _package_graph(root, binding)
         if not skip_tests:
             print("TEST   (running claims before build)")
-            rc = cmd_test(path)
+            rc = cmd_test(path, graph=graph, collisions=collisions)
             if rc != 0:
                 print(
                     "ERROR  <build>  claims failed — build aborted "
@@ -1106,14 +1213,10 @@ def cmd_build(
                     file=sys.stderr,
                 )
                 return 1
-        out_path = _build_one(path, kit, output_dir)
+        out_path, is_entry = _build_one(
+            path, kit, output_dir, graph, collisions)
         if out_path is None:
             return 1
-        try:
-            module     = from_tree(parse_file(path))
-            is_entry   = bool(_collect_run_claims(module))
-        except Exception:
-            is_entry   = False
         entry_points = [out_path] if is_entry else []
         _run_build_hook(binding, root, [out_path], output_dir,
                         entry_points=entry_points)
@@ -1123,7 +1226,7 @@ def cmd_build(
     if root is None:
         return 1
     language = binding.get("language")
-    kit, _   = _get_binding_kit(language)
+    kit, _ = _get_binding_kit(language)
     if kit.build is None:
         print(
             f"ERROR  <build>  no build support for language {language!r}",
@@ -1131,13 +1234,17 @@ def cmd_build(
         )
         return 1
 
+    # The one graph of the build: the modules' references are validated
+    # against it, the checks read it, and so do the entry points.
+    graph, collisions = _package_graph(root, binding)
+
     if not skip_tests:
         print("TEST   (running claims before build)")
         rc = 0
         for lob_path in sorted(root.glob("**/*.lob")):
             if lob_path.name == "binding.lob":
                 continue
-            if cmd_test(lob_path) != 0:
+            if cmd_test(lob_path, graph=graph, collisions=collisions) != 0:
                 rc = 1
         if rc != 0:
             print(
@@ -1147,7 +1254,7 @@ def cmd_build(
             )
             return 1
 
-    if _run_check_advisory(root, binding):
+    if _run_check_advisory(root, binding, graph, collisions):
         print(
             "ERROR  <check>  semantic check errors — build aborted",
             file=sys.stderr,
@@ -1160,15 +1267,12 @@ def cmd_build(
     for lob_path in sorted(root.glob("**/*.lob")):
         if lob_path.name == "binding.lob":
             continue
-        out_path = _build_one(lob_path, kit, output_dir)
+        out_path, is_entry = _build_one(
+            lob_path, kit, output_dir, graph, collisions)
         if out_path is not None:
             artifacts.append(out_path)
-            try:
-                module = from_tree(parse_file(lob_path))
-                if _collect_run_claims(module):
-                    entry_points.append(out_path)
-            except Exception:
-                pass
+            if is_entry:
+                entry_points.append(out_path)
         else:
             rc = 1
     _run_build_hook(binding, root, artifacts, output_dir,
@@ -1179,9 +1283,9 @@ def cmd_build(
 # ── Graph export ──────────────────────────────────────────────
 
 def cmd_graph(
-    path:            Path | None = None,
-    include_content: bool        = False,
-    fmt:             str         = "json",
+    path:  Path | None = None,
+    fmt:   str         = "json",
+    level: str | int | None = None,
 ) -> int:
     """Print the package name-graph to stdout.
 
@@ -1191,10 +1295,17 @@ def cmd_graph(
     project).
 
     The language binding (from ``binding.lob``) controls symbol
-    extraction.  Pass *include_content=True* to attach prose/code to
-    every node.  *fmt* selects the output format: ``"json"`` (default)
-    or ``"turtle"`` (RDF Turtle).
+    extraction.  *fmt* selects the output format: ``"json"`` (default)
+    or ``"turtle"`` (RDF Turtle).  Both are the graph itself at a *level*
+    of detail, by name or number (``outline``, the default, ``index`` or
+    ``full``; see :meth:`notlob.graph.NameGraph.to_dict`).
     """
+    try:
+        level = parse_level("outline" if level is None else level)
+    except ValueError as exc:
+        print(f"ERROR  <graph>  {exc}", file=sys.stderr)
+        return 1
+
     if path is not None:
         root    = find_project_root(path)
         binding = _find_binding(path) if root else {}
@@ -1219,8 +1330,8 @@ def cmd_graph(
         except Exception as exc:
             print(f"ERROR  <parse>  {exc}", file=sys.stderr)
             return 1
-        graph = build(module)
         try:
+            graph = build(module)
             enrich(graph, module, extract_symbols)
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
@@ -1228,29 +1339,15 @@ def cmd_graph(
 
     if fmt == "turtle":
         sys.stdout.buffer.write(
-            graph.to_turtle(include_content=include_content)
-            .encode("utf-8")
+            graph.to_turtle(level=level).encode("utf-8")
         )
         sys.stdout.buffer.write(b"\n")
     else:
-        print(graph.to_json(include_content=include_content))
+        print(graph.to_json(level=level))
     return 0
 
 
 # ── Query helpers ─────────────────────────────────────────────
-
-def _node_dict(node, include_content: bool = False) -> dict:
-    d: dict = {
-        "address": node.address,
-        "label":   node.label,
-        "kind":    node.kind.name,
-    }
-    if include_content and node.content is not None:
-        d["content"] = node.content
-    if node.start_line is not None:
-        d["start_line"] = node.start_line
-    return d
-
 
 def _require_root(
     hint: Path | None = None,
@@ -1296,16 +1393,36 @@ def _require_graph(
 
 
 # ── Query commands ────────────────────────────────────────────
+#
+# Each reads the package graph itself and prints nodes as ``notlob graph``
+# prints them at ``outline`` (see :func:`notlob.graph.node_summary`).
+
+#: The edge kinds a graph holds, for ``query children``.
+QUERY_EDGE_KINDS = tuple(k.name for k in EdgeKind)
+
+#: The kinds of node ``outline`` shows, for ``query search``.
+QUERY_NODE_KINDS = tuple(
+    k.name for k in NodeKind if not KINDS[k].block)
+
+
+def _print_nodes(nodes) -> int:
+    print(json.dumps([node_summary(n) for n in nodes], indent=2))
+    return 0
+
 
 def cmd_query_children(address: str, kind_str: str = "CONTAINS") -> int:
-    """Print direct children of *address* as a JSON array."""
+    """Print the targets of the edges of kind *kind_str* from *address* as
+    a JSON array: what *address* contains (the default, a section's
+    paragraphs and code blocks included), or what it imports, uses or
+    refers to."""
+    if kind_str not in QUERY_EDGE_KINDS:
+        print(f"ERROR  <query>  unknown edge kind {kind_str!r}: choose "
+              f"{', '.join(QUERY_EDGE_KINDS)}", file=sys.stderr)
+        return 1
     graph = _require_graph()
     if graph is None:
         return 1
-    kind    = EdgeKind[kind_str]
-    results = list(graph.children(address, kind))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(graph.children(address, EdgeKind[kind_str]))
 
 
 def cmd_query_resolve(label: str, context: str | None = None) -> int:
@@ -1318,7 +1435,7 @@ def cmd_query_resolve(label: str, context: str | None = None) -> int:
     if graph is None:
         return 1
     node = graph.resolve(label, context)
-    print(json.dumps(_node_dict(node) if node else None, indent=2))
+    print(json.dumps(node_summary(node) if node else None, indent=2))
     return 0 if node else 1
 
 
@@ -1326,20 +1443,25 @@ def cmd_query_search(
     pattern: str,
     kind_str: str | None = None,
 ) -> int:
-    """Print nodes whose label matches *pattern* (fnmatch-style).
+    """Print the nodes ``outline`` shows whose label matches *pattern*
+    (fnmatch-style).
 
     Bare words (no ``*`` or ``?`` wildcards) are automatically wrapped
     as ``*pattern*`` for convenient substring matching.
     """
+    if kind_str is not None and kind_str not in QUERY_NODE_KINDS:
+        print(f"ERROR  <query>  unknown kind {kind_str!r}: choose "
+              f"{', '.join(QUERY_NODE_KINDS)}", file=sys.stderr)
+        return 1
     graph = _require_graph()
     if graph is None:
         return 1
     if "*" not in pattern and "?" not in pattern:
         pattern = f"*{pattern}*"
-    kind    = NodeKind[kind_str] if kind_str else None
-    results = list(graph.search(pattern, kind))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    kind = NodeKind[kind_str] if kind_str else None
+    return _print_nodes(
+        n for n in graph.search(pattern, kind)
+        if not KINDS[n.kind].block)
 
 
 def cmd_query_imports(address: str) -> int:
@@ -1347,9 +1469,7 @@ def cmd_query_imports(address: str) -> int:
     graph = _require_graph()
     if graph is None:
         return 1
-    results = list(graph.children(address, EdgeKind.IMPORTS))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(graph.children(address, EdgeKind.IMPORTS))
 
 
 def cmd_query_imported_by(address: str) -> int:
@@ -1357,9 +1477,7 @@ def cmd_query_imported_by(address: str) -> int:
     graph = _require_graph()
     if graph is None:
         return 1
-    results = list(graph.parents(address, EdgeKind.IMPORTS))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(graph.parents(address, EdgeKind.IMPORTS))
 
 
 def cmd_query_callers(address: str) -> int:
@@ -1367,9 +1485,7 @@ def cmd_query_callers(address: str) -> int:
     graph = _require_graph()
     if graph is None:
         return 1
-    results = list(graph.parents(address, EdgeKind.USES))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(graph.parents(address, EdgeKind.USES))
 
 
 def cmd_query_callees(address: str) -> int:
@@ -1377,29 +1493,26 @@ def cmd_query_callees(address: str) -> int:
     graph = _require_graph()
     if graph is None:
         return 1
-    results = list(graph.children(address, EdgeKind.USES))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(graph.children(address, EdgeKind.USES))
 
 
 def cmd_query_references(address: str) -> int:
-    """Print nodes that *address* mentions via prose #Label references."""
+    """Print the nodes that *address* mentions with a prose ``#Label``
+    reference: those in its own paragraphs (a section's references are its
+    paragraphs')."""
     graph = _require_graph()
     if graph is None:
         return 1
-    results = list(graph.children(address, EdgeKind.REFERENCES))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(references_of(graph, address))
 
 
 def cmd_query_referenced_by(address: str) -> int:
-    """Print nodes whose prose contains a #Label reference to *address*."""
+    """Print the nodes whose prose refers to *address*, each once: a
+    paragraph that does is given as the section that holds it."""
     graph = _require_graph()
     if graph is None:
         return 1
-    results = list(graph.parents(address, EdgeKind.REFERENCES))
-    print(json.dumps([_node_dict(n) for n in results], indent=2))
-    return 0
+    return _print_nodes(referenced_by(graph, address))
 
 
 # ── Check command ─────────────────────────────────────────────
@@ -1505,22 +1618,24 @@ def cmd_weave(
     return 0
 
 
-def cmd_query_content(address: str) -> int:
-    """Print the node at *address* with its source content as JSON.
+def cmd_query_content(address: str, depth: int | None = None) -> int:
+    """Print the subtree at *address* as a document (see
+    :func:`notlob.graph.subtree`): the node, what it contains and the
+    text of each leaf, once.
 
-    Returns exit code 0 when the address resolves, 1 (with ``null``)
-    when it does not.  This is the primary F3-style lookup: given a
-    known address, retrieve its prose and/or code.
+    *depth* counts ``CONTAINS`` steps from the node (``0`` the node
+    alone); by default there is no limit. Returns exit code 0 when the
+    address resolves, 1 (with ``null``) when it does not.
     """
+    if depth is not None and depth < 0:
+        print("ERROR  <query>  depth must be 0 or more", file=sys.stderr)
+        return 1
     graph = _require_graph()
     if graph is None:
         return 1
-    node = graph.node(address)
-    print(json.dumps(
-        _node_dict(node, include_content=True) if node else None,
-        indent=2,
-    ))
-    return 0 if node else 1
+    document = subtree(graph, address, depth)
+    print(json.dumps(document, indent=2))
+    return 0 if document else 1
 
 
 # ── Docs / Init / New ─────────────────────────────────────────

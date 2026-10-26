@@ -59,19 +59,16 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
-from notlob.bindings import ClaimResult, Status, iter_assertions
+from notlob.bindings import (
+    ClaimResult, ClaimToRun, Status, iter_assertions,
+)
 from notlob.bindings.python.assemble import assemble_with_deps
 from notlob.bindings.python.harness import (
     build_examples_harness, build_properties_harness, build_tests_harness,
 )
-from notlob.graph import (
-    claim_address, module_address, property_address, subheading_address,
-)
-from notlob.model import (
-    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
-)
+from notlob.model import Module
 
 
 # ── Interpreter resolution ──────────────────────────────────────
@@ -427,188 +424,51 @@ def _parse_property_protocol(
 
 # ── Dependency loading / assembly ───────────────────────────────
 
-def _load_dep_modules(
-    module: Module,
-    file_path: Path | None,
-) -> list[Module]:
-    """Return the lob-ref dependency modules of *module* in declaration order.
+def _module_source(
+    module: Module, deps: Sequence[Module], file_path: Path | None,
+) -> str:
+    """Return *module*'s code, with the dependencies notlob handed over
+    inlined before it -- the subprocess harness has no loader around it
+    at execution time, so dependency source has to be inlined directly,
+    same as ``build_python``.
 
-    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
-    section to its ``.lob`` file under the project root, parses it, and
-    returns the resulting Module objects. Dependencies that cannot be
-    found or parsed are silently skipped -- the resulting NameError at
-    execution time surfaces the missing symbol, same as a real import
-    error would.
-
-    Returns an empty list when *file_path* is ``None`` (no project
-    context available) or when no project root is found.
-    """
-    if file_path is None:
-        return []
-
-    from notlob.project import (           # noqa: PLC0415
-        find_project_root, module_lob_refs, resolve_module_path,
-    )
-    from notlob.parser import parse_file   # noqa: PLC0415
-    from notlob.model import from_tree     # noqa: PLC0415
-
-    root = find_project_root(file_path)
-    if root is None:
-        return []
-
-    result: list[Module] = []
-    for dep_addr in module_lob_refs(module):
-        try:
-            dep_path = resolve_module_path(dep_addr, root)
-            result.append(from_tree(parse_file(dep_path)))
-        except Exception:
-            pass  # missing dep — will surface as a NameError at exec time
-
-    return result
+    The module's own ``__file__`` is the ``.lob`` file it is written in,
+    as it was under the original in-process loader; the harness script
+    would otherwise be what code sees. A build sets none: an artifact is
+    portable."""
+    prelude = (f"__file__ = {str(Path(file_path).resolve())!r}"
+               if file_path is not None else "")
+    return assemble_with_deps(module, list(deps), prelude)
 
 
-def _module_source(module: Module, file_path: Path | None) -> str:
-    """Return *module*'s code, with lob-ref dependencies inlined
-    before it -- the subprocess harness has no loader around it at
-    execution time, so dependency source has to be inlined directly,
-    same as ``build_python``."""
-    dep_modules = _load_dep_modules(module, file_path)
-    return assemble_with_deps(module, dep_modules)
+# ── What the claims handed over come to ─────────────────────────
 
-
-# ── Claim collection (parsing-only, no execution) ───────────────
-
-def _collect_example_assertions(
-    module: Module,
+def _assertions(
+    claims: Sequence[ClaimToRun],
 ) -> list[tuple[str, str, int | None]]:
-    """Return ``(addr, expr, source_line)`` for every ~example
-    assertion in *module* (module body and subheadings)."""
-    mod_addr = module_address(module.title)
+    """Return ``(addr, expr, source_line)`` for every assertion in the
+    ``~example`` claims and tests of *claims*. A claim is split into its
+    assertions by this language's own rules (``_iter_assertions``)."""
     assertions: list[tuple[str, str, int | None]] = []
-
-    def _collect(body: list, containing_addr: str) -> None:
-        example_n = 0
-        for item in body:
-            if not (isinstance(item, Claim) and item.sigil == "~example"):
-                continue
-            example_n += 1
-            addr = claim_address(containing_addr, "example", example_n)
-            base = (item.start_line + 1) if item.start_line else None
-            for assertion, offset in _iter_assertions(item.lines):
-                sl = (base + offset) if base else None
-                assertions.append((addr, assertion, sl))
-
-    _collect(module.body, mod_addr)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect(item.body, sub_addr)
-
+    for claim in claims:
+        for assertion, offset in _iter_assertions(claim.lines):
+            sl = (claim.first_line + offset) if claim.first_line else None
+            assertions.append((claim.address, assertion, sl))
     return assertions
 
 
-def _collect_test_assertions(
-    tests_section: TestsSection,
-    mod_addr: str,
-) -> list[tuple[str, str, int | None]]:
-    """Return ``(addr, expr, source_line)`` for every #Tests assertion."""
-    tests_addr = f"{mod_addr}#Tests"
-    line_offsets = tests_section.line_offsets or {}
-    assertions: list[tuple[str, str, int | None]] = []
-    bare: list[str] = []
-    bare_indices: list[int] = []
-
-    def _flush_bare() -> None:
-        if not bare:
-            return
-        first_line = line_offsets.get(bare_indices[0])
-        for assertion, offset in _iter_assertions(bare):
-            sl = (first_line + offset) if first_line else None
-            assertions.append((tests_addr, assertion, sl))
-        bare.clear()
-        bare_indices.clear()
-
-    for idx, item in enumerate(tests_section.items):
-        if isinstance(item, str):
-            bare.append(item)
-            bare_indices.append(idx)
-        elif isinstance(item, TestGroup):
-            _flush_bare()
-            group_addr = f"{tests_addr}#{item.title}"
-            _collect_group_assertions(item, group_addr, assertions)
-        # ProseBlock: commentary, not evaluated.
-
-    _flush_bare()
-    return assertions
-
-
-def _collect_group_assertions(
-    group: TestGroup,
-    group_addr: str,
-    assertions: list[tuple[str, str, int | None]],
-) -> None:
-    """Append ``(addr, expr, source_line)`` for one TestGroup's own bare
-    assertions and NamedTest blocks."""
-    line_offsets = group.line_offsets or {}
-    bare: list[str] = []
-    bare_indices: list[int] = []
-
-    def _flush_bare() -> None:
-        if not bare:
-            return
-        first_line = line_offsets.get(bare_indices[0])
-        for assertion, offset in _iter_assertions(bare):
-            sl = (first_line + offset) if first_line else None
-            assertions.append((group_addr, assertion, sl))
-        bare.clear()
-        bare_indices.clear()
-
-    for idx, item in enumerate(group.items):
-        if isinstance(item, str):
-            bare.append(item)
-            bare_indices.append(idx)
-        elif isinstance(item, NamedTest):
-            _flush_bare()
-            addr = property_address(group_addr, item.name)
-            base = (item.start_line + 1) if item.start_line else None
-            for assertion, offset in _iter_assertions(item.lines):
-                sl = (base + offset) if base else None
-                assertions.append((addr, assertion, sl))
-        # ProseBlock: commentary, not evaluated.
-
-    _flush_bare()
-
-
-def _collect_properties(
-    module: Module,
+def _properties(
+    claims: Sequence[ClaimToRun],
 ) -> list[tuple[str, str, int | None, str]]:
-    """Return ``(addr, sigil, source_line, prop_block_source)`` for
-    every ~property claim in *module* (module body and subheadings)."""
-    mod_addr = module_address(module.title)
-    properties: list[tuple[str, str, int | None, str]] = []
-
-    def _collect(body: list, containing_addr: str) -> None:
-        prop_n = 0
-        for item in body:
-            if not (isinstance(item, Claim)
-                    and item.sigil.startswith("~property")):
-                continue
-            prop_n += 1
-            parts = item.sigil.split(None, 1)
-            if len(parts) > 1:
-                addr = property_address(containing_addr, parts[1].strip())
-            else:
-                addr = claim_address(containing_addr, "property", prop_n)
-            prop_block = textwrap.dedent("\n".join(item.lines))
-            properties.append((addr, item.sigil, item.start_line, prop_block))
-
-    _collect(module.body, mod_addr)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect(item.body, sub_addr)
-
-    return properties
+    """Return ``(addr, sigil, source_line, prop_block_source)`` for every
+    ``~property`` in *claims*."""
+    return [
+        (claim.address,
+         "~property" + (f" {claim.name}" if claim.name else ""),
+         claim.sigil_line,
+         textwrap.dedent("\n".join(claim.lines)))
+        for claim in claims
+    ]
 
 
 def _iter_assertions(lines: list[str]):
@@ -634,26 +494,29 @@ def _is_complete(text: str) -> bool:
 
 def run_examples(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     file_path: Path | None = None,
-    cache: Any = None,
+    root: Path | None = None,
     keep_dir: Path | None = None,
+    deps: Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all ~example claims in a module and return results.
+    """Run the ~example *claims* of a module and return results.
 
     Runs in a subprocess under the ``PATH``-resolved interpreter (see
-    module docstring); *cache* is accepted for signature compatibility
-    with the shared ``BindingKit`` call site but unused -- dependencies
-    are inlined into the harness source instead of merged into an
-    in-process namespace via a ``ModuleCache``.
+    module docstring); *root*, the project root, is accepted for the
+    shared ``BindingKit`` call site but unused -- *deps*, the modules
+    whose code the module needs (dependencies first), are inlined into
+    the harness source.
 
     *keep_dir*, when provided, causes the harness script actually run
     to be written to ``<keep_dir>/_examples.py`` for inspection.
     """
-    assertions = _collect_example_assertions(module)
+    assertions = _assertions(claims)
     if not assertions:
         return []
 
-    source = _module_source(module, file_path)
+    source = _module_source(module, deps, file_path)
     script = build_examples_harness(
         source, assertions, _notlob_site_packages(),
     )
@@ -666,23 +529,27 @@ def run_examples(
 
 def run_tests(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     binding: dict | None = None,
     file_path: Path | None = None,
-    cache: Any = None,
+    root: Path | None = None,
     keep_dir: Path | None = None,
+    deps: Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all assertions in the #Tests section and return results.
+    """Run the tests in *claims*, the assertions in #Tests, and return
+    results.
 
-    Assertions under a named ## group get an address of the form
-    <module>#Tests#<group>.  Bare assertions outside any group use
-    <module>#Tests.  A ``~test <name>`` block gets its own address
+    Each run of bare assertions is reported at its own address,
+    <module>#Tests#<group>#test#<n> (<module>#Tests#test#<n> outside any
+    group).  A ``~test <name>`` block gets its own address
     (<module>#Tests#<group>#<name>), with every assertion line inside
     it sharing that one address -- matching how an unnamed ~example
     block's own lines already share one address, distinguished by
     source line rather than a per-line ordinal.  Prose commentary
     interspersed with assertions (at either level) is not evaluated.
 
-    *binding*/*cache* are accepted for signature compatibility with
+    *binding*/*root* are accepted for signature compatibility with
     the shared ``BindingKit`` call site but unused. ``pytest`` comes
     from notlob's own install as a ``sys.path`` fallback -- see module
     docstring and ``_notlob_site_packages``.
@@ -692,23 +559,11 @@ def run_tests(
 
     Assembly errors produce a single ERROR result as with run_examples.
     """
-    if module.post_text is None:
-        return []
-
-    tests_section = next(
-        (s for s in module.post_text.sections
-         if isinstance(s, TestsSection)),
-        None,
-    )
-    if tests_section is None:
-        return []
-
-    mod_addr = module_address(module.title)
-    assertions = _collect_test_assertions(tests_section, mod_addr)
+    assertions = _assertions(claims)
     if not assertions:
         return []
 
-    source = _module_source(module, file_path)
+    source = _module_source(module, deps, file_path)
     script = build_tests_harness(source, assertions, _notlob_site_packages())
     keep_path = (keep_dir / "_tests.py") if keep_dir else None
     stdout, stderr, _rc = _run_harness(script, keep_path=keep_path)
@@ -719,12 +574,15 @@ def run_tests(
 
 def run_properties(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     binding: dict | None = None,
     file_path: Path | None = None,
-    cache: Any = None,
+    root: Path | None = None,
     keep_dir: Path | None = None,
+    deps: Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all ~property claims in a module and return results.
+    """Run the ~property *claims* of a module and return results.
 
     Each claim block execs into its own fresh copy of the
     post-module, post-hypothesis-injection namespace within one
@@ -733,7 +591,7 @@ def run_properties(
     witnesses, matching the previous in-process behaviour's per-claim
     namespace copy.
 
-    *binding*/*cache* are accepted for signature compatibility with
+    *binding*/*root* are accepted for signature compatibility with
     the shared ``BindingKit`` call site but unused. ``hypothesis``
     comes from notlob's own install as a ``sys.path`` fallback -- see
     module docstring and ``_notlob_site_packages``.
@@ -746,11 +604,11 @@ def run_properties(
 
     Assembly errors produce a single ERROR result as with run_examples.
     """
-    properties = _collect_properties(module)
+    properties = _properties(claims)
     if not properties:
         return []
 
-    source = _module_source(module, file_path)
+    source = _module_source(module, deps, file_path)
     script = build_properties_harness(
         source, properties, _notlob_site_packages(),
     )

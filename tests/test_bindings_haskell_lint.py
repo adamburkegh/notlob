@@ -16,13 +16,16 @@ import subprocess
 
 import pytest
 
+from kitcalls import collecting
 from notlob import from_tree, parse
 from notlob.bindings import LintResult
+from notlob.bindings.haskell import lint as haskell_lint
 from notlob.bindings.haskell.lint import (
     _format_message,
-    lint_haskell,
     parse_source_map,
 )
+
+lint_haskell = collecting(haskell_lint.lint_haskell)
 
 
 def _hlint_available() -> bool:

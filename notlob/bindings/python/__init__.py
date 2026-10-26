@@ -8,18 +8,24 @@ Usage::
     from notlob.bindings.python import kit
     enrich(graph, module, kit.extract_symbols)
     source = kit.assemble(module)
-    results = kit.run_examples(module, file_path=path)
+    results = kit.run_examples(module, examples, file_path=path)
+
+where *examples* are the ``~example`` claims notlob collected from the
+module's graph (``notlob.graph.claims_to_run``).
 """
 
 from pathlib import Path
+from typing import Sequence
 
 import textwrap
 
-from notlob.bindings import BindingKit, ClaimResult, Status, collect_run_bodies
+from notlob.bindings import (
+    BindingKit, ClaimResult, ClaimToRun, Status, run_bodies,
+)
 from notlob.bindings.python.assemble import assemble, assemble_with_deps
 from notlob.bindings.python.lint import lint_python
 from notlob.bindings.python.runner import (
-    _load_dep_modules, run_examples, run_tests, run_properties,
+    run_examples, run_tests, run_properties,
 )
 from notlob.bindings.python.symbols import extract_calls, extract_symbols
 from notlob.model import Module
@@ -27,15 +33,18 @@ from notlob.model import Module
 
 def build_python(
     module: Module,
+    claims: Sequence[ClaimToRun],
     file_path: Path | None = None,
+    *,
+    deps: Sequence[Module] = (),
 ) -> str:
     """Assemble *module* with inlined deps for the build command.
 
-    Loads lob-ref dependencies from the project tree rooted at
-    *file_path*, inlines their code before the module's own code (see
-    ``assemble_with_deps``), and returns a single self-contained Python
-    source string — only the target module's ``~run`` claims are
-    appended, never a dependency's.
+    Inlines *deps*, the modules whose code *module* needs, before the
+    module's own code (see ``assemble_with_deps``), and returns a single
+    self-contained Python source string — only the target module's
+    ``~run`` *claims* are appended, never a dependency's. *file_path* is
+    accepted for the shared ``BindingKit`` call site.
 
     ``~run on-load`` bodies are appended unconditionally, at module
     scope. ``~run`` (bare) and ``~run on-invocation`` bodies -- Python
@@ -45,9 +54,8 @@ def build_python(
     fire when the artifact is run directly but not when it's merely
     imported as a module.
     """
-    dep_modules = _load_dep_modules(module, file_path)
-    source = assemble_with_deps(module, dep_modules)
-    on_load, on_invocation = collect_run_bodies(module)
+    source = assemble_with_deps(module, list(deps))
+    on_load, on_invocation = run_bodies(claims)
     if on_load:
         source = source + "\n\n" + "\n\n".join(on_load)
     if on_invocation:
@@ -67,6 +75,7 @@ kit = BindingKit(
     lint=lint_python,
     build=build_python,
     comment_prefix="#",
+    complete_references=True,   # every ast.Name load, not only calls
 )
 
 __all__ = [

@@ -25,7 +25,7 @@ from typing import Callable
 from .graph import (
     module_address,
     add_references_edges, add_uses_edges, build, enrich,
-    Edge, EdgeKind, Node, NodeKind, NameGraph,
+    AddressCollisionError, Edge, EdgeKind, Node, NodeKind, NameGraph,
 )
 from .model import Module, ReferencesSection
 
@@ -141,44 +141,174 @@ def module_lob_refs(module: Module) -> list[str]:
     return []
 
 
-def transitive_lob_refs(module: Module, root: Path) -> list[str]:
-    """Return all transitive lob dependencies in topological order (deps first).
+class LobRefCycleError(Exception):
+    """Modules whose code needs each other: there is no order in which
+    their code can be loaded. *cycle* is the addresses, first repeated at
+    the end (``["ping", "pong", "ping"]``)."""
 
-    Performs a depth-first traversal of the dependency graph rooted at
-    *module*, following each module's own ``#References`` recursively.
-    The root module itself is excluded — callers assemble it separately.
-    Cycles are broken by tracking visited addresses; duplicate nodes are
-    emitted only once, in the order first encountered via DFS post-order.
-    """
+    def __init__(self, cycle: list[str]) -> None:
+        self.cycle = cycle
+        super().__init__(
+            "circular code dependency: " + " -> ".join(cycle)
+            + " (each module's code uses a name the next one defines; "
+            "a module listed in #References but only mentioned in prose "
+            "is a citation and does not make a cycle)"
+        )
+
+
+def _used_in_code(graph: NameGraph) -> dict[str, dict[str, set[str]]]:
+    """For each module, the names of other modules' own code that its
+    tree uses, by the module that defines them: ``{user: {defining
+    module: names}}``, read from the ``USES`` edges.
+
+    A name is another module's own code when its symbol is written in a
+    code block of that module, and not when a ``~property`` there
+    defines it."""
+    found: dict[str, dict[str, set[str]]] = {}
+    for edge in graph.edges(EdgeKind.USES):
+        target = graph.node(edge.target)
+        holder = graph.parent_of(edge.target)
+        if (target is None or target.kind != NodeKind.SYMBOL
+                or holder is None or holder.kind != NodeKind.CODE):
+            continue
+        user = graph.module_of(edge.source)
+        defining = graph.module_of(edge.target)
+        if user is None or defining is None or user == defining:
+            continue
+        found.setdefault(user, {}).setdefault(defining, set()).add(
+            target.label)
+    return found
+
+
+def _defined_in_code(graph: NameGraph) -> dict[str, set[str]]:
+    """For each module, the names its own code defines: the symbols
+    written in its code blocks."""
+    found: dict[str, set[str]] = {}
+    for symbol in graph.nodes(NodeKind.SYMBOL):
+        holder = graph.parent_of(symbol.address)
+        if holder is not None and holder.kind == NodeKind.CODE:
+            found.setdefault(graph.module_of(symbol.address), set()).add(
+                symbol.label)
+    return found
+
+
+def load_order(graph: NameGraph, address: str, kit=None) -> list[str]:
+    """The modules the code of the module at *address* needs, and what
+    they need, dependencies first, each once. Raises
+    :class:`LobRefCycleError` naming a cycle of need.
+
+    Loading follows need, not listing (DESIGN.md, "Listing, citing and
+    loading"). Module A *needs* module B when A lists B in
+    ``#References`` (an ``IMPORTS`` edge) and the code of A, its claims
+    and its tests included, uses a name B's own code defines (a ``USES``
+    edge into a code block of B), less the names A's own code defines.
+    A listing that is not needed is a citation and loads nothing.
+
+    That is read from *graph*, which must have been built with the
+    binding's symbol and call extractors. When the binding's reference
+    extraction is not complete (``kit.complete_references``), or *kit* is
+    ``None`` or extracts no calls, use cannot be told and the address
+    tree decides: a listing of a module below the listing module
+    (``gutenberg/hamlet`` is below ``gutenberg``) is a citation, and any
+    other is needed."""
+    complete = (kit is not None and kit.complete_references
+                and kit.extract_calls is not None)
+    used = _used_in_code(graph) if complete else {}
+    defined = _defined_in_code(graph) if complete else {}
+
+    def needs(user: str) -> list[str]:
+        listed = [node.address for node in
+                  graph.children(user, EdgeKind.IMPORTS)]
+        if not complete:
+            return [dep for dep in listed
+                    if not dep.startswith(user + "/")]
+        own = defined.get(user, set())
+        return [dep for dep in listed
+                if used.get(user, {}).get(dep, set()) - own]
+
     visited: set[str] = set()
+    stack: list[str] = [address]
     order: list[str] = []
 
-    from .parser import parse_file
-    from .model import from_tree as _from_tree
+    def visit(module: str) -> None:
+        visited.add(module)
+        stack.append(module)
+        for dep in needs(module):
+            if dep in stack:
+                raise LobRefCycleError(stack[stack.index(dep):] + [dep])
+            if dep not in visited:
+                visit(dep)
+        stack.pop()
+        order.append(module)
 
-    def _visit(addr: str) -> None:
-        if addr in visited:
-            return
-        visited.add(addr)
+    for dep in needs(address):
+        if dep in stack:
+            raise LobRefCycleError([address, address])
+        if dep not in visited:
+            visit(dep)
+    return order
+
+
+def load_dependencies(
+    graph: NameGraph, address: str, root: Path, kit=None,
+) -> list[Module]:
+    """The modules the code of the module at *address* needs
+    (:func:`load_order`), parsed from their files under *root*, in that
+    order. This is what a command hands a binding as ``deps``. A module
+    that cannot be read is skipped; its absence shows where it is used.
+    Raises :class:`LobRefCycleError`."""
+    from .parser import parse_file
+    from .model import from_tree
+
+    modules: list[Module] = []
+    for dep in load_order(graph, address, kit):
+        node = graph.node(dep)
+        path = (root / node.file if node is not None and node.file
+                else resolve_module_path(dep, root))
         try:
-            dep_path = resolve_module_path(addr, root)
-            dep_mod  = _from_tree(parse_file(dep_path))
-            for child_addr in module_lob_refs(dep_mod):
-                _visit(child_addr)
+            modules.append(from_tree(parse_file(path)))
         except Exception:
             pass
-        order.append(addr)
+    return modules
 
-    for addr in module_lob_refs(module):
-        _visit(addr)
 
-    return order
+def _module_graph(
+    module:     Module,
+    path:       Path,
+    root:       Path,
+    extractor:  Callable | None,
+    collisions: list | None,
+) -> NameGraph:
+    """The graph of the module at *path* in a package, its tree and, when
+    there is an *extractor*, its symbols.
+
+    A name that collides raises, unless a list of *collisions* is given.
+    Then the module keeps its tree without symbols and ``(path, error)``
+    is appended to the list, for the first collision found in it."""
+    file = path.relative_to(root).as_posix()
+    if collisions is None:
+        graph = build(module, file)
+        if extractor is not None:
+            enrich(graph, module, extractor)
+        return graph
+    found: list[AddressCollisionError] = []
+    graph = build(module, file, collisions=found)
+    if not found and extractor is not None:
+        try:
+            enrich(graph, module, extractor)
+        except AddressCollisionError as exc:
+            found.append(exc)
+            graph = build(module, file, collisions=[])
+    if found:
+        collisions.append((path, found[0]))
+    return graph
 
 
 def build_package(
     root:            Path,
     extractor:       Callable | None = None,
     call_extractor:  Callable | None = None,
+    collisions:      list | None = None,
 ) -> NameGraph:
     """Build a package-level NameGraph.
 
@@ -209,6 +339,13 @@ def build_package(
         Pass ``notlob.bindings.python.extract_calls`` for Python projects.
         Requires *extractor* to also be set (symbols must exist before
         USES edges can be resolved).
+    collisions:
+        Optional list to collect name collisions in.  Without one, the
+        first module whose names collide raises
+        :class:`~notlob.graph.AddressCollisionError` and no graph is
+        made.  With one, such a module keeps its tree but gets no
+        symbols, ``(path, error)`` is appended for it, and the other
+        modules are built whole.
 
     Returns
     -------
@@ -229,9 +366,7 @@ def build_package(
             module = from_tree(parse_file(path))
         except Exception:
             continue
-        mod_graph = build(module)
-        if extractor is not None:
-            enrich(mod_graph, module, extractor)
+        mod_graph = _module_graph(module, path, root, extractor, collisions)
         graph.merge(mod_graph)
         modules.append(module)
 
@@ -256,7 +391,7 @@ def build_package(
     _add_external_nodes(graph, root)
 
     # Fourth pass: add REFERENCES edges from prose #Label cross-references.
-    add_references_edges(graph, modules)
+    add_references_edges(graph)
 
     # Fifth pass: add USES edges from statically visible call references.
     if call_extractor is not None:

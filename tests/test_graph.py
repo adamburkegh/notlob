@@ -12,9 +12,9 @@ from hypothesis import strategies as st
 from notlob import (
     parse, parse_file, from_tree, build,
     NameGraph, NodeKind, Edge, EdgeKind,
-    module_address, subheading_address,
+    module_address, named_address,
 )
-from notlob.graph import add_uses_edges, add_references_edges, enrich
+from notlob.graph import Node, add_uses_edges, add_references_edges, enrich
 from notlob.bindings.python.symbols import extract_calls, extract_symbols
 
 
@@ -71,14 +71,14 @@ class TestModuleAddress:
 
 class TestSubheadingAddress:
     def test_basic(self):
-        assert subheading_address(
+        assert named_address(
             "roman/numerals", "Decoding"
         ) == "roman/numerals#Decoding"
 
     def test_label_preserved_as_is(self):
         # Label is NOT lowercased or slash-separated — it is a
         # human-readable fragment, not a path segment.
-        assert subheading_address(
+        assert named_address(
             "pricing/discounts", "Stacking Discounts"
         ) == "pricing/discounts#Stacking Discounts"
 
@@ -124,9 +124,10 @@ class TestEdges:
         assert len(children) == 1
         assert children[0].address == "t#Sub"
 
-    def test_no_children_for_plain_module(self):
+    def test_a_plain_module_holds_only_its_paragraph(self):
         g = graph_of("#T\nSome prose.\n")
-        assert list(g.children("t")) == []
+        assert [n.kind for n in g.children("t")] == [NodeKind.PROSE]
+        assert g.sections("t") == []
 
     def test_children_ordered(self):
         g = graph_of("#T\n##A\n    a\n##B\n    b\n##C\n    c\n")
@@ -139,7 +140,8 @@ class TestEdges:
 class TestQueries:
     def test_len_counts_nodes(self):
         g = graph_of("#T\n##A\n    a\n##B\n    b\n")
-        assert len(g) == 3   # module + 2 subheadings
+        # the module, 2 subheadings and the code block in each
+        assert len(g) == 5
 
     def test_nodes_all(self):
         g = graph_of("#T\n##A\n    a\n")
@@ -377,6 +379,60 @@ class TestAddUsesEdges:
         assert edge["start_line"] == 3  # first call site
 
 
+class TestUsesLines:
+    """A USES edge is at the line of the use in the file, whatever holds
+    the code. Read here from the graph, as it is before printing."""
+
+    def _uses(self, source: str) -> dict[tuple[str, str], int]:
+        g = _enriched(source)
+        add_uses_edges(g, extract_calls)
+        return {(e.source, e.target): e.start_line
+                for e in g.edges(EdgeKind.USES)}
+
+    def test_a_call_on_the_second_line_of_a_symbol(self):
+        src = ("#M\n\n    def g():\n        return 1\n\n"
+               "    def f():\n        x = 1\n        return g()\n")
+        assert self._uses(src) == {("m#f", "m#g"): 8}
+
+    def test_a_claim_with_blank_lines_before_its_first_assertion(self):
+        src = ("#M\n\n    def f():\n        return 1\n\n"
+               "~example\n\n\n    f() == 1\n")
+        assert self._uses(src) == {("m#example#1", "m#f"): 9}
+
+    def test_a_claim_on_the_line_after_its_sigil(self):
+        src = "#M\n\n    def f():\n        return 1\n\n~example\n    f() == 1\n"
+        assert self._uses(src) == {("m#example#1", "m#f"): 7}
+
+    def test_a_property(self):
+        src = ("#M\n\n    def f():\n        return 1\n\n~property\n"
+               "    @given()\n    def _(n):\n        assert f() == n\n")
+        assert self._uses(src) == {("m#property#1", "m#f"): 9}
+
+    _TESTS = ("#M\n\n    def f():\n        return 1\n\n---\n\n#Tests\n")
+
+    def test_a_named_test_of_several_indented_lines(self):
+        src = self._TESTS + "\n##g\n~test nm\n    x = 1\n    f() == x\n"
+        assert self._uses(src) == {("m#Tests#g#nm", "m#f"): 13}
+
+    def test_a_run_of_assertions_in_a_group(self):
+        src = self._TESTS + "\n##g\n    1 == 1\n    f() == 1\n"
+        assert self._uses(src) == {("m#Tests#g#test#1", "m#f"): 12}
+
+    def test_a_run_after_commentary(self):
+        src = self._TESTS + "\nCommentary.\n\n    f() == 1\n"
+        assert self._uses(src) == {("m#Tests#test#1", "m#f"): 12}
+
+    def test_every_run_is_scanned_on_its_own(self):
+        src = (self._TESTS
+               + "\n##g\n    1 == 1\n\nCommentary.\n\n    f() == 1\n")
+        assert self._uses(src) == {("m#Tests#g#test#2", "m#f"): 15}
+
+    def test_a_group_and_the_tests_section_are_not_scanned(self):
+        src = self._TESTS + "\n    f() == 1\n\n##g\n    f() == 2\n"
+        sources = {s for s, _t in self._uses(src)}
+        assert sources == {"m#Tests#test#1", "m#Tests#g#test#1"}
+
+
 # ── add_references_edges ──────────────────────────────────────
 
 def _refs_edges(g: NameGraph) -> list[dict]:
@@ -399,10 +455,22 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g, [module])
+        add_references_edges(g)
         refs = _refs_edges(g)
         assert any(e["source"] == "m" and e["target"] == "m#Section"
                    for e in refs)
+
+    def test_the_edge_is_made_from_the_paragraph_that_holds_the_reference(
+        self,
+    ):
+        """The graph holds the edge from the paragraph; `to_dict` prints
+        it from the section the paragraph is in."""
+        g, _module = _module_graph(
+            "#M\nSee #Section here.\n##Section\n    code\n")
+        add_references_edges(g)
+        edges = [(e.source, e.target, e.start_line)
+                 for e in g.edges(EdgeKind.REFERENCES)]
+        assert edges == [("m#prose#1", "m#Section", 2)]
 
     def test_subheading_prose_ref_to_other_subheading(self):
         src = (
@@ -413,7 +481,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g, [module])
+        add_references_edges(g)
         refs = _refs_edges(g)
         assert any(e["source"] == "m#Alpha" and e["target"] == "m#Beta"
                    for e in refs)
@@ -421,7 +489,7 @@ class TestAddReferencesEdges:
     def test_unresolved_ref_emits_no_edge(self):
         src = "#M\nSee #Phantom here.\n"
         g, module = _module_graph(src)
-        add_references_edges(g, [module])
+        add_references_edges(g)
         assert _refs_edges(g) == []
 
     def test_deduplicates_repeated_ref(self):
@@ -432,7 +500,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g, [module])
+        add_references_edges(g)
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m" and e["target"] == "m#Section"]
         assert len(refs) == 1
@@ -445,7 +513,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g, [module])
+        add_references_edges(g)
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m" and e["target"] == "m#Section"]
         assert len(refs) == 1
@@ -458,6 +526,165 @@ class TestAddReferencesEdges:
         g.merge(build(mod_a))
         g.merge(build(mod_b))
         g.add_edge(Edge(source="a", target="b", kind=EdgeKind.IMPORTS))
-        add_references_edges(g, [mod_a, mod_b])
+        add_references_edges(g)
         refs = _refs_edges(g)
         assert any(e["source"] == "a" and e["target"] == "b" for e in refs)
+
+
+# ── Accessors ────────────────────────────────────────────────
+#
+# What the checks read the graph through. Each answers a question about a
+# node without the caller knowing how the graph holds the answer.
+
+class TestModuleOf:
+    def test_a_node_belongs_to_its_module(self):
+        g = _enriched(
+            "#Mod\n    def f(): pass\n\n##Sub\n\n~example\n    f() == 1\n")
+        for address in ("mod", "mod#f", "mod#Sub", "mod#Sub#example#1"):
+            assert g.module_of(address) == "mod"
+
+    def test_a_nested_module_address(self):
+        g = _enriched("#Pricing Discounts\n    def apply(): pass\n")
+        assert g.module_of("pricing/discounts") == "pricing/discounts"
+        assert g.module_of("pricing/discounts#apply") == "pricing/discounts"
+
+    def test_an_unknown_address_has_no_module(self):
+        assert _enriched("#Mod\n").module_of("no/such#thing") is None
+
+    def test_an_external_node_has_no_module(self):
+        g = _enriched("#Mod\n")
+        g.add_node(Node(address="index.html", label="index.html",
+                        kind=NodeKind.EXTERNAL))
+        assert g.module_of("index.html") is None
+
+
+class TestEdgesAccessor:
+    EDGES = [
+        ("a", "b", EdgeKind.USES),
+        ("a", "c", EdgeKind.CONTAINS),
+        ("b", "c", EdgeKind.USES),
+        ("c", "a", EdgeKind.REFERENCES),
+        ("a", "b", EdgeKind.CONTAINS),
+    ]
+
+    def _graph(self) -> NameGraph:
+        g = NameGraph()
+        for address in "abc":
+            g.add_node(Node(address=address, label=address,
+                            kind=NodeKind.SYMBOL))
+        for source, target, kind in self.EDGES:
+            g.add_edge(Edge(source, target, kind))
+        return g
+
+    def test_every_edge_in_insertion_order(self):
+        listed = [(e.source, e.target, e.kind) for e in self._graph().edges()]
+        assert listed == self.EDGES
+
+    def test_edges_of_one_kind(self):
+        g = self._graph()
+        uses = [(e.source, e.target) for e in g.edges(EdgeKind.USES)]
+        assert uses == [("a", "b"), ("b", "c")]
+        contains = [(e.source, e.target) for e in g.edges(EdgeKind.CONTAINS)]
+        assert contains == [("a", "c"), ("a", "b")]
+
+    def test_no_edges_of_a_kind_the_graph_lacks(self):
+        assert list(self._graph().edges(EdgeKind.IMPORTS)) == []
+
+
+class TestSections:
+    def test_subheadings_in_document_order(self):
+        g = _enriched("#Mod\n\n##Beta\n\nx\n\n##Alpha\n\ny\n")
+        sections = g.sections("mod")
+        assert [s.label for s in sections] == ["Beta", "Alpha"]
+        assert all(s.kind == NodeKind.SUBHEADING for s in sections)
+
+    def test_a_module_without_sections(self):
+        assert _enriched("#Mod\n\nText.\n").sections("mod") == []
+
+    def test_a_section_has_no_sections_of_its_own(self):
+        assert _enriched("#Mod\n\n##A\n\nx\n").sections("mod#A") == []
+
+    def test_an_unknown_address(self):
+        assert _enriched("#Mod\n").sections("no/such") == []
+
+
+class TestProse:
+    SRC = "#Mod\n\nTop prose.\n\n##Sub\n\nSub prose.\n"
+
+    def test_prose_written_directly_in_a_module(self):
+        assert _enriched(self.SRC).prose("mod") == "Top prose."
+
+    def test_a_modules_prose_leaves_out_its_sections(self):
+        assert "Sub prose." not in _enriched(self.SRC).prose("mod")
+
+    def test_prose_written_in_a_section(self):
+        assert _enriched(self.SRC).prose("mod#Sub") == "Sub prose."
+
+    def test_paragraphs_and_bullet_items_a_blank_line_apart(self):
+        g = _enriched("#Mod\n\nIntro.\n\n* one\n* two\n\nOutro.\n")
+        assert g.prose("mod") == "Intro.\n\none\ntwo\n\nOutro."
+
+    def test_references_keep_their_sigils(self):
+        g = _enriched("#Mod\n\nSee #Foo and ##Bar.\n\n##Bar\n\nx\n")
+        assert g.prose("mod") == "See #Foo and ##Bar."
+
+    def test_no_prose_is_the_empty_string(self):
+        g = _enriched("#Mod\n    def f(): pass\n")
+        assert g.prose("mod") == ""
+        assert g.prose("mod#f") == ""
+        assert g.prose("no/such") == ""
+
+
+class TestBulletListCount:
+    def test_two_lists_in_a_section(self):
+        g = _enriched("#Mod\n\n##S\n\n* a\n\n* b\n")
+        assert g.bullet_list_count("mod#S") == 2
+
+    def test_one_list_in_a_module(self):
+        g = _enriched("#Mod\n\n* a\n* b\n")
+        assert g.bullet_list_count("mod") == 1
+
+    def test_a_modules_count_leaves_out_its_sections(self):
+        g = _enriched("#Mod\n\n##S\n\n* a\n")
+        assert g.bullet_list_count("mod") == 0
+
+    def test_no_lists_is_zero(self):
+        g = _enriched("#Mod\n\nText.\n")
+        assert g.bullet_list_count("mod") == 0
+        assert g.bullet_list_count("no/such") == 0
+
+
+class TestClaims:
+    SRC = (
+        "#Mod\n    def f(): pass\n\n"
+        "~example\n    f() == 1\n\n"
+        "~property p\n    def _(): pass\n\n"
+        "~run\n    f()\n\n"
+        "~example\n    f() == 2\n\n"
+        "##Sub\n\n~example\n    f() == 3\n"
+    )
+
+    def test_claims_in_document_order(self):
+        claims = _enriched(self.SRC).claims("mod")
+        assert [(c.address, c.kind) for c in claims] == [
+            ("mod#example#1", NodeKind.EXAMPLE),
+            ("mod#p", NodeKind.PROPERTY),
+            ("mod#run#1", NodeKind.RUN),
+            ("mod#example#2", NodeKind.EXAMPLE),
+        ]
+
+    def test_a_sections_claims_are_its_own(self):
+        g = _enriched(self.SRC)
+        assert [c.address for c in g.claims("mod#Sub")] == [
+            "mod#Sub#example#1"]
+
+    def test_symbols_and_tests_are_not_claims(self):
+        g = _enriched(
+            "#Mod\n    def f(): pass\n\n~example\n    f() == 1\n\n"
+            "---\n\n#Tests\n\n##g\n    f() == 1\n")
+        assert [c.address for c in g.claims("mod")] == ["mod#example#1"]
+
+    def test_no_claims_is_an_empty_list(self):
+        g = _enriched("#Mod\n\nText.\n")
+        assert g.claims("mod") == []
+        assert g.claims("no/such") == []

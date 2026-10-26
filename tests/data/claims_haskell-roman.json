@@ -1,0 +1,165 @@
+{
+ "binding.lob": {
+  "examples": [],
+  "properties": [],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": []
+ },
+ "roman/numerals.lob": {
+  "examples": [
+   [
+    "roman/numerals#example#1",
+    "toRoman 1    == \"I\"",
+    22
+   ],
+   [
+    "roman/numerals#example#1",
+    "toRoman 4    == \"IV\"",
+    23
+   ],
+   [
+    "roman/numerals#example#1",
+    "toRoman 11   == \"XI\"",
+    24
+   ],
+   [
+    "roman/numerals#example#1",
+    "toRoman 1994 == \"MCMXCIV\"",
+    25
+   ]
+  ],
+  "properties": [
+   [
+    "roman/numerals#Positive Length Natural Numbers#property#1",
+    "~property",
+    34
+   ]
+  ],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": [
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 0    == \"\"",
+    46
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 1    == \"I\"",
+    47
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 5    == \"V\"",
+    48
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 10   == \"X\"",
+    49
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 50   == \"L\"",
+    50
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 100  == \"C\"",
+    51
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 500  == \"D\"",
+    52
+   ],
+   [
+    "roman/numerals#Tests#basic",
+    "toRoman 1000 == \"M\"",
+    53
+   ],
+   [
+    "roman/numerals#Tests#additive",
+    "toRoman 6    == \"VI\"",
+    56
+   ],
+   [
+    "roman/numerals#Tests#additive",
+    "toRoman 13   == \"XIII\"",
+    57
+   ],
+   [
+    "roman/numerals#Tests#subtractive",
+    "toRoman 4    == \"IV\"",
+    60
+   ],
+   [
+    "roman/numerals#Tests#subtractive",
+    "toRoman 9    == \"IX\"",
+    61
+   ],
+   [
+    "roman/numerals#Tests#subtractive",
+    "toRoman 40   == \"XL\"",
+    62
+   ],
+   [
+    "roman/numerals#Tests#subtractive",
+    "toRoman 90   == \"XC\"",
+    63
+   ],
+   [
+    "roman/numerals#Tests#subtractive",
+    "toRoman 400  == \"CD\"",
+    64
+   ],
+   [
+    "roman/numerals#Tests#subtractive",
+    "toRoman 900  == \"CM\"",
+    65
+   ],
+   [
+    "roman/numerals#Tests#compound",
+    "toRoman 2024 == \"MMXXIV\"",
+    68
+   ],
+   [
+    "roman/numerals#Tests#compound",
+    "toRoman 3999 == \"MMMCMXCIX\"",
+    69
+   ],
+   [
+    "roman/numerals#Tests#compound#mcmxciv",
+    "toRoman 1994 == \"MCMXCIV\"",
+    75
+   ]
+  ]
+ },
+ "roman/numerals/app.lob": {
+  "examples": [
+   [
+    "roman/numerals/app#example#1",
+    "toRoman 1    == \"I\"",
+    11
+   ],
+   [
+    "roman/numerals/app#example#1",
+    "toRoman 2024 == \"MMXXIV\"",
+    12
+   ]
+  ],
+  "properties": [],
+  "runs": {
+   "on_invocation": [
+    "main :: IO ()\nmain = mapM_ (putStrLn . toRoman) [1..20]"
+   ],
+   "on_load": []
+  },
+  "tests": []
+ }
+}

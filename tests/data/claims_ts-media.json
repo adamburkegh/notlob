@@ -1,0 +1,200 @@
+{
+ "binding.lob": {
+  "examples": [],
+  "properties": [],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": []
+ },
+ "media-attributes/analysis.lob": {
+  "examples": [
+   [
+    "media-attributes/analysis#Axes#example#1",
+    "AXES.length === 5",
+    35
+   ],
+   [
+    "media-attributes/analysis#Axes#example#1",
+    "AXES[0].short === 'Disposable'",
+    36
+   ],
+   [
+    "media-attributes/analysis#Data#example#1",
+    "MEDIA.length === 9",
+    58
+   ],
+   [
+    "media-attributes/analysis#Data#example#1",
+    "MEDIA[0].name === 'Novel'",
+    59
+   ],
+   [
+    "media-attributes/analysis#Data#example#1",
+    "MEDIA[8].tag  === 'visual'",
+    60
+   ],
+   [
+    "media-attributes/analysis#Distance#example#1",
+    "dist([0, 0], [3, 4]) === 5",
+    73
+   ],
+   [
+    "media-attributes/analysis#Distance#example#1",
+    "dist([0, 0], [0, 0]) === 0",
+    74
+   ],
+   [
+    "media-attributes/analysis#Distance#example#1",
+    "dist([1, 0], [0, 0]) === 1",
+    75
+   ],
+   [
+    "media-attributes/analysis#Clustering#example#1",
+    "kmeans(MEDIA, 1).every(a => a === 0)",
+    127
+   ],
+   [
+    "media-attributes/analysis#Clustering#example#1",
+    "kmeans(MEDIA, 3).length === MEDIA.length",
+    128
+   ],
+   [
+    "media-attributes/analysis#Clustering#example#1",
+    "kmeans(MEDIA, 3).every(a => a >= 0 && a < 3)",
+    129
+   ],
+   [
+    "media-attributes/analysis#Force Physics#example#1",
+    "buildPairs(MEDIA).length === (MEDIA.length * (MEDIA.length - 1)) / 2",
+    231
+   ],
+   [
+    "media-attributes/analysis#Force Physics#example#1",
+    "runForce(MEDIA, kmeans(MEDIA, 1), 680, 320, 10).length === MEDIA.length",
+    232
+   ]
+  ],
+  "properties": [
+   [
+    "media-attributes/analysis#Distance#symmetry",
+    "~property symmetry",
+    77
+   ]
+  ],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": [
+   [
+    "media-attributes/analysis#Tests#axes and data",
+    "AXES.length === 5",
+    239
+   ],
+   [
+    "media-attributes/analysis#Tests#axes and data",
+    "MEDIA.length === 9",
+    240
+   ],
+   [
+    "media-attributes/analysis#Tests#axes and data",
+    "MEDIA.every(m => m.vals.length === AXES.length)",
+    241
+   ],
+   [
+    "media-attributes/analysis#Tests#axes and data",
+    "MEDIA.every(m => m.vals.every(v => v >= 1 && v <= 10))",
+    242
+   ],
+   [
+    "media-attributes/analysis#Tests#distance",
+    "dist([0, 0], [3, 4]) === 5",
+    245
+   ],
+   [
+    "media-attributes/analysis#Tests#distance",
+    "dist([0, 0], [0, 0]) === 0",
+    246
+   ],
+   [
+    "media-attributes/analysis#Tests#distance",
+    "dist([1, 0], [0, 0]) === 1",
+    247
+   ],
+   [
+    "media-attributes/analysis#Tests#distance",
+    "dist([3, 4], [0, 0]) === dist([0, 0], [3, 4])",
+    248
+   ],
+   [
+    "media-attributes/analysis#Tests#clustering",
+    "kmeans(MEDIA, 3).length === MEDIA.length",
+    251
+   ],
+   [
+    "media-attributes/analysis#Tests#clustering",
+    "kmeans(MEDIA, 3).every(a => a >= 0 && a < 3)",
+    252
+   ],
+   [
+    "media-attributes/analysis#Tests#clustering",
+    "kmeans(MEDIA, 9).every(a => a >= 0 && a < 9)",
+    253
+   ],
+   [
+    "media-attributes/analysis#Tests#clustering#single_cluster_is_deterministic",
+    "kmeans(MEDIA, 1).every(a => a === 0)",
+    261
+   ],
+   [
+    "media-attributes/analysis#Tests#pairs",
+    "buildPairs(MEDIA).length === (MEDIA.length * (MEDIA.length - 1)) / 2",
+    264
+   ],
+   [
+    "media-attributes/analysis#Tests#pairs",
+    "buildPairs(MEDIA).every(p => p.a < p.b)",
+    265
+   ],
+   [
+    "media-attributes/analysis#Tests#pairs",
+    "buildPairs(MEDIA).every(p => p.dist >= 0)",
+    266
+   ]
+  ]
+ },
+ "media-attributes/render.lob": {
+  "examples": [
+   [
+    "media-attributes/render#Radar Geometry#example#1",
+    "radarPoints([0, 0, 0, 0, 0], 5, 5, 10).length === 5",
+    54
+   ],
+   [
+    "media-attributes/render#Radar Geometry#example#1",
+    "radarPoints([0, 0, 0, 0, 0], 5, 5, 10).every(([x, y]) => x === 5 && y === 5)",
+    55
+   ],
+   [
+    "media-attributes/render#Radar SVG#example#1",
+    "radarSVG(MEDIA[0], '#534AB7', false).startsWith('<svg')",
+    100
+   ],
+   [
+    "media-attributes/render#Radar SVG#example#1",
+    "radarSVG(MEDIA[0], '#534AB7', false).includes('polygon')",
+    101
+   ]
+  ],
+  "properties": [],
+  "runs": {
+   "on_invocation": [],
+   "on_load": [
+    "(document.getElementById('kSlider') as HTMLInputElement)\n  .addEventListener('input', runAll);\nrenderAxisLegend();\nrunAll();"
+   ]
+  },
+  "tests": []
+ }
+}

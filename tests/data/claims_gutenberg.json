@@ -1,0 +1,186 @@
+{
+ "binding.lob": {
+  "examples": [],
+  "properties": [],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": []
+ },
+ "gutenberg/corpus.lob": {
+  "examples": [
+   [
+    "gutenberg/corpus#Word Frequencies#example#1",
+    "word_frequencies(\"\") == Counter()",
+    38
+   ],
+   [
+    "gutenberg/corpus#Word Frequencies#example#1",
+    "word_frequencies(\"the the cat\") == Counter({\"the\": 2, \"cat\": 1})",
+    39
+   ],
+   [
+    "gutenberg/corpus#Word Frequencies#example#1",
+    "word_frequencies(\"THE CAT\") == Counter({\"the\": 1, \"cat\": 1})",
+    40
+   ],
+   [
+    "gutenberg/corpus#Speaking Parts#example#1",
+    "parse_speakers(\"\") == Counter()",
+    70
+   ],
+   [
+    "gutenberg/corpus#Speaking Parts#example#1",
+    "parse_speakers(\"HAMLET.\\nTo be or not to be.\") == Counter({\"HAMLET\": 1})",
+    71
+   ],
+   [
+    "gutenberg/corpus#Speaking Parts#example#1",
+    "(parse_speakers(\"HAMLET.\\nHORATIO.\\n\")\n== Counter({\"HAMLET\": 1, \"HORATIO\": 1}))",
+    72
+   ]
+  ],
+  "properties": [
+   [
+    "gutenberg/corpus#Word Frequencies#property#1",
+    "~property",
+    46
+   ]
+  ],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": [
+   [
+    "gutenberg/corpus#Tests#word frequencies",
+    "word_frequencies(\"hello world\") == Counter({\"hello\": 1, \"world\": 1})",
+    80
+   ],
+   [
+    "gutenberg/corpus#Tests#word frequencies",
+    "word_frequencies(\"THE THE\") == Counter({\"the\": 2})",
+    81
+   ],
+   [
+    "gutenberg/corpus#Tests#word frequencies",
+    "sum(word_frequencies(\"one two three\").values()) == 3",
+    82
+   ],
+   [
+    "gutenberg/corpus#Tests#word frequencies#punctuation_only_yields_empty_counter",
+    "word_frequencies(\"123 !!! ...\") == Counter()",
+    89
+   ],
+   [
+    "gutenberg/corpus#Tests#speaking parts",
+    "(parse_speakers(\"HAMLET.\\nTo be or not to be.\")\n== Counter({\"HAMLET\": 1}))",
+    92
+   ],
+   [
+    "gutenberg/corpus#Tests#speaking parts",
+    "(parse_speakers(\"KING CLAUDIUS.\\nHAMLET.\\n\")\n== Counter({\"KING CLAUDIUS\": 1, \"HAMLET\": 1}))",
+    94
+   ],
+   [
+    "gutenberg/corpus#Tests#speaking parts",
+    "parse_speakers(\"Not a speaker line\") == Counter()",
+    96
+   ],
+   [
+    "gutenberg/corpus#Tests#speaking parts#lowercase_name_is_not_a_speaker_line",
+    "parse_speakers(\"hamlet.\\n\") == Counter()",
+    103
+   ]
+  ]
+ },
+ "gutenberg/hamlet.lob": {
+  "examples": [
+   [
+    "gutenberg/hamlet#example#1",
+    "\"HAMLET.\" in HAMLET",
+    12
+   ],
+   [
+    "gutenberg/hamlet#example#1",
+    "len(HAMLET) > 100_000",
+    13
+   ],
+   [
+    "gutenberg/hamlet#Word Frequencies#example#1",
+    "WORDS.most_common(1)[0][0] == \"the\"",
+    24
+   ],
+   [
+    "gutenberg/hamlet#Word Frequencies#example#1",
+    "WORDS.most_common(2)[1][0] == \"and\"",
+    25
+   ],
+   [
+    "gutenberg/hamlet#Speaking Parts#example#1",
+    "SPEAKERS.most_common(1)[0][0] == \"HAMLET\"",
+    36
+   ],
+   [
+    "gutenberg/hamlet#Speaking Parts#example#1",
+    "SPEAKERS[\"HAMLET\"] > SPEAKERS[\"KING\"] * 2",
+    37
+   ]
+  ],
+  "properties": [],
+  "runs": {
+   "on_invocation": [
+    "report()"
+   ],
+   "on_load": []
+  },
+  "tests": [
+   [
+    "gutenberg/hamlet#Tests#text loading",
+    "len(HAMLET) > 100_000",
+    67
+   ],
+   [
+    "gutenberg/hamlet#Tests#text loading",
+    "HAMLET.startswith(\"\\n\") or \"THE TRAGEDY\" in HAMLET[:500]",
+    68
+   ],
+   [
+    "gutenberg/hamlet#Tests#word frequencies",
+    "WORDS[\"the\"] > 500",
+    71
+   ],
+   [
+    "gutenberg/hamlet#Tests#word frequencies",
+    "WORDS[\"the\"] > WORDS[\"hamlet\"]",
+    72
+   ],
+   [
+    "gutenberg/hamlet#Tests#word frequencies",
+    "WORDS.most_common(1)[0][0] == \"the\"",
+    73
+   ],
+   [
+    "gutenberg/hamlet#Tests#word frequencies",
+    "sum(WORDS.values()) > 20_000",
+    74
+   ],
+   [
+    "gutenberg/hamlet#Tests#speakers",
+    "SPEAKERS[\"HAMLET\"] > 300",
+    77
+   ],
+   [
+    "gutenberg/hamlet#Tests#speakers",
+    "SPEAKERS[\"HAMLET\"] > SPEAKERS[\"KING\"]",
+    78
+   ],
+   [
+    "gutenberg/hamlet#Tests#speakers#hamlet_is_most_frequent_speaker",
+    "SPEAKERS.most_common(1)[0][0] == \"HAMLET\"",
+    84
+   ]
+  ]
+ }
+}

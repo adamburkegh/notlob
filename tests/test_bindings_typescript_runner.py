@@ -11,25 +11,28 @@ from pathlib import Path
 
 import pytest
 
+from kitcalls import collecting
 from notlob import from_tree, parse
 from notlob.bindings import Status
+from notlob.bindings.typescript import runner
 from notlob.bindings.typescript.runner import (
     _claim_call,
     _fast_check_available,
     _iter_assertions,
     _parse_output,
     _tsx_cmd,
-    run_examples,
-    run_properties,
-    run_tests,
 )
+
+run_examples = collecting(runner.run_examples, "EXAMPLE")
+run_properties = collecting(runner.run_properties, "PROPERTY")
+run_tests = collecting(runner.run_tests, "TEST")
 
 
 # ── Skip guard ────────────────────────────────────────────────
 #
 # The repo-root node_modules holds the TypeScript toolchain (tsx, tsc),
 # paralleling notlobenv for Python.  Integration tests discover the
-# runner there by passing a root-bearing cache, so they run whenever
+# runner there by passing that root, so they run whenever
 # the toolchain is installed (``npm install`` at the repo root) rather
 # than requiring tsx on PATH.
 
@@ -41,32 +44,23 @@ _RUNNER_SKIP = pytest.mark.skipif(
 )
 
 
-class _RootCache:
-    """Minimal cache stand-in exposing only ``.root`` for runner
-    toolchain discovery.  Synthetic test modules have no lob-ref deps,
-    so no module loading is needed."""
-
-    def __init__(self, root: Path):
-        self.root = root
-
-
-_TS_CACHE = _RootCache(_REPO_ROOT)
-
-
 def _module(text: str):
     return from_tree(parse(text))
 
 
+# The project root is what the runner finds its toolchain from.
+# Synthetic test modules have no lob-ref deps, so none are handed over.
+
 def _run_examples(mod):
-    return run_examples(mod, cache=_TS_CACHE)
+    return run_examples(mod, root=_REPO_ROOT)
 
 
 def _run_tests(mod):
-    return run_tests(mod, cache=_TS_CACHE)
+    return run_tests(mod, root=_REPO_ROOT)
 
 
 def _run_properties(mod, binding=None):
-    return run_properties(mod, binding=binding, cache=_TS_CACHE)
+    return run_properties(mod, binding=binding, root=_REPO_ROOT)
 
 
 # ── Unit: _claim_call ─────────────────────────────────────────
@@ -337,7 +331,7 @@ class TestRunTestsIntegration:
         assert len(results) == 2
         assert all(r.status == Status.PASS for r in results)
         addrs = {r.address for r in results}
-        assert any(a.endswith('#Tests#my group') for a in addrs)
+        assert any(a.endswith('#Tests#my group#test#1') for a in addrs)
         assert any(a.endswith('#Tests#my group#named_case') for a in addrs)
 
     @_RUNNER_SKIP
@@ -350,6 +344,39 @@ class TestRunTestsIntegration:
         assert len(results) == 1
         assert results[0].status == Status.FAIL
         assert results[0].address.endswith('#Tests#my group#broken')
+
+
+class TestTestsLinesAfterCommentary:
+    """Each assertion in #Tests is reported at its own line, with
+    commentary between it and the assertions before it. See
+    meta/bugs/2026-10-25-tests-commentary-line-drift. The runner is
+    stood in for: the lines come from what it is handed to run."""
+
+    def test_an_assertion_after_commentary_reports_its_own_line(
+        self, monkeypatch,
+    ):
+        monkeypatch.setattr(runner, '_tsx_cmd', lambda root: ['tsx'])
+        monkeypatch.setattr(runner, '_run_harness', lambda *a, **k: (
+            'CLAIM\tt#Tests#g\tx === 1\nPASS\n'
+            'CLAIM\tt#Tests#g\tx === 1\nPASS\n', '', 0))
+        mod = _module(
+            '#T\n'                      # 1
+            '\n'                        # 2
+            '    const x = 1\n'         # 3
+            '\n'                        # 4
+            '---\n'                     # 5
+            '\n'                        # 6
+            '#Tests\n'                  # 7
+            '\n'                        # 8
+            '##g\n'                     # 9
+            '    x === 1\n'             # 10
+            '\n'                        # 11
+            'Commentary.\n'             # 12
+            '\n'                        # 13
+            '    x === 1\n'             # 14
+        )
+        results = run_tests(mod)
+        assert [r.source_line for r in results] == [10, 14]
 
 
 # ── Unit: _fast_check_available ──────────────────────────────
@@ -435,10 +462,8 @@ class TestRunPropertiesIntegration:
             '    fc.assert(fc.property(fc.constant(x), v => v === 1))\n'
         )
 
-        class _NoFCCache:
-            root = tmp_path  # tmp_path has no node_modules
-
-        results = run_properties(mod, cache=_NoFCCache())
+        # tmp_path has no node_modules
+        results = run_properties(mod, root=tmp_path)
         assert len(results) == 1
         assert results[0].status == Status.ERROR
         assert 'fast-check' in str(results[0].error)

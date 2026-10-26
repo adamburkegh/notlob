@@ -224,9 +224,10 @@ Basic identities, checked directly against the closed-form values.
 
 An individual assertion can be named with `~test <name>`, so it is
 addressable the way `def test_specific_thing():` names a pytest
-test — unlike a bare line, which is only addressable via its `##group`
-heading. `~test` has no bare (nameless) form; naming is the point of
-using it over a plain assertion line.
+test — unlike a bare line, which is only addressable through its block
+(`roman/numerals#Tests#larger values#test#1`). `~test` has no bare
+(nameless) form; naming is the point of using it over a plain assertion
+line.
 
 ```
 ##larger values
@@ -238,11 +239,12 @@ using it over a plain assertion line.
 
 Bare assertions, `~test <name>` blocks, and prose commentary can repeat
 and interleave in any order within one group. All assertion lines
-sharing one `##group` or one `~test` block share a single address —
-e.g. `roman/numerals#Tests#larger values` for the bare block above, or
-`roman/numerals#Tests#larger values#known_large_value` for the named
-one — distinguished within the runner by source line, not a separate
-address per line.
+sharing one block of bare lines or one `~test` block share a single
+address — `roman/numerals#Tests#larger values#test#1` for the bare block
+above (a block is numbered within its group, and prose commentary ends
+it), or `roman/numerals#Tests#larger values#known_large_value` for the
+named one — and the runner reports each assertion under it with its own
+source line, not a separate address per line.
 
 ### #Binding
 
@@ -284,10 +286,41 @@ Two kinds of entry:
   verbatim to the language runtime.
 
 Lob module imports must be declared explicitly. There is no implicit
-package import; each module lists exactly what it uses.
+package import (not for siblings, not for the project); each module lists
+exactly what it uses or cites.
 
-Exactly which names a lob-ref brings into scope depends on the binding;
-see [Toolchains](#toolchains).
+**Listing, citing and loading.** A listing says this module is in
+conversation with that one. It does three separate things:
+
+- **Citing.** A prose `#Name` that names a module resolves only if the
+  module is listed. Siblings list each other to cite one another.
+- **Using.** A module may use only names from modules it lists. The
+  Python linter reports a name from an unlisted module as undefined.
+- **Loading.** A module runs with the code of the modules it *needs*: those
+  it lists whose names its code uses (calls, references, in the body or in
+  its claims; a name inside a string or comment does not count), and what
+  those need, each once and before it. A listing that the code does not
+  use is a *citation*: it loads nothing.
+
+So if `Top` lists `Middle` and `Middle` lists `Base`, `Middle`'s code can
+use `Base` whether it is loaded by itself or by `Top`: a module that works
+on its own works when another module uses it, and `Top` need not list
+`Base` just to make `Middle` run.
+
+**Listings may be circular.** An overview module can list the parts it
+explains and cite them in prose; the parts can list the overview, or
+anything above them. Only a cycle of *need* is an error: if `A`'s code
+uses names `B` defines and `B`'s code uses names `A` defines, no load order
+exists, and `notlob test` reports `circular code dependency: a -> b -> a`.
+Cycles made of citations are fine.
+
+A listing you neither use in code nor mention in prose is an `[imports]`
+error. A module is not loaded just because it is listed, so do not list
+one in the hope of running its top-level code; use it. Where a binding
+cannot tell what a module uses, the address tree decides: a listing of a
+descendant is a citation and any other listing is loaded. Anything else a
+lob-ref does or does not bring into scope depends on the binding; see
+[Toolchains](#toolchains).
 
 ### #Appendix
 
@@ -360,7 +393,9 @@ against the name-graph.
 
 - `##Name` — refers to a subheading in the current module.
 - `#Name` — resolves in order: symbol in current module, subheading in
-  current module, module declared in `#References`.
+  current module, module listed in `#References`. A module that is not
+  listed does not resolve, however near it is: the scope of a citation is
+  what the author lists, as in a paper's bibliography.
 
 A reference's first letter must be uppercase (or, for scripts with no
 case distinction at all — CJK, Arabic, Hebrew, Thai, Devanagari, etc.
@@ -493,11 +528,11 @@ notlob weave [file]             render as Markdown
 notlob new <name>               create a new module
 notlob docs [--output DIR]      write this reference to notlob-docs/
 notlob query search <pattern>   find nodes by label (bare word = substring)
-notlob query content <address>  show prose and code at an address
+notlob query content <address> [--depth N]  the subtree at an address, with text
 notlob query children <address> list child nodes
 notlob query imports <address>  modules imported by an address
 notlob query imported-by <addr> modules that import an address
-notlob graph [--format json|turtle]  export the package name-graph
+notlob graph [--level LEVEL] [--format json|turtle]  export the name-graph
 notlob mcp                      start the MCP tool server (stdin/stdout)
 ```
 
@@ -519,11 +554,27 @@ findings and check findings are separate lists. The shape is specified by
 `{version, findings, counts}` (`schema/check_result.json`); a finding has
 `check`, `message`, `addresses` and `severity` (`error` or `advisory`),
 and is the same shape as an entry in `checks` above. The `notlob query`
-commands print node summaries (`address`, `label`, `kind`, `start_line`,
-and `content` for `query content`): an array, or for `resolve` and
-`content` a single node, or `null` with exit code 1 when it does not
-resolve. They are specified by `schema/query_result.json`, and the graph
-by `schema/name_graph.json`. `notlob graph --format turtle` exports the
-same graph as RDF; its vocabulary is declared in `schema/notlob.ttl`
+commands print nodes as `notlob graph` does at `outline` (`address`,
+`label`, `kind`, and `named`, `mode`, `file`, `start_line`, `end_line`
+where they apply): an array, or for `resolve` a single node, or `null`
+with exit code 1 when it does not resolve. `children` follows any edge kind
+the graph holds (`CONTAINS` by default, and a section's paragraphs and code
+blocks are among its children); `search` finds the nodes `outline` shows;
+`references` and `referenced-by` give a section for a paragraph.
+`content` prints the subtree at an address as a `notlob graph --level full`
+document with a `root`: each line of text once, on the leaf it is written
+in, except that a symbol whose code block is not in the answer carries its
+text; `--depth N` stops N containment steps down (0 is the node alone).
+The shapes are specified by `schema/query_result.json`.
+`notlob graph` prints the graph itself, `{version, level, nodes, edges}`
+(`schema/name_graph.json`): one tree of nodes for each file, joined by
+`CONTAINS` edges, with `REFERENCES`, `USES`, `IMPORTS` and `USES_EXTERNAL`
+edges between them. `--level` (a name or a number) says how much to show:
+`outline` (1, the default) every node but the paragraphs, code blocks and
+bullet lists, with their edges moved to the section that holds them;
+`index` (2) those too, the references a paragraph holds and a `size` for
+each node; `full` (3) the `text` of each node that holds text, once.
+`notlob graph --format turtle` exports the same nodes and edges as RDF, at
+the same `--level`; its vocabulary is declared in `schema/notlob.ttl`
 (informal namespace `urn:notlob:ns:`), and node IRIs are relative
 references, so they resolve against wherever the file is loaded.

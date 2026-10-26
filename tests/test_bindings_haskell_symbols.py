@@ -424,3 +424,34 @@ class TestExtractCalls:
         src = "f x = g x\nf2 x = g x"
         pairs = dict(extract_calls(src))
         assert pairs["g"] == 1
+
+
+def _span(info):
+    return (info.name, info.first_line, info.last_line)
+
+
+class TestSymbolLines:
+    """The lines a symbol occupies, 1-based within the lines given."""
+
+    def test_a_signature_with_its_equations(self):
+        lines = ["    f :: Int -> Int", "    f 0 = 1", "    f n = n",
+                 "", "    g = 2"]
+        assert [_span(s) for s in _syms(lines)] == [
+            ("f", 1, 3), ("g", 5, 5)]
+
+    def test_continuation_lines_are_part_of_the_definition(self):
+        lines = ["    h x = y", "      where y = x", "", "    k = 1", ""]
+        assert [_span(s) for s in _syms(lines)] == [
+            ("h", 1, 2), ("k", 4, 4)]
+
+    def test_a_name_defined_again_after_a_blank_line_is_a_second_symbol(self):
+        lines = ["    f 0 = 1", "", "    g = 2", "", "    f n = n"]
+        assert [_span(s) for s in _syms(lines)] == [
+            ("f", 1, 1), ("g", 3, 3), ("f", 5, 5)]
+
+    def test_the_lines_are_those_of_the_source(self):
+        lines = ["    f :: Int", "    f = 1", "", "    data C = A", "      | B"]
+        for info in _syms(lines):
+            dedented = [ln[4:] for ln in lines]
+            held = dedented[info.first_line - 1:info.last_line]
+            assert "\n".join(held) == info.source

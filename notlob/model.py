@@ -5,6 +5,13 @@ is a lossless structural representation: blank lines within blocks are
 preserved as empty strings in line lists, and inline cross-references
 in prose are first-class ``Ref`` objects rather than embedded strings.
 
+Every element carries its position: ``start_line`` and ``end_line`` are
+1-based lines of the .lob file, both inclusive.  ``end_line`` is the last
+non-blank line of the element, so the blank lines the grammar keeps at the
+end of a block do not count.  A section starts at its heading and ends at
+the last non-blank line of its last item (its heading, if it has none); a
+module ends at the last non-blank line of the file.
+
 Usage::
 
     from notlob import parse_file
@@ -59,7 +66,9 @@ class ProseBlock:
     cross-reference as written in source.  Plain strings are the
     surrounding text, preserving original whitespace.
     """
-    spans: list[Span]
+    spans:      list[Span]
+    start_line: int | None = None
+    end_line:   int | None = None
 
 
 @dataclass
@@ -70,16 +79,18 @@ class CodeBlock:
     consistent with the block-termination rule: only a non-blank
     dedented line ends the block.
     """
-    lines: list[str]
+    lines:      list[str]
     start_line: int | None = None
+    end_line:   int | None = None
 
 
 @dataclass
 class Claim:
     """A ~sigil followed by its indented body."""
-    sigil: str        # e.g. "~example", "~property"
-    lines: list[str]  # body lines; blank lines preserved
+    sigil:      str        # e.g. "~example", "~property"
+    lines:      list[str]  # body lines; blank lines preserved
     start_line: int | None = None
+    end_line:   int | None = None
 
 
 @dataclass
@@ -89,8 +100,9 @@ class BulletBlock:
     Each item in *items* is the line text with the leading ``* ``
     prefix stripped.  Indented bullet lines remain code (INDENTED_LINE tokens).
     """
-    items: list[str]
+    items:      list[str]
     start_line: int | None = None
+    end_line:   int | None = None
 
 
 @dataclass
@@ -99,9 +111,10 @@ class Subheading:
 
     Subheadings are flat — they do not nest.
     """
-    title: str
-    body: list[Union[CodeBlock, Claim, ProseBlock, "BulletBlock"]]
+    title:      str
+    body:       list[Union[CodeBlock, Claim, ProseBlock, "BulletBlock"]]
     start_line: int | None = None
+    end_line:   int | None = None
 
 
 # Union of all items that can appear at module body level.
@@ -118,9 +131,10 @@ class NamedTest:
     body) but only reachable inside a #Tests group -- the grammar
     enforces that ~test never appears in the module body.
     """
-    name: str
-    lines: list[str]  # assertion lines; blank lines preserved
+    name:       str
+    lines:      list[str]  # assertion lines; blank lines preserved
     start_line: int | None = None
+    end_line:   int | None = None
 
 
 @dataclass
@@ -135,10 +149,11 @@ class TestGroup:
     reason TestsSection has its own line_offsets for its top-level bare
     items.
     """
-    title: str
-    items: list[Union[str, ProseBlock, NamedTest]]
-    start_line: int | None = None
+    title:        str
+    items:        list[Union[str, ProseBlock, NamedTest]]
+    start_line:   int | None = None
     line_offsets: dict[int, int] | None = None
+    end_line:     int | None = None
 
 
 @dataclass
@@ -149,8 +164,10 @@ class TestsSection:
     outside any ## group), or ProseBlock commentary -- freely
     intermixed, same as TestGroup's own items.
     """
-    items: list[Union[TestGroup, str, ProseBlock]]
+    items:        list[Union[TestGroup, str, ProseBlock]]
     line_offsets: dict[int, int] | None = None
+    start_line:   int | None = None
+    end_line:     int | None = None
 
 
 @dataclass
@@ -168,6 +185,8 @@ class BindingSection:
     on_build:           str | None       = None
     on_build_line:      int | None       = None
     keep_generated_src: str | None       = None
+    start_line:         int | None       = None
+    end_line:           int | None       = None
 
 
 @dataclass
@@ -175,13 +194,17 @@ class ReferencesSection:
     """The #References post-text section."""
     lines:        list[str]
     line_numbers: list[int | None] = field(default_factory=list)
+    start_line:   int | None       = None
+    end_line:     int | None       = None
 
 
 @dataclass
 class AppendixSection:
     """A #Appendix … post-text section."""
-    title: str  # full token value, e.g. "#Appendix Notes"
-    body: list[BodyItem]
+    title:      str  # full token value, e.g. "#Appendix Notes"
+    body:       list[BodyItem]
+    start_line: int | None = None
+    end_line:   int | None = None
 
 
 PostSection = Union[
@@ -191,8 +214,14 @@ PostSection = Union[
 
 @dataclass
 class PostText:
-    """Everything after the --- separator."""
-    sections: list[PostSection]
+    """Everything after the --- separator.
+
+    *start_line* is the ``---`` line and *end_line* the last non-blank
+    line of the post-text, which is the last line of the module.
+    """
+    sections:   list[PostSection]
+    start_line: int | None = None
+    end_line:   int | None = None
 
 
 # ── Top-level module ─────────────────────────────────────────
@@ -200,10 +229,11 @@ class PostText:
 @dataclass
 class Module:
     """The semantic model of a single .lob file."""
-    title: str
-    body: list[BodyItem]
-    post_text: PostText | None = None
-    start_line: int | None = None
+    title:      str
+    body:       list[BodyItem]
+    post_text:  PostText | None = None
+    start_line: int | None      = None
+    end_line:   int | None      = None
 
 
 # ── Tree → model ─────────────────────────────────────────────
@@ -213,18 +243,53 @@ def from_tree(tree: Tree) -> Module:
     return _module(tree.children[0])
 
 
+def _line(tok) -> int | None:
+    """The 1-based source line of a token (``None`` if it has none)."""
+    return getattr(tok, "line", None)
+
+
+def _last_text_line(tokens, default: int | None) -> int | None:
+    """The line of the last token with text in it, or *default*.
+
+    Every line-level token is a single line, so its own ``line`` is
+    enough; the trailing ``BLANK`` tokens of a block have no text and are
+    passed over.
+    """
+    for tok in reversed(list(tokens)):
+        if str(tok).strip() and _line(tok) is not None:
+            return _line(tok)
+    return default
+
+
+def _furthest(*lines: int | None) -> int | None:
+    """The largest of the lines given, leaving out the ``None``s."""
+    known = [ln for ln in lines if ln is not None]
+    return max(known) if known else None
+
+
 def _module(node: Tree) -> Module:
     title_tok = node.children[0]
     title = str(title_tok)
     body_items = _body(node.children[1])
-    pt = (
-        _post_text(node.children[2])
-        if len(node.children) > 2
-        else None
+    post_tree = node.children[2] if len(node.children) > 2 else None
+    pt = _post_text(post_tree) if post_tree is not None else None
+    start = _line(title_tok)
+    # The module ends where the file does: at the last body item, or at
+    # the post-text, whose `---` separator is a line of the module too.
+    separator = (
+        next((c for c in post_tree.children
+              if isinstance(c, Token) and c.type == "SEPARATOR"), None)
+        if post_tree is not None else None
+    )
+    end = _furthest(
+        start,
+        body_items[-1].end_line if body_items else None,
+        _line(separator),
+        pt.sections[-1].end_line if pt and pt.sections else None,
     )
     return Module(
         title=title, body=body_items, post_text=pt,
-        start_line=getattr(title_tok, "line", None),
+        start_line=start, end_line=end,
     )
 
 
@@ -267,26 +332,32 @@ def _subheading(node: Tree) -> Subheading:
         # grammar guarantees no nested subheadings here
         assert isinstance(item, (CodeBlock, Claim, ProseBlock, BulletBlock))
         body.append(item)
+    start = _line(title_tok)
     return Subheading(
         title=title, body=body,
-        start_line=getattr(title_tok, "line", None),
+        start_line=start,
+        end_line=body[-1].end_line if body else start,
     )
 
 
 def _code_block(node: Tree) -> CodeBlock:
     first = node.children[0] if node.children else None
+    start = _line(first)
     return CodeBlock(
         lines=[str(c) for c in node.children],
-        start_line=getattr(first, "line", None),
+        start_line=start,
+        end_line=_last_text_line(node.children, start),
     )
 
 
 def _claim(node: Tree) -> Claim:
     sigil_tok = node.children[0]
+    start = _line(sigil_tok)
     return Claim(
         sigil=str(sigil_tok),
         lines=[str(c) for c in node.children[1:]],
-        start_line=getattr(sigil_tok, "line", None),
+        start_line=start,
+        end_line=_last_text_line(node.children[1:], start),
     )
 
 
@@ -315,7 +386,14 @@ def _prose_block(node: Tree) -> ProseBlock:
                 ))
             else:                           # PROSE_TEXT
                 spans.append(str(tok))
-    return ProseBlock(spans=spans)
+    # A paragraph has no blank line in it, so its first and last lines
+    # are those of its first and last prose_line; every token of a
+    # prose_line is on the one source line.
+    return ProseBlock(
+        spans=spans,
+        start_line=_line(lines[0].children[0]),
+        end_line=_line(lines[-1].children[0]),
+    )
 
 
 def _bullet_block(node: Tree) -> BulletBlock:
@@ -324,20 +402,28 @@ def _bullet_block(node: Tree) -> BulletBlock:
         str(tok)[2:] if str(tok).startswith("* ") else str(tok).lstrip("*")
         for tok in node.children
     ]
+    start = _line(first)
     return BulletBlock(
         items=items,
-        start_line=getattr(first, "line", None),
+        start_line=start,
+        end_line=_last_text_line(node.children, start),
     )
 
 
 def _post_text(node: Tree) -> PostText:
     sections = []
+    start = None
     for child in node.children:
         if isinstance(child, Token):   # SEPARATOR or BLANK
+            if child.type == "SEPARATOR":
+                start = _line(child)
             continue
         # child is a post_section Tree; its one child is the section
         sections.append(_post_section(child.children[0]))
-    return PostText(sections=sections)
+    return PostText(
+        sections=sections, start_line=start,
+        end_line=_furthest(start, *(s.end_line for s in sections)),
+    )
 
 
 def _post_section(node: Tree) -> PostSection:
@@ -355,24 +441,31 @@ def _post_section(node: Tree) -> PostSection:
 def _tests_section(node: Tree) -> TestsSection:
     items: list[Union[TestGroup, str, ProseBlock]] = []
     line_offsets: dict[int, int] = {}
+    start = _line(node.children[0])
+    end = start
     for child in node.children[1:]:    # skip TESTS_HEAD
         if isinstance(child, Token):   # BLANK
             continue
         if child.data == "prose_block":
             items.append(_prose_block(child))
+            end = items[-1].end_line
             continue
         # child is a test_item Tree
         inner = child.children[0]
         if isinstance(inner, Token):   # bare INDENTED_LINE assertion
-            ln = getattr(inner, "line", None)
+            ln = _line(inner)
             if ln is not None:
                 line_offsets[len(items)] = ln
             items.append(str(inner))
+            end = _last_text_line([inner], end)
         else:
             items.append(_test_group(inner))
+            end = items[-1].end_line
     return TestsSection(
         items=items,
         line_offsets=line_offsets or None,
+        start_line=start,
+        end_line=end,
     )
 
 
@@ -381,22 +474,28 @@ def _test_group(node: Tree) -> TestGroup:
     title = str(title_tok)
     items: list[Union[str, ProseBlock, NamedTest]] = []
     line_offsets: dict[int, int] = {}
+    start = _line(title_tok)
+    end = start
     for child in node.children[1:]:
         if isinstance(child, Token):           # INDENTED_LINE or BLANK
-            ln = getattr(child, "line", None)
+            ln = _line(child)
             if ln is not None:
                 line_offsets[len(items)] = ln
             items.append(str(child))
+            end = _last_text_line([child], end)
         elif child.data == "prose_block":
             items.append(_prose_block(child))
+            end = items[-1].end_line
         elif child.data == "named_test":
             items.append(_named_test(child))
+            end = items[-1].end_line
         else:
             raise ValueError(f"Unexpected test_group child: {child.data!r}")
     return TestGroup(
         title=title, items=items,
-        start_line=getattr(title_tok, "line", None),
+        start_line=start,
         line_offsets=line_offsets or None,
+        end_line=end,
     )
 
 
@@ -406,10 +505,12 @@ def _named_test(node: Tree) -> NamedTest:
     # strips the trailing newline but not the "~test " prefix, the same
     # convention as ~property's Claim.sigil (e.g. "~property commutativity").
     name = str(sigil_tok).split(None, 1)[1].strip()
+    start = _line(sigil_tok)
     return NamedTest(
         name=name,
         lines=[str(c) for c in node.children[1:]],
-        start_line=getattr(sigil_tok, "line", None),
+        start_line=start,
+        end_line=_last_text_line(node.children[1:], start),
     )
 
 
@@ -420,11 +521,14 @@ def _binding_section(node: Tree) -> BindingSection:
     on_build           = None
     on_build_line: int | None = None
     keep_generated_src = None
+    start = _line(node.children[0])
+    end = start
     for child in node.children[1:]:   # skip BINDING_HEAD; INDENT and BLANK skipped below
         if not isinstance(child, Tree) or child.data != 'bind_detail_decl':
             continue
         decl = child.children[0]
         raw  = str(decl).strip()
+        end  = _furthest(end, _line(decl))
         if decl.type == 'LANGUAGE_DECL':
             language = raw.removeprefix('~language ').strip()
         elif decl.type == 'EXTERNAL_DECL':
@@ -442,22 +546,31 @@ def _binding_section(node: Tree) -> BindingSection:
         on_build=on_build,
         on_build_line=on_build_line,
         keep_generated_src=keep_generated_src,
+        start_line=start,
+        end_line=end,
     )
 
 
 def _references_section(node: Tree) -> ReferencesSection:
     children = node.children[1:]
+    start = _line(node.children[0])
     return ReferencesSection(
         lines=[str(c) for c in children],
-        line_numbers=[getattr(c, "line", None) for c in children],
+        line_numbers=[_line(c) for c in children],
+        start_line=start,
+        end_line=_last_text_line(children, start),
     )
 
 
 def _appendix_section(node: Tree) -> AppendixSection:
     title = str(node.children[0])
+    body = _body_from_items(node.children[1:])
+    start = _line(node.children[0])
     return AppendixSection(
         title=title,
-        body=_body_from_items(node.children[1:]),
+        body=body,
+        start_line=start,
+        end_line=body[-1].end_line if body else start,
     )
 
 

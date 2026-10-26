@@ -30,16 +30,25 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   The `schema/*.json` files are added to the package data; they were not
   shipped in installs before.
 - An ontology for the Turtle export (`schema/notlob.ttl`), written to
-  `notlob-docs/schema/` with the JSON Schemas: a class per node kind, a
-  property per edge kind, and the literals a node carries, each with a
-  label and a comment. Tests parse real output with `rdflib` (added to
-  the `[dev]` extra; notlob itself does not depend on it) and fail if the
-  ontology and the emitter drift apart.
+  `notlob-docs/schema/` with the JSON Schemas: a class per node kind
+  (UpperCamelCase: `notlob:PostText`, `notlob:TestGroup`), a property per
+  edge kind, and the literals a node carries, each with a label and a
+  comment. Tests parse real output at every level with `rdflib` (added
+  to the `[dev]` extra; notlob itself does not depend on it) and fail if
+  the ontology and the emitter drift apart.
 - A JSON Schema for the `notlob query` outputs (`schema/query_result.json`):
-  node arrays, and the single node or `null` of `resolve` and `content`.
-  The node shape is the name-graph's, with identical `Node` and `Content`
-  definitions kept in step by a test. These outputs are bare JSON values
-  and are not versioned.
+  node arrays, the single node or `null` of `resolve`, and the subtree of
+  `content`. Nodes and edges are the name-graph's, with identical
+  definitions kept in step by a test. The query outputs are bare JSON
+  values; `content`'s subtree carries the graph document's `version`.
+- `notlob query content --depth N`: the subtree at an address, down N
+  containment steps (`0` is the node alone; the default is all of it).
+- `notlob graph --level outline|index|full` (or `1|2|3`), for JSON and
+  Turtle alike. See "Changed" for the graph itself.
+- Every example project is run end to end by the test suite (`notlob
+  test` and `notlob build`), skipping one whose toolchain is not
+  installed, with the reason. Nothing ran them before, which is how the
+  Gutenberg example stayed broken for months.
 - A JSON Schema for `notlob check --json` (`schema/check_result.json`).
   The document gains a `version` field (`1`): it is now
   `{version, findings, counts}`. A finding is unchanged and is specified
@@ -61,6 +70,91 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
+- **Breaking: the name-graph is the parse tree of each `.lob` file, with
+  cross-references** (`notlob graph`, `schema/name_graph.json`). Every
+  element of a file is a node, contained by what it is written in, in
+  document order: paragraphs (`PROSE`), code blocks (`CODE`), bullet
+  lists (`BULLETS`), claims, `#Tests` (`TESTS`) with its `##groups`
+  (`TEST_GROUP`) and tests (`TEST`, a `~test` or a run of bare
+  assertions), each `#Appendix` (`APPENDIX`), and what follows `---`
+  (`POST_TEXT`). Text is held once, on the leaf that holds it; a symbol
+  holds its first and last line and none of the text, which is read from
+  its code block. A `~run` of any mode is a `RUN` node with its `mode`
+  (`on-load`, or `on-invocation` for a bare `~run`); a `~run on-load` was
+  a `PROPERTY` before. `CONTAINS` is the only tree edge: `DEFINES` is
+  gone. A `REFERENCES` edge runs from the paragraph that holds the
+  reference, which keeps the references as written (`refs`).
+  The document is `{version: 2, level, nodes, edges}`, at one of three
+  levels: `outline` (the default) has every node but paragraphs, code
+  blocks and bullet lists, with their edges moved to the nearest node
+  shown; `index` adds those, each paragraph's `refs`, and each node's
+  `size`; `full` adds the text. A node written in a `.lob` file has its
+  `file`, `start_line` and `end_line`; a node the document names has
+  `"named": true`. `--content`
+  and the `content` object are gone: use `--level full`, or `notlob
+  query content` for part of the graph. The Turtle export prints the same
+  nodes and edges at the same levels.
+- **Breaking: addresses.** A paragraph, code block or bullet list is
+  addressed by position, as a claim already was (`mod#Decoding#prose#2`,
+  `mod#code#1`). A named `~property` belongs to its module's namespace,
+  as a symbol does: `roman/numerals#commutativity`, not
+  `roman/numerals#Round-Trip#commutativity`, so two named properties of
+  one name in one module, or one named like a subheading or a symbol,
+  are a name collision. A run of bare assertions in `#Tests` is reported
+  at its own address, numbered within its group
+  (`roman/numerals#Tests#encoding#test#1`), not the group's; each
+  assertion is still reported with its own line. Haskell numbers
+  unnamed properties per section, as Python and TypeScript do, not
+  across the module. These addresses appear in `notlob test` output
+  (text and `--json`) and in every graph and query output.
+- **Breaking: `notlob query`.** Each query prints nodes as `notlob graph`
+  does at `outline`. `content` prints the subtree at an address as a
+  graph document at `full` (see "Added"). `children --kind` no longer
+  offers `DEFINES`. `references` and `referenced-by` read the references
+  each paragraph holds; `referenced-by` reports a paragraph as the
+  section that holds it.
+- **Breaking, for language bindings (`BindingKit`, stable tier):** notlob
+  now decides what a binding runs and what its code is loaded with, from
+  the name-graph; the binding keeps everything about its language
+  (assembling, splitting a claim into assertions, running, reporting).
+  The runners are called as `(module, claims, *, file_path, root, deps)`,
+  `build` as `(module, claims, file_path, *, deps)` and `lint` as
+  `(module, claims, *, root)`. `claims` is a list of `ClaimToRun`
+  (address, kind, name, mode, lines, first line, sigil line); `deps` is
+  the modules the code needs, dependencies first; `root` is the project
+  root. The `cache=` keyword is gone, with `ModuleCache`
+  (`bindings/python/loader.py`). New: `complete_references` (default
+  `False`), which a binding sets when its call extraction sees every
+  name its code uses (see the next entry), and `SymbolInfo.first_line`
+  and `last_line`, a symbol's lines within its block. A binding that
+  collected its own claims or loaded its own dependencies must stop.
+  From `notlob`: `subheading_address`, `symbol_address`,
+  `property_address` and `claim_address` are gone, replaced by
+  `named_address` and `anonymous_address`; `project.transitive_lob_refs`
+  is gone, replaced by `project.load_order` and `load_dependencies`.
+- **Behaviour change: modules may list each other.** A `#References`
+  listing no longer loads the listed module's code unless the listing
+  module's code (body, claims or tests) uses a name the listed module's
+  own code defines, less names it defines itself; that is read from the
+  name-graph's `IMPORTS` and `USES` edges. A listing nothing uses is a
+  citation and loads nothing, so an overview may list the parts it
+  explains, parts may list the overview, and siblings may cite one
+  another. A module's code is loaded after that of every module it needs,
+  and of what those need, each once, in `notlob test`, `run` and `build`
+  alike. A cycle of need is an error that names it (`ERROR <imports>
+  circular code dependency: a -> b -> a`) instead of a `NameError`.
+  TypeScript's and Haskell's call extraction is not complete (calls
+  only; lowercase names only), so there every listing is loaded except
+  one of a module below the listing one, and two siblings that list each
+  other are a cycle. What breaks: a module that lists another only for
+  its top-level side effects. The rules are in `DESIGN.md` ("Listing,
+  citing and loading") and `LANGUAGE.md`. See
+  `meta/bugs/2026-10-22-mutual-references`.
+- The `titles`, `style` and `quantifier` checks read an `#Appendix` as
+  they read any section: its title, its bullet lists, its prose against
+  its claims. They skipped it before, by accident.
+- TypeScript: a module with an empty `#Tests` section reports nothing to
+  run, rather than a runner error when `tsx` is not installed.
 - **Breaking:** the Turtle export (`notlob graph --format turtle`).
   The vocabulary namespace was `https://notlob.dev/ns#`, a domain nobody
   here controls; it is now `urn:notlob:ns:`, an informal namespace (it
@@ -125,18 +219,41 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   were not shipped in installs before.
 
 ### Fixed
-- `schema/name_graph.json` rejected real output: a section containing a
-  bullet list gets a `bullet_block_count` in its content, which the
-  schema's `Content` did not allow, so `notlob graph --content` output
-  for such a project failed its own published schema. The schema now
-  allows it. Found by validating real output while writing the `query`
-  schema; the existing conformance tests did not include content.
-- A node's stored prose (`notlob query content`, the graph JSON and
-  Turtle, and the `quantifier` advisory) ran paragraphs together with no
-  separator, so "...use three." and "The patterns..." read as
-  "three.The patterns" and a sentence boundary was lost. Paragraphs and
-  bullet lists are now separated by a blank line. See
-  `meta/bugs/2026-10-18-prose-paragraphs-run-together`.
+- **An `#Appendix` was invisible** to the name-graph and to claim
+  collection: its code defined no symbols and its claims did not run.
+  The grammar defines an Appendix as
+  the same thing as the module body; everything now reads it so. See
+  `meta/bugs/2026-10-20-name-graph-incomplete`.
+- `#Tests` assertions after a paragraph of commentary were reported at
+  the wrong line, and runs of bare assertions were grouped differently
+  by the graph and each runner. notlob now finds them once, and
+  commentary ends a run. See
+  `meta/bugs/2026-10-25-tests-commentary-line-drift`.
+- The name-graph's `USES` edges missed everything a multi-line `#Tests`
+  group or `~test` used (its code was not dedented as a block, so it did
+  not parse), and `[imports]` could report a module used only from
+  `#Tests` as unused.
+- **Python and Haskell loaded only a module's direct `#References`.** A
+  module `Top` that lists `Middle`, where `Middle` lists and uses `Base`,
+  failed with a `NameError` from `Middle`'s own code, though `notlob
+  test` on `Middle` passed. Loading is now transitive in every binding
+  (TypeScript already was). What a module may *use* is unchanged: the
+  Python linter still reports a name from a module it did not list. See
+  `meta/bugs/2026-10-21-transitive-lob-refs`.
+- **Python claims ran with the harness script's `__file__`,** so a module
+  that finds files relative to itself (`Path(__file__).parent / "data"`)
+  failed under `notlob test`. Claims now see the module's `.lob` path; a
+  built artifact carries no source path. The Gutenberg example was
+  broken by it, and also cites `#Gutenberg Hamlet` now (it lists it) and
+  has its three placeholder-less f-strings fixed. See
+  `meta/bugs/2026-10-22-python-claims-file-attribute`.
+- `notlob build` reports a name collision as an error instead of
+  building the colliding module.
+- The `quantifier` advisory read a section's paragraphs run together
+  with no separator, so "...use three." and "The patterns..." read as
+  "three.The patterns" and a sentence boundary was lost. Each paragraph
+  is now its own node, and a section's prose joins them with a blank
+  line. See `meta/bugs/2026-10-18-prose-paragraphs-run-together`.
 - Python: `approx`, `raises` and `pytest` were in scope for `#Tests`
   assertions but not for `~example`, so the same line (`x ==
   approx(0.3)`) passed in one and raised `NameError` in the other. They

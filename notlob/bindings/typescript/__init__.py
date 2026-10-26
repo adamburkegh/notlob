@@ -6,7 +6,10 @@ Assembles the TypeScript ``BindingKit`` from its submodules and exposes
 Usage::
 
     from notlob.bindings.typescript import kit
-    results = kit.run_examples(module, cache=cache)
+    results = kit.run_examples(module, examples, root=root, deps=deps)
+
+where *examples* are the ``~example`` claims notlob collected from the
+module's graph (``notlob.graph.claims_to_run``).
 
 Runner availability
 -------------------
@@ -24,8 +27,9 @@ absent.  See ``lint.py``.
 """
 
 from pathlib import Path
+from typing import Sequence
 
-from notlob.bindings import BindingKit, collect_run_bodies
+from notlob.bindings import BindingKit, ClaimToRun, run_bodies
 from notlob.bindings.typescript.assemble import assemble
 from notlob.bindings.typescript.lint import lint_typescript
 from notlob.bindings.typescript.runner import (
@@ -36,11 +40,18 @@ from notlob.bindings.typescript.symbols import extract_calls, extract_symbols
 from notlob.model import Module
 
 
-def build_typescript(module: Module, file_path: Path | None = None) -> str:
+def build_typescript(
+    module: Module,
+    claims: Sequence[ClaimToRun],
+    file_path: Path | None = None,
+    *,
+    deps: Sequence[Module] = (),
+) -> str:
     """Assemble *module* with inlined deps into one TypeScript source string.
 
-    Dependencies declared as lob-refs in ``#References`` are assembled
-    and prepended so the output is self-contained.
+    *deps*, the modules whose code *module* needs, are assembled and
+    prepended so the output is self-contained. *file_path* is accepted
+    for the shared ``BindingKit`` call site.
 
     Unlike ``assemble``, which is used for testing and excludes all
     claims, ``build_typescript`` appends ``~run`` claim bodies at the
@@ -60,12 +71,9 @@ def build_typescript(module: Module, file_path: Path | None = None) -> str:
     when the artifact is executed directly, not merely imported by
     other Node code.
     """
-    from notlob.project import find_project_root
+    source = _build_module_source(module, deps)
 
-    root   = find_project_root(file_path) if file_path else None
-    source = _build_module_source(module, root)
-
-    on_load, on_invocation = collect_run_bodies(module)
+    on_load, on_invocation = run_bodies(claims)
     if on_load:
         source = source + '\n\n' + '\n\n'.join(on_load)
     if on_invocation:

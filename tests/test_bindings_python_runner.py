@@ -6,13 +6,18 @@ run_examples() assembles a module, executes it, then evaluates each
 
 from pathlib import Path
 
-
-from notlob import parse, parse_file, from_tree, claim_address
+from kitcalls import collecting
+from notlob import (
+    NodeKind, parse, parse_file, from_tree, anonymous_address,
+)
 from notlob.bindings.python.harness import build_examples_harness
 from notlob.bindings.python.runner import (
-    ClaimResult, Status, run_examples,
+    ClaimResult, Status, run_examples as _run_examples,
+    run_tests as _run_tests,
 )
 
+run_examples = collecting(_run_examples, "EXAMPLE")
+run_tests = collecting(_run_tests, "TEST")
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -21,24 +26,25 @@ def ran(source: str) -> list[ClaimResult]:
     return run_examples(from_tree(parse(source)))
 
 
-# ── claim_address helper ──────────────────────────────────────
+# ── a claim's address ─────────────────────────────────────────
 
 class TestClaimAddress:
     def test_module_level(self):
         assert (
-            claim_address("roman/numerals", "example", 1)
+            anonymous_address("roman/numerals", NodeKind.EXAMPLE, 1)
             == "roman/numerals#example#1"
         )
 
     def test_subheading(self):
         assert (
-            claim_address("roman/numerals#Decoding", "example", 2)
+            anonymous_address(
+                "roman/numerals#Decoding", NodeKind.EXAMPLE, 2)
             == "roman/numerals#Decoding#example#2"
         )
 
     def test_property_kind(self):
         assert (
-            claim_address("pricing/discounts", "property", 1)
+            anonymous_address("pricing/discounts", NodeKind.PROPERTY, 1)
             == "pricing/discounts#property#1"
         )
 
@@ -106,7 +112,6 @@ class TestPytestHelpersInScope:
         assert [r.status for r in results] == [Status.PASS]
 
     def test_same_line_same_verdict_as_tests_section(self):
-        from notlob.bindings.python.runner import run_tests
         src = (
             self._FLOAT
             + "~example\n    total == approx(0.3)\n\n"
@@ -122,6 +127,35 @@ class TestPytestHelpersInScope:
             "~example\n    approx(5) == 5\n"
         )
         assert [r.status for r in ran(src)] == [Status.PASS]
+
+
+# ── #Tests lines after commentary ─────────────────────────────
+
+class TestTestsLinesAfterCommentary:
+    """Each assertion in #Tests is reported at its own line, with
+    commentary between it and the assertions before it. See
+    meta/bugs/2026-10-25-tests-commentary-line-drift."""
+
+    def test_an_assertion_after_commentary_reports_its_own_line(self):
+        src = (
+            "#T\n"                      # 1
+            "\n"                        # 2
+            "    def f():\n"            # 3
+            "        return 1\n"        # 4
+            "\n"                        # 5
+            "---\n"                     # 6
+            "\n"                        # 7
+            "#Tests\n"                  # 8
+            "\n"                        # 9
+            "##g\n"                     # 10
+            "    f() == 1\n"            # 11
+            "\n"                        # 12
+            "Commentary.\n"             # 13
+            "\n"                        # 14
+            "    f() == 1\n"            # 15
+        )
+        results = run_tests(from_tree(parse(src)))
+        assert [r.source_line for r in results] == [11, 15]
 
 
 # ── Code swallowed into a claim body ──────────────────────────
@@ -430,3 +464,29 @@ class TestBuildExamplesHarness:
         assert "/some/site-packages" in result
         assert result.index("/some/site-packages") < result.index(
             "import pytest")
+
+
+# ── Claims in an #Appendix ────────────────────────────────────
+
+class TestClaimsInAnAppendix:
+    SRC = (
+        "#T\n"                          # 1
+        "\n"                            # 2
+        "    def f():\n"                # 3
+        "        return 1\n"            # 4
+        "\n"                            # 5
+        "---\n"                         # 6
+        "\n"                            # 7
+        "#Appendix Notes\n"             # 8
+        "\n"                            # 9
+        "~example\n"                    # 10
+        "    f() == 1\n"                # 11
+        "    f() == 2\n"                # 12
+    )
+
+    def test_an_example_written_there_runs_at_its_own_address(self):
+        results = ran(self.SRC)
+        assert [(r.address, r.status, r.source_line) for r in results] == [
+            ("t#appendix#1#example#1", Status.PASS, 11),
+            ("t#appendix#1#example#1", Status.FAIL, 12),
+        ]

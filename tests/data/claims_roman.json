@@ -1,0 +1,138 @@
+{
+ "binding.lob": {
+  "examples": [],
+  "properties": [],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": []
+ },
+ "roman/numerals.lob": {
+  "examples": [
+   [
+    "roman/numerals#example#1",
+    "to_roman(4)    == 'IV'",
+    28
+   ],
+   [
+    "roman/numerals#example#1",
+    "to_roman(9)    == 'IX'",
+    29
+   ],
+   [
+    "roman/numerals#example#1",
+    "to_roman(2024) == 'MMXXIV'",
+    30
+   ],
+   [
+    "roman/numerals#example#2",
+    "to_roman(8) == 'IIX'",
+    38
+   ],
+   [
+    "roman/numerals#Decoding#example#1",
+    "from_roman('IV')     == 4",
+    59
+   ],
+   [
+    "roman/numerals#Decoding#example#1",
+    "from_roman('MMXXIV') == 2024",
+    60
+   ]
+  ],
+  "properties": [
+   [
+    "roman/numerals#Round-Trip#property#1",
+    "~property",
+    68
+   ]
+  ],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": [
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(1)    == 'I'",
+    78
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(4)    == 'IV'",
+    79
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(9)    == 'IX'",
+    80
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(14)   == 'XIV'",
+    81
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(40)   == 'XL'",
+    82
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(90)   == 'XC'",
+    83
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(400)  == 'CD'",
+    84
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(900)  == 'CM'",
+    85
+   ],
+   [
+    "roman/numerals#Tests#encoding",
+    "to_roman(3999) == 'MMMCMXCIX'",
+    86
+   ],
+   [
+    "roman/numerals#Tests#encoding#mcmxciv",
+    "to_roman(1994) == 'MCMXCIV'",
+    93
+   ],
+   [
+    "roman/numerals#Tests#decoding",
+    "from_roman('I')       == 1",
+    96
+   ],
+   [
+    "roman/numerals#Tests#decoding",
+    "from_roman('IV')      == 4",
+    97
+   ],
+   [
+    "roman/numerals#Tests#decoding",
+    "from_roman('MCMXCIV') == 1994",
+    98
+   ],
+   [
+    "roman/numerals#Tests#round-trip",
+    "from_roman(to_roman(1))    == 1",
+    101
+   ],
+   [
+    "roman/numerals#Tests#round-trip",
+    "from_roman(to_roman(3999)) == 3999",
+    102
+   ],
+   [
+    "roman/numerals#Tests#round-trip",
+    "from_roman(to_roman(1066)) == 1066",
+    103
+   ]
+  ]
+ }
+}

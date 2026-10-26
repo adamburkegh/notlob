@@ -65,15 +65,11 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, Generator, Sequence
 
-from notlob.bindings import ClaimResult, Status
-from notlob.graph import (
-    claim_address, module_address, property_address, subheading_address,
-)
-from notlob.model import (
-    Claim, Module, NamedTest, Subheading, TestGroup, TestsSection,
-)
+from notlob.bindings import ClaimResult, ClaimToRun, Status
+from notlob.graph import module_address
+from notlob.model import Module
 from notlob.bindings.typescript.assemble import assemble
 from notlob.bindings.typescript.tokenizer import find_split, is_complete
 
@@ -225,28 +221,16 @@ def _run_harness(
 
 # ── Module source assembly ────────────────────────────────────
 
-def _build_module_source(module: Module, root: Path | None) -> str:
-    """Return assembled module source with all transitive dep sources prepended.
-
-    Follows the full dependency graph (not just direct references) so
-    that a module which imports A, where A imports B, gets B inlined
-    even if the root module does not directly reference B.  Deps are
-    emitted in topological order (deepest dependency first).
-    """
+def _build_module_source(module: Module, deps: Sequence[Module]) -> str:
+    """Return assembled module source with the sources of *deps*, the
+    modules whose code it needs, prepended in the order they are handed
+    over (dependencies first)."""
     parts: list[str] = []
 
-    if root is not None:
-        from notlob import from_tree, parse_file
-        from notlob.project import transitive_lob_refs, resolve_module_path
-        for dep_addr in transitive_lob_refs(module, root):
-            try:
-                dep_path = resolve_module_path(dep_addr, root)
-                dep_mod  = from_tree(parse_file(dep_path))
-                dep_src  = assemble(dep_mod)
-                if dep_src:
-                    parts.append(dep_src)
-            except Exception:
-                pass   # missing dep surfaces as a claim execution error
+    for dep_mod in deps:
+        dep_src = assemble(dep_mod)
+        if dep_src:
+            parts.append(dep_src)
 
     mod_src = assemble(module)
     if mod_src:
@@ -412,146 +396,39 @@ def _assembly_error(
     )]
 
 
-# ── Section collectors ────────────────────────────────────────
+# ── What the claims handed over come to ───────────────────────
 
-def _collect_property_calls(
-    body:            list,
-    containing_addr: str,
-    out_calls:       list[str],
-    out_addrs:       list[str],
-    out_sigils:      list[str],
-    out_lines:       list[int | None],
-) -> None:
-    """Collect ~property blocks from *body* into parallel output lists."""
-    prop_n = 0
-    for item in body:
-        if not (isinstance(item, Claim) and item.sigil.startswith('~property')):
-            continue
-        prop_n += 1
-        parts     = item.sigil.split(None, 1)
-        prop_name = parts[1].strip() if len(parts) > 1 else None
-        addr      = (
-            property_address(containing_addr, prop_name)
-            if prop_name else
-            claim_address(containing_addr, 'property', prop_n)
-        )
-        out_calls.append(_property_call(addr, item.sigil, item.lines))
-        out_addrs.append(addr)
-        out_sigils.append(item.sigil)
-        out_lines.append(item.start_line)
+def _claim_calls(
+    claims: Sequence[ClaimToRun],
+) -> tuple[list[str], list[int | None]]:
+    """The ``__runClaim(...)`` call for every assertion of the
+    ``~example`` claims and tests in *claims*, and the line each is on.
+    A claim is split into its assertions by this language's own rule
+    (``_iter_assertions``)."""
+    calls: list[str] = []
+    lines: list[int | None] = []
+    for claim in claims:
+        for expr, offset in _iter_assertions(claim.lines):
+            calls.append(_claim_call(claim.address, expr))
+            lines.append(
+                (claim.first_line + offset) if claim.first_line else None
+            )
+    return calls, lines
 
 
-def _collect_example_claims(
-    body:            list,
-    containing_addr: str,
-    out:             list[str],
-    out_lines:       list[int | None] | None = None,
-) -> None:
-    """Append ``__runClaim(...)`` lines for ~example blocks in *body*."""
-    example_n = 0
-    for item in body:
-        if not (isinstance(item, Claim) and item.sigil == '~example'):
-            continue
-        example_n += 1
-        addr = claim_address(containing_addr, 'example', example_n)
-        base = (item.start_line + 1) if item.start_line else None
-        for expr, offset in _iter_assertions(item.lines):
-            out.append(_claim_call(addr, expr))
-            if out_lines is not None:
-                out_lines.append(
-                    (base + offset) if base else None
-                )
-
-
-def _collect_tests_claims(
-    tests_section: TestsSection,
-    tests_addr:    str,
-    out:           list[str],
-    out_lines:     list[int | None] | None = None,
-) -> None:
-    """Append ``__runClaim(...)`` lines for #Tests assertions.
-
-    Prose commentary (interspersed with assertions, at either level)
-    is not evaluated. ``~test <name>`` blocks get their own address
-    (``group_addr#name``), matching the Python binding's addressing --
-    see notlob.graph.property_address.
-    """
-    line_offsets = tests_section.line_offsets or {}
-    bare: list[str] = []
-    bare_indices: list[int] = []
-    for idx, item in enumerate(tests_section.items):
-        if isinstance(item, str):
-            bare.append(item)
-            bare_indices.append(idx)
-        elif isinstance(item, TestGroup):
-            if bare:
-                first_line = line_offsets.get(bare_indices[0])
-                for expr, offset in _iter_assertions(bare):
-                    out.append(_claim_call(tests_addr, expr))
-                    if out_lines is not None:
-                        out_lines.append(
-                            (first_line + offset) if first_line else None
-                        )
-                bare = []
-                bare_indices = []
-            group_addr = f'{tests_addr}#{item.title}'
-            _collect_group_claims(item, group_addr, out, out_lines)
-        # ProseBlock: commentary, not evaluated.
-    if bare:
-        first_line = line_offsets.get(bare_indices[0])
-        for expr, offset in _iter_assertions(bare):
-            out.append(_claim_call(tests_addr, expr))
-            if out_lines is not None:
-                out_lines.append(
-                    (first_line + offset) if first_line else None
-                )
-
-
-def _collect_group_claims(
-    group:      TestGroup,
-    group_addr: str,
-    out:        list[str],
-    out_lines:  list[int | None] | None,
-) -> None:
-    """Append ``__runClaim(...)`` lines for one TestGroup.
-
-    Bare lines share group_addr; each NamedTest gets its own address
-    (group_addr#name), with all its assertion lines sharing that one
-    address.  ProseBlock items are commentary, not evaluated.
-    """
-    group_offsets = group.line_offsets or {}
-    group_bare: list[str] = []
-    group_bare_indices: list[int] = []
-
-    def _flush_bare() -> None:
-        if not group_bare:
-            return
-        first_line = group_offsets.get(group_bare_indices[0])
-        base = first_line or (
-            (group.start_line + 1) if group.start_line else None
-        )
-        for expr, offset in _iter_assertions(group_bare):
-            out.append(_claim_call(group_addr, expr))
-            if out_lines is not None:
-                out_lines.append((base + offset) if base else None)
-        group_bare.clear()
-        group_bare_indices.clear()
-
-    for gidx, gitem in enumerate(group.items):
-        if isinstance(gitem, str):
-            group_bare.append(gitem)
-            group_bare_indices.append(gidx)
-        elif isinstance(gitem, NamedTest):
-            _flush_bare()
-            addr = property_address(group_addr, gitem.name)
-            base = (gitem.start_line + 1) if gitem.start_line else None
-            for expr, offset in _iter_assertions(gitem.lines):
-                out.append(_claim_call(addr, expr))
-                if out_lines is not None:
-                    out_lines.append((base + offset) if base else None)
-        # ProseBlock: commentary, not evaluated.
-
-    _flush_bare()
+def _property_calls(
+    claims: Sequence[ClaimToRun],
+) -> tuple[list[str], list[str], list[str], list[int | None]]:
+    """The ``__runProperty(...)`` call for each ~property in *claims*,
+    with its address, its sigil and the line of its sigil."""
+    calls, addrs, sigils, lines = [], [], [], []
+    for claim in claims:
+        sigil = '~property' + (f' {claim.name}' if claim.name else '')
+        calls.append(_property_call(claim.address, sigil, claim.lines))
+        addrs.append(claim.address)
+        sigils.append(sigil)
+        lines.append(claim.sigil_line)
+    return calls, addrs, sigils, lines
 
 
 # ── Keep-generated-src ────────────────────────────────────────
@@ -573,12 +450,14 @@ def _write_kept_source(
 
 def run_examples(
     module:    Module,
+    claims:    Sequence[ClaimToRun],
+    *,
     file_path: Path | None = None,
-    cache:     Any         = None,
+    root:      Path | None = None,
     keep_dir:  Path | None = None,
+    deps:      Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all ~example claims in *module* and return results."""
-    root     = getattr(cache, 'root', None)
+    """Run the ~example *claims* of *module* and return results."""
     cmd      = _tsx_cmd(root)
     mod_addr = module_address(module.title)
 
@@ -589,16 +468,9 @@ def run_examples(
             error=Exception('tsx or ts-node not found on PATH or in node_modules/.bin'),
         )]
 
-    mod_source = _build_module_source(module, root)
+    mod_source = _build_module_source(module, deps)
 
-    claim_calls: list[str] = []
-    src_lines: list[int | None] = []
-    _collect_example_claims(module.body, mod_addr, claim_calls, src_lines)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect_example_claims(item.body, sub_addr, claim_calls, src_lines)
-
+    claim_calls, src_lines = _claim_calls(claims)
     if not claim_calls:
         return []
 
@@ -614,22 +486,19 @@ def run_examples(
 
 def run_tests(
     module:    Module,
+    claims:    Sequence[ClaimToRun],
+    *,
     binding:   dict | None = None,
     file_path: Path | None = None,
-    cache:     Any         = None,
+    root:      Path | None = None,
     keep_dir:  Path | None = None,
+    deps:      Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all #Tests assertions in *module* and return results."""
-    if module.post_text is None:
-        return []
-    tests_section = next(
-        (s for s in module.post_text.sections if isinstance(s, TestsSection)),
-        None,
-    )
-    if tests_section is None:
+    """Run the tests in *claims*, the #Tests assertions of *module*, and
+    return results."""
+    if not claims:
         return []
 
-    root     = getattr(cache, 'root', None)
     cmd      = _tsx_cmd(root)
     mod_addr = module_address(module.title)
 
@@ -640,12 +509,8 @@ def run_tests(
             error=Exception('tsx or ts-node not found on PATH or in node_modules/.bin'),
         )]
 
-    mod_source   = _build_module_source(module, root)
-    claim_calls: list[str] = []
-    src_lines: list[int | None] = []
-    _collect_tests_claims(tests_section, f'{mod_addr}#Tests',
-                          claim_calls, src_lines)
-
+    mod_source = _build_module_source(module, deps)
+    claim_calls, src_lines = _claim_calls(claims)
     if not claim_calls:
         return []
 
@@ -661,12 +526,15 @@ def run_tests(
 
 def run_properties(
     module:    Module,
+    claims:    Sequence[ClaimToRun],
+    *,
     binding:   dict | None = None,
     file_path: Path | None = None,
-    cache:     Any         = None,
+    root:      Path | None = None,
     keep_dir:  Path | None = None,
+    deps:      Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run ~property claims in *module* using fast-check.
+    """Run the ~property *claims* of *module* using fast-check.
 
     fast-check is part of the TypeScript binding toolchain; no
     ``~property-testing`` declaration is required in ``binding.lob``.
@@ -675,24 +543,10 @@ def run_properties(
 
     If fast-check is not installed, every claim receives Status.ERROR.
     """
-    root     = getattr(cache, 'root', None)
     mod_addr = module_address(module.title)
     fp       = str(file_path) if file_path else None
 
-    prop_calls:  list[str]        = []
-    prop_addrs:  list[str]        = []
-    prop_sigils: list[str]        = []
-    src_lines:   list[int | None] = []
-
-    _collect_property_calls(
-        module.body, mod_addr, prop_calls, prop_addrs, prop_sigils, src_lines,
-    )
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect_property_calls(
-                item.body, sub_addr, prop_calls, prop_addrs, prop_sigils, src_lines,
-            )
+    prop_calls, prop_addrs, prop_sigils, src_lines = _property_calls(claims)
 
     if not prop_calls:
         return []
@@ -721,7 +575,7 @@ def run_properties(
             error=Exception('tsx or ts-node not found on PATH or in node_modules/.bin'),
         )]
 
-    mod_source = _build_module_source(module, root)
+    mod_source = _build_module_source(module, deps)
     harness    = _build_property_harness(mod_source, prop_calls)
     keep_path  = _write_kept_source(keep_dir, '_properties.ts', harness)
 

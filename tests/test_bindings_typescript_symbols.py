@@ -183,3 +183,38 @@ class TestExtractCalls:
         src = "function f() { g(); }\nfunction f2() { g(); }"
         pairs = dict(extract_calls(src))
         assert pairs["g"] == 1
+
+
+def _span(info):
+    return (info.name, info.first_line, info.last_line)
+
+
+class TestSymbolLines:
+    """The lines a symbol occupies, 1-based within the lines given."""
+
+    def test_several_declarations_a_multi_line_one_and_trailing_blanks(self):
+        lines = [
+            "    const A = 1;",         # 1
+            "",                         # 2
+            "    function f() {",       # 3
+            "      return 1;",          # 4
+            "",                         # 5
+            "    }",                    # 6
+            "",                         # 7
+            "    class C {}",           # 8
+            "",                         # 9
+        ]
+        assert [_span(s) for s in syms(lines)] == [
+            ("A", 1, 1), ("f", 3, 6), ("C", 8, 8)]
+
+    def test_the_last_line_is_the_last_that_has_text(self):
+        (info,) = syms(["    const A = 1;   ", "", "", "    // note", ""])
+        assert (info.first_line, info.last_line) == (1, 4)
+
+    def test_the_lines_are_those_of_the_source(self):
+        lines = ["    function f() {", "      return 1;", "    }", "",
+                 "    const A = 2;"]
+        for info in syms(lines):
+            dedented = [ln[4:] for ln in lines]
+            held = dedented[info.first_line - 1:info.last_line]
+            assert "\n".join(held) == info.source

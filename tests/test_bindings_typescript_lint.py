@@ -15,11 +15,13 @@ from pathlib import Path
 
 import pytest
 
+from kitcalls import collecting
 from notlob import from_tree, parse
-from notlob.bindings.typescript.lint import (
-    _parse_tsc_output, lint_typescript,
-)
+from notlob.bindings.typescript import lint as typescript_lint
+from notlob.bindings.typescript.lint import _parse_tsc_output
 from notlob.bindings.typescript.runner import node_bin
+
+lint_typescript = collecting(typescript_lint.lint_typescript)
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent

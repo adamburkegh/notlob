@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 
 from notlob.commands import (
     cmd_graph,
@@ -45,6 +46,7 @@ class TestCmdGraph:
         data = json.loads(out)
         assert "nodes" in data
         assert "edges" in data
+        assert (data["version"], data["level"]) == (2, "outline")
 
     def test_standalone_file_has_module_node(self, tmp_path, capsys):
         target = _write(tmp_path, "roman/numerals.lob",
@@ -82,7 +84,79 @@ class TestCmdGraph:
         data = json.loads(capsys.readouterr().out)
         for edge in data["edges"]:
             assert {"source", "target", "kind"} <= set(edge.keys())
-            assert edge["kind"] in {"CONTAINS", "DEFINES", "IMPORTS"}
+            assert edge["kind"] in {"CONTAINS", "IMPORTS"}
+
+    def test_a_node_names_its_file_in_a_project(self, tmp_path, capsys):
+        root = _project(tmp_path)
+        target = _write(root, "pkg/t.lob", "#Pkg T\n    def f(): pass\n")
+        cmd_graph(target)
+        data = json.loads(capsys.readouterr().out)
+        sym = next(n for n in data["nodes"] if n["kind"] == "SYMBOL")
+        assert sym["file"] == "pkg/t.lob"
+        assert (sym["start_line"], sym["end_line"]) == (2, 2)
+
+
+# ── cmd_graph --level ─────────────────────────────────────────
+
+_LEVELLED = "#T\n\nSome text, see #Sec.\n\n    def f(): pass\n\n##Sec\n"
+
+
+class TestCmdGraphLevel:
+    def _run(self, tmp_path, capsys, **kwargs):
+        target = _write(tmp_path, "t.lob", _LEVELLED)
+        rc = cmd_graph(target, **kwargs)
+        captured = capsys.readouterr()
+        return rc, captured
+
+    def test_the_default_is_the_outline(self, tmp_path, capsys):
+        rc, captured = self._run(tmp_path, capsys)
+        data = json.loads(captured.out)
+        assert rc == 0 and data["level"] == "outline"
+        assert {n["kind"] for n in data["nodes"]} == {
+            "MODULE", "SUBHEADING", "SYMBOL"}
+
+    @pytest.mark.parametrize("level,name", [
+        ("outline", "outline"), ("index", "index"), ("full", "full"),
+        ("1", "outline"), ("2", "index"), ("3", "full"),
+        (1, "outline"), (2, "index"), (3, "full"),
+    ])
+    def test_a_level_by_name_or_number(self, tmp_path, capsys, level, name):
+        rc, captured = self._run(tmp_path, capsys, level=level)
+        assert rc == 0
+        assert json.loads(captured.out)["level"] == name
+
+    def test_index_adds_the_leaves_and_sizes(self, tmp_path, capsys):
+        _rc, captured = self._run(tmp_path, capsys, level="index")
+        data = json.loads(captured.out)
+        assert {"PROSE", "CODE"} <= {n["kind"] for n in data["nodes"]}
+        assert all("size" in n for n in data["nodes"])
+        assert all("text" not in n for n in data["nodes"])
+
+    def test_full_adds_the_text(self, tmp_path, capsys):
+        _rc, captured = self._run(tmp_path, capsys, level="full")
+        data = json.loads(captured.out)
+        prose = next(n for n in data["nodes"] if n["kind"] == "PROSE")
+        assert prose["text"] == "Some text, see #Sec."
+
+    def test_an_unknown_level_is_an_error_naming_the_choices(
+        self, tmp_path, capsys,
+    ):
+        rc, captured = self._run(tmp_path, capsys, level="detail")
+        assert rc == 1 and captured.out == ""
+        for choice in ("outline", "index", "full"):
+            assert choice in captured.err
+
+    def test_turtle_takes_the_same_levels(self, tmp_path, capsys):
+        rc, captured = self._run(tmp_path, capsys, fmt="turtle")
+        assert rc == 0 and "notlob:text" not in captured.out
+        rc, captured = self._run(tmp_path, capsys, fmt="turtle",
+                                 level="full")
+        assert rc == 0 and "notlob:text" in captured.out
+
+    def test_there_is_no_content_option(self, tmp_path):
+        target = _write(tmp_path, "t.lob", _LEVELLED)
+        with pytest.raises(TypeError):
+            cmd_graph(target, include_content=True)
 
 
 # ── cmd_query_children ────────────────────────────────────────
@@ -98,14 +172,25 @@ class TestCmdQueryChildren:
         labels = [n["label"] for n in data]
         assert "Decoding" in labels
 
-    def test_defines_children(self, tmp_path, capsys, monkeypatch):
+    def test_a_code_blocks_children_are_its_symbols(
+        self, tmp_path, capsys, monkeypatch,
+    ):
         root = _project(tmp_path)
         _write(root, "t.lob", "#T\n    def f(): pass\n")
         monkeypatch.chdir(root)
-        cmd_query_children("t", "DEFINES")
+        cmd_query_children("t#code#1")
         data   = json.loads(capsys.readouterr().out)
         labels = [n["label"] for n in data]
         assert "f" in labels
+
+    def test_defines_is_no_longer_a_choice(
+        self, tmp_path, capsys, monkeypatch,
+    ):
+        root = _project(tmp_path)
+        _write(root, "t.lob", "#T\n    def f(): pass\n")
+        monkeypatch.chdir(root)
+        assert cmd_query_children("t", "DEFINES") == 1
+        assert "DEFINES" in capsys.readouterr().err
 
     def test_no_project_returns_1(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -246,38 +331,35 @@ class TestCmdQueryImports:
         assert data == []
 
 
-# ── cmd_graph --content ───────────────────────────────────────
+# ── cmd_graph: no content ─────────────────────────────────────
 
 class TestCmdGraphContent:
-    def test_content_absent_by_default(self, tmp_path, capsys):
+    def test_content_absent_at_every_level(self, tmp_path, capsys):
         target = _write(tmp_path, "t.lob",
                         "#T\n    def f(): pass\n")
-        cmd_graph(target)
-        data = json.loads(capsys.readouterr().out)
-        for node in data["nodes"]:
-            assert "content" not in node
+        for level in ("outline", "index", "full"):
+            cmd_graph(target, level=level)
+            data = json.loads(capsys.readouterr().out)
+            for node in data["nodes"]:
+                assert "content" not in node
 
-    def test_content_present_with_flag(self, tmp_path, capsys):
-        target = _write(tmp_path, "t.lob",
-                        "#T\n    def f(): pass\n")
-        cmd_graph(target, include_content=True)
-        data = json.loads(capsys.readouterr().out)
-        syms = [n for n in data["nodes"] if n["kind"] == "SYMBOL"]
-        assert all("content" in s for s in syms)
-
-    def test_symbol_code_in_content(self, tmp_path, capsys):
+    def test_the_code_of_a_symbol_is_in_its_block_at_full(
+        self, tmp_path, capsys,
+    ):
         target = _write(tmp_path, "t.lob",
                         "#T\n    def to_roman(n): return str(n)\n")
-        cmd_graph(target, include_content=True)
+        cmd_graph(target, level="full")
         data = json.loads(capsys.readouterr().out)
         sym = next(n for n in data["nodes"] if n["kind"] == "SYMBOL")
-        assert "def to_roman" in sym["content"]["code"]
+        assert "text" not in sym
+        code = next(n for n in data["nodes"] if n["kind"] == "CODE")
+        assert "def to_roman" in code["text"]
 
 
 # ── cmd_query_content ────────────────────────────────────────
 
 class TestCmdQueryContent:
-    def test_returns_node_with_content(
+    def test_a_symbol_alone_has_its_code(
         self, tmp_path, capsys, monkeypatch
     ):
         root = _project(tmp_path)
@@ -286,10 +368,11 @@ class TestCmdQueryContent:
         rc = cmd_query_content("t#f")
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
-        assert data["address"] == "t#f"
-        assert data["kind"] == "SYMBOL"
-        assert "content" in data
-        assert "def f" in data["content"]["code"]
+        (node,) = data["nodes"]
+        assert node["address"] == "t#f"
+        assert node["kind"] == "SYMBOL"
+        assert "content" not in node
+        assert "def f" in node["text"]
 
     def test_module_content_returned(
         self, tmp_path, capsys, monkeypatch
@@ -301,8 +384,10 @@ class TestCmdQueryContent:
         rc = cmd_query_content("lib")
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
-        assert data["kind"] == "MODULE"
-        assert "helpers" in data["content"]["prose"]
+        assert data["root"] == "lib"
+        module, prose = data["nodes"]
+        assert module["kind"] == "MODULE"
+        assert "helpers" in prose["text"]
 
     def test_subheading_content_returned(
         self, tmp_path, capsys, monkeypatch
@@ -313,9 +398,10 @@ class TestCmdQueryContent:
         monkeypatch.chdir(root)
         cmd_query_content("t#Decoding")
         data = json.loads(capsys.readouterr().out)
-        assert data["kind"] == "SUBHEADING"
-        assert "Converts" in data["content"]["prose"]
-        assert "def f" in data["content"]["code"]
+        nodes = {n["address"]: n for n in data["nodes"]}
+        assert nodes["t#Decoding"]["kind"] == "SUBHEADING"
+        assert "Converts" in nodes["t#Decoding#prose#1"]["text"]
+        assert "def f" in nodes["t#Decoding#code#1"]["text"]
 
     def test_unknown_address_returns_null_and_exit_1(
         self, tmp_path, capsys, monkeypatch

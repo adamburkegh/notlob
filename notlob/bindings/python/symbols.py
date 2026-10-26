@@ -32,8 +32,9 @@ _PYTHON_BUILTINS = frozenset(dir(_builtins_mod))
 def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
     """Return the top-level symbols defined in a Python code block.
 
-    Each :class:`~notlob.bindings.SymbolInfo` carries the symbol name
-    and its dedented source text (the exact lines for that definition).
+    Each :class:`~notlob.bindings.SymbolInfo` carries the symbol name,
+    its dedented source text (the exact lines for that definition) and
+    the first and last of those lines within *lines*.
 
     lines  The lines of an INDENT block as stored in CodeBlock.lines,
            including leading whitespace and any embedded blank lines.
@@ -59,21 +60,23 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
         node_src = "\n".join(
             source_lines[node.lineno - 1 : node.end_lineno]
         )
+        def symbol(name: str) -> SymbolInfo:
+            return SymbolInfo(
+                name=name, source=node_src,
+                first_line=node.lineno, last_line=node.end_lineno,
+            )
+
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            result.append(SymbolInfo(name=node.name, source=node_src))
+            result.append(symbol(node.name))
         elif isinstance(node, ast.ClassDef):
-            result.append(SymbolInfo(name=node.name, source=node_src))
+            result.append(symbol(node.name))
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    result.append(
-                        SymbolInfo(name=target.id, source=node_src)
-                    )
+                    result.append(symbol(target.id))
         elif isinstance(node, ast.AnnAssign):
             if isinstance(node.target, ast.Name):
-                result.append(
-                    SymbolInfo(name=node.target.id, source=node_src)
-                )
+                result.append(symbol(node.target.id))
     return result
 
 

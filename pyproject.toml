@@ -1,6 +1,6 @@
 [project]
 name = "notlob"
-version = "0.5.4"
+version = "0.6.0"
 requires-python = ">=3.11"
 dependencies = ["lark>=1.2", "regex>=2024", "pytest>=8", "hypothesis>=6", "ruff>=0.4"]
 

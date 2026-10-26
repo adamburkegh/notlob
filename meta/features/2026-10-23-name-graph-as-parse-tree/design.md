@@ -2,6 +2,49 @@
 
 **Status:** design agreed in discussion, 2026-10-23/24; for a final read
 before slicing. Decisions and their reasons are in section 8.
+
+## Where it stands, and the way home (2026-10-26)
+
+Done, reviewed, uncommitted: slices 1 to 5c, kinds and scope
+(`slice-kinds-and-scope-brief.md`, the Appendix checks fix included),
+5d (item 1 below), and slice 6 (6a, 6b), brought forward on Adam's
+word; 2026-10-26, suite 2070 passed, 2 skipped (ts-media not
+installed). See `review-questions.md` for what waits on him.
+`ModuleCache` deleted (suite 2097 passed, 2 skipped) and the CHANGELOG
+drafted against 0.5.4 (item 2), both for Adam to read. Next: the
+release. The
+graph is the parse tree; every output prints it; the legacy layer,
+`DEFINES` and the bindings' own collection walks are gone.
+
+**To release, and nothing else:**
+
+1. **5d.** D8: delete the one commented line in `_claim_identity` that
+   keeps a named property in its section's scope, so it is addressed in
+   its module's. D14: a run of bare assertions reports at its own
+   address, not its group's (`claims_to_run`). `notlob test` output and
+   the tests that pin those addresses follow. Also `_SCAN_ORDER` in
+   `add_uses_edges`: a tuple that only keeps `USES` edges in the order
+   the old per-kind loops made them (`RUN`, `TEST`, `EXAMPLE`,
+   `PROPERTY`), kept so the kinds refactor moved no output. Delete it and
+   the sort, so the edges come in document order. Before the release
+   because these change the output, and the format should break once.
+2. **CHANGELOG and docs.** The graph document version 2 (levels, kinds,
+   ordinal addresses, `--level`); the queries and `query content`;
+   Turtle at three levels with UpperCamelCase classes; `BindingKit`
+   (D17, breaking, stable tier); `subheading_address`, `symbol_address`,
+   `property_address` and `claim_address` gone from `notlob.__all__`
+   (`named_address` and `anonymous_address` in their place); Haskell
+   property numbering; TypeScript's empty `#Tests`; the checks now
+   reading an `#Appendix`. Mark resolved: the bug notes for the line
+   drift, the Appendix not in the graph and the incomplete name-graph.
+3. **Release**, then notlob-vids moves to the new format.
+
+**After the release, not before:** slice 6 (module listing; the
+gutenberg strict xfail marks it), 2e, 7, D11, D16, and findings 1 to 5
+and 10 of `../2026-10-26-missing-concepts/design.md` (finding 3's weaver
+`~run` bug and finding 1's `##` disagreement are known defects; the
+weaver was not touched by this work, and finding 1 is not yet shown by
+a test). None of these is needed to bring this change home.
 **Origin:** the review of the backed-out 0.6.0 name-graph work
 (`meta/retrospectives/2026-10-23-name-graph-redundancy/`), 2026-10-23.
 **Supersedes:** the representation in `f4b9eb9` (backed out in `4230b04`).
@@ -357,6 +400,50 @@ options (`--depth`, and any kind filter).
 | D7 | Build the graph once per command and pass it on, rather than each consumer calling `build(module)` | Yes |
 | D8 | Which kinds open a scope | `MODULE`, `PROPERTY`, `TESTS` and `#Tests` groups. Sections do not, so a named property's address becomes `module#name` (section 2) |
 | D9 | `EXTERNAL` identity, and how much of external resolution notlob owns | The declared string, verbatim; no normalisation, no ban on URLs. The build manifest keeps joining the string to the project root, as now; a non-file declaration is the hook script's to handle (section 1) |
+| D10 | Label uniqueness, and an anonymous node's label | A named node's label is unique within its scope: a second is an error (the address would name two nodes). Correction, 2026-10-24: "as now" was wrong. `add_node` raises `AddressCollisionError` only for two nodes of different kinds; two of the same kind (two `def f` in a module) silently keep the last. Choice: ban redefinition, or follow the binding's language; leaning to banning it, since notlob is name-oriented (Adam). Slice 2c keeps today's behaviour. Split (Adam, 2026-10-25), as D15 was: a **document name** restated in its scope (two headings, `~property` or `~test` names) is an error, `AddressCollisionError`, from slice 4a, since headings have no bound language to follow and replacement left one node with one heading's lines and both headings' children. For **code names** the choice stays open; the last definition wins meanwhile. The same name in different scopes (a property's `helper` shadowing the module's, or two modules' `helper`) is legal, and `notlob check` warns. An anonymous node's label is its kind and ordinal (`prose#1`), as claims' are. The compiler enforces uniqueness in a scope; the linter nudges across scopes |
+| D11 | Node kinds for the `#Binding` section and its declarations, and for the `#References` section and its lines (section 2's table has none, though D6 and the completeness contract need them); with it, `USES_EXTERNAL` from the declaration leaf (D9) | Open. Found drafting the 2c brief; left out of 2c |
+| D12 | Where the post-text sections hang | From a `POST_TEXT` node, starting at the `---` line, at `mod#post-text`: the grammar's `post_text`, which the language has always called the appendix (`LANGUAGE.md`: bare assertions "belong to the appendix rather than the argument"). `#Tests`, each `#Appendix` and `#References` are its children. `APPENDIX` stays the kind of one `#Appendix` section. Needs a position on the model's `PostText`. Its children keep their addresses (`mod#Tests`, `mod#appendix#1`): the post-text is a region of the tree, not part of an address, as a section is not a scope. (Proposed by the design session drafting 2d and agreed by Adam, 2026-10-25: test results already carry `mod#Tests#group` addresses, and `mod#post-text#Tests` would change them for no gain.) |
+| D13 | The kinds in `#Tests` | `TESTS` (the section), `TEST_GROUP` (a `##group`, which holds things) and `TEST` (a test, named by `~test` or anonymous), as `PROPERTY` covers named and unnamed properties: being named is in the label and the address rule, not the kind. Replaces 2c's single `TEST` for three things, which made the code tell them apart by address pattern |
+| D14 | Where an anonymous test begins and ends | An `assertion_block` grammar rule, built like `code_block`. The block is layout and is notlob's (indentation, blank lines, commentary); the assertions in it are the binding's, which splits them by its own language (`_iter_assertions`) and runs and reports them one by one, under the block's address and their line, as for `~example` and `~test`. Commentary ends a block. Today `build`, the oracle test and each runner each work the runs out, and disagree (`meta/bugs/2026-10-25-tests-commentary-line-drift`) |
+| D15 | Names and ordinals share one address space (below) | Decided (Adam, 2026-10-25): **no `#` in a document name** (option 1). No `.lob` file under `examples/` or `ref-projects/` has one, so nothing needs renaming. To be enforced by the grammar's name terminals (`MOD_HEAD`, `SUBHEAD`, the `~property` and `~test` names, `APPENDIX_HEAD`), with a parse error that says which name and why; it goes with the grammar work of 2e. **Dashes: disliked, not banned.** They clash with references (`##Round-Trip` cites `Round`), but a module title is its path (`#Media-Attributes Analysis` is `media-attributes/analysis.lob`), and notlob-vids writes its named properties in kebab case (`layouts-are-well-formed`), so a ban needs its own decision. Narrowed (Adam, 2026-10-25): it is about **document names** only (headings, `~property` and `~test` names, Appendix titles), which are notlob's syntax. **Code names** follow the binding's identifier rules and notlob does not restrict them ("or we will fight the bound executable layer"); if a binding ever allows `#` in an identifier, the address encodes it rather than banning it. None of the three does today |
+| D17 | Who collects the claims and tests a binding runs | notlob, from the graph (Adam, 2026-10-25). Each runner is handed what to run (address, kind, mode, lines, first line) and keeps execution: assembling, splitting assertions by its language, running, reporting. The same division as D14: notlob owns structure, the binding owns its language. A breaking change to `BindingKit` (stable tier), to be called out in the CHANGELOG; the users are the three built-in bindings and a partial Rust binding that predates `BindingKit` |
+| D18 | Facts of an element the graph does not hold (first: a `~run`'s mode) | Everything should be in the graph (Adam, 2026-10-25): the completeness contract covers an element's facts, not only its text and position. A `RUN` node records its mode, a bare `~run` as `on-invocation` (the grammar's meaning). The same rule is behind D11. Second case, slice 4b: `Node.name`, the document name of a heading, `##group`, named `~property` or `~test` (`None` for an anonymous node), so a named test is told from a run of bare assertions by a fact, not by its lines |
+| D16 | Referring to code names from prose | Open, and a defect: a function cannot be referenced from prose (`meta/bugs/2026-10-25-code-names-not-referenceable`). The reference terminal's Title Case rule was made for headings and leaked onto code names. Needs a reference form that follows the binding's identifiers; its own design discussion, not part of 2e. Widened (2026-10-25): the same form should reach document names the Title Case rule cannot (``##`Round-Trip` ``, ``#`mix-never-clips` ``), so names stay free apart from `#` and lint waits for real cases. Also (2026-10-25): citing a symbol of another, listed module (`#load_play` in `corpus` for `hamlet`'s function) does not resolve today, since step 3 resolves a module's name only. Citation may be circular (listing is free; only a cycle of need is an error, `meta/bugs/2026-10-22-mutual-references`) |
+
+**D15.** Named nodes are addressed by name (D10) and anonymous ones by
+kind and ordinal (D1), under the same parent, so a name can take the
+form of an ordinal and the two land on one address. Found in 2d: `~test
+test#1` after a run of bare assertions puts both at `g#test#1`, and the
+last wins. Not only tests:
+
+```
+##prose#1                 -> mod#prose#1      (the module's first paragraph)
+~property property#1      -> mod#property#1   (its first unnamed property)
+```
+
+No `.lob` file under `examples/` has a name with a `#` in it (searched
+2026-10-25). The options:
+
+1. **Names may not contain `#`.** `#` is notlob's address separator and
+   its reference sigil, so a name holding one is already ambiguous to
+   read (`#Notes#2` in prose). It removes the clash entirely, since every
+   anonymous segment has a `#` and no name could. An error from the
+   parser or `notlob check`. The Turtle helper's comment that a title can
+   hold `#` would then be about addresses made by older files only.
+2. **Names may not take an ordinal's form** (`prose#1`, `test#3`, any
+   anonymous kind followed by `#` and a number). Narrower; names with
+   other `#`s stay legal, and so does the reading ambiguity.
+3. **Leave it to the collision error.** With redefinition banned (D10,
+   leaning), the clash becomes an `AddressCollisionError`. Least work,
+   but the error would name an address the author never wrote.
+4. **Mark anonymous segments differently** (`mod#~prose1`, say). Clean
+   in principle, but it changes every anonymous address, claims'
+   included, which test results and tools already carry.
+
+Leaning to 1, for document names. It costs authors nothing: the
+reference terminal (`REF` in `grammar.lark`) already allows only
+letters, digits, `_` and single spaces in a label, so a heading or
+property with `#` in its name can never be cited.
 
 **D2, and how it was reached** (2026-10-23/24; the reasons matter more
 than the outcome).
@@ -406,25 +493,113 @@ fixing in the language reference.
 
 ## 9. Slices
 
+**Where the code stands.** `DESIGN.md` describes this design as the
+theory, with no implementation status (it is kept tight; phase and slice
+information lives here). Until the slices land, the code builds the
+earlier graph: named nodes, claims and tests only, a section's prose and
+code as concatenated strings on its node, `DEFINES` edges from a section
+to its symbols, claims and tests, and no node for an `#Appendix`. The
+`--level` option of `notlob graph`, the `--depth` option of `notlob query
+content` and the duplicate-name warning do not exist yet.
+
 Each slice is a brief for one implementing session, with its failing test
 first, a list of files it may touch, and a stop point. Order:
 
 1. **`DESIGN.md`:** the contract and this model (section 10). Docs only.
-2. **Nodes and tree:** the leaf kinds, `APPENDIX`, `TESTS`, binding
-   declarations, `file`, `end_line`, `CONTAINS` as the only tree edge,
-   scopes and the named-property address (D8); the oracle, forest and
-   scope tests. No consumer changes beyond what `build` itself needs.
+2. **Nodes and tree**, in three parts, each leaving the suite green.
+   Found when drafting the brief (2026-10-24): the model records no
+   `end_line` and no position for prose or an Appendix, and `check.py`
+   reads the graph's raw content and `DEFINES` edges, so the
+   representation cannot change without its readers changing too.
+   * **2a, model positions:** `start_line` and `end_line` on every
+     element of the model, prose and Appendix included. `model.py` and
+     its tests only.
+   * **2b, accessors first:** `check.py` reads through `NameGraph`
+     methods (a section's prose; its claims, by kind) instead of raw
+     content and `DEFINES`, implemented over today's representation. No
+     change to any output.
+   * **2c, the forest behind today's outputs:** the leaf kinds,
+     `APPENDIX`, `TESTS`, `file`, `end_line`, `CONTAINS` as the only tree
+     edge, claims made by `build`, `REFERENCES` from the `PROSE` leaf
+     (D3); the six accessors over the forest; the oracle and forest
+     tests. Every output (`notlob graph` JSON and Turtle, every `notlob
+     query`, the MCP tools) keeps today's shape, produced from the forest
+     by a temporary layer that slice 5 deletes. Decided with Adam,
+     2026-10-24, after finding that every output prints the
+     representation: the CLI-level tests and the check tests stay
+     unchanged as a guard; the tests of the in-memory structure are
+     rewritten, since that is what changes. Also: today only an exact
+     `~run` becomes a `RUN` node; `~run on-load` and `~run
+     on-invocation` fall into the property branch of `enrich` and become
+     `PROPERTY` nodes named after the mode (found in 2b; the backed-out
+     work had fixed it). A claim's kind must follow its sigil.
+   * **2d, follow-up to 2c:** the `POST_TEXT` node (D12, with a position
+     on the model's `PostText`); `TEST_GROUP` and `TEST` (D13), so
+     nothing tells tests apart by address outside the temporary layer;
+     the stale docstrings in `graph.py` and the ontology comments.
+   * **2e, the assertion block:** an `assertion_block` grammar rule
+     (D14), through the parser and the model to `build`, and the oracle
+     test reading the model's blocks instead of regrouping lines. With
+     it, the other grammar change: no `#` in a document name (D15).
+     **Moved after the release** (Adam, 2026-10-25): `build` already
+     groups runs correctly (commentary ends one), so when slice 4 moves
+     the runners onto the graph they read its runs and the line-drift
+     bug goes with it; 2e then moves the grouping from Python into the
+     grammar, a quality change not needed for a fixed graph.
 3. **Symbol lines:** `SymbolInfo` lines in all three bindings, symbols
-   without text, `graph.text()`, the `USES` line fixes.
-4. **Consumers onto the graph:** `enrich`, the reference edges,
-   `validate_refs`, the claim collectors, `collect_run_bodies`, `notlob
-   run`, the checks (the quantifier check off `DEFINES`); one graph per
-   command (D7). This brings back the Appendix fix.
-5. **Export:** the three levels, `query content`, schemas, Turtle, the
-   CLI and MCP edge filters without `DEFINES`; the "once" and "nesting"
-   tests.
-6. **Module listing** (`1468f0f`) and the `#Tests` `USES` fix, redone on
-   the new graph, with the old commit as reference.
+   without text, `graph.text()`, the `USES` line fixes. With them the
+   `#Tests` `USES` fix (each anonymous test scanned on its own,
+   dedented), since it is the same pass.
+4. **Consumers onto the graph**, in two parts (Adam, 2026-10-25):
+   * **4a, without the binding contract:** `enrich` reads the graph's
+     code leaves (an `#Appendix` included, which brings back the
+     Appendix symbols); `validate_refs` reads the `PROSE` leaves; the
+     `RUN` nodes carry their mode (D18) and `notlob build` finds its
+     entry points from them; one graph per command (D7). (The
+     reference edges and the checks are already on the graph.)
+     `collect_run_bodies` is called by the bindings, so it moves in 4b.
+   * **4b, the binding contract (D17):** the runners of all three
+     bindings run what notlob collects from the graph, and their
+     `build()` and `lint()` take their `~run` bodies from it
+     (`collect_run_bodies`, and so `notlob run`); their own collection
+     walks go, and with them the `#Tests` line drift
+     (`meta/bugs/2026-10-25-tests-commentary-line-drift`, whose
+     strict xfail then passes) and the rest of the Appendix fix.
+5. **Export:** replace the temporary output layer of 2c, in four parts,
+   each moving some outputs off the layer (2026-10-25):
+   * **5a, `notlob graph` as JSON:** the three levels with lifting,
+     `--level`, `version` and `level` in the document, `name_graph.json`
+     rewritten, the MCP graph tool, `LANGUAGE.md`'s graph section and
+     `DESIGN.md`'s command line; the "once" and "nesting" tests.
+   * **5b, `notlob query`:** every query on the graph itself, `query
+     content` as the subtree with `--depth`, `query_result.json`, the
+     MCP query tools, the `--edge` choices without `DEFINES`.
+   * **5c, Turtle, and the layer deleted:** Turtle at the three levels
+     and the ontology to match; then `legacy_graph` and its helpers,
+     the `DEFINES` edge kind, `Node.content`, the snapshot tests.
+   * **Kinds and scope, before 5d** (Adam, 2026-10-26, from findings 6
+     and 7 of `../2026-10-26-missing-concepts/design.md`): a table of
+     what each kind is, `scope_of`, and two address functions, named
+     and anonymous, in place of seven; no address or output changes.
+     Brief: `slice-kinds-and-scope-brief.md`.
+   * **5d, addresses in results:** a named property addressed in its
+     module's scope (D8), a run of bare assertions reporting at its
+     own address (D14), the scope test; `notlob test` output follows.
+6. **Module listing** (`1468f0f`), redone on the new graph, with the old
+   commit as reference. (Its `#Tests` `USES` fix moved to slice 3.)
+   Split (2026-10-26), with Adam's go-ahead to carry on through slice 6:
+   * **6a, loading follows need, from the graph:** need is an `IMPORTS`
+     edge and a `USES` edge into the listed module's own code; notlob
+     works out the load order and hands the modules to the binding
+     (`deps`), as it hands the claims (D17). Brief:
+     `slice-6a-brief.md`.
+   * **6b, `__file__` and the examples:** Python claims see their
+     `.lob` path; every example project runs end to end in a test.
+     Brief: `slice-6b-brief.md`.
+7. **Duplicate-name warning** (D10): a `notlob check` advisory for the
+   same name in different scopes, beside the `typos` check. It also makes
+   the doubtful `USES` edges of the global label index visible until
+   scoped lookup (section 3) arrives. Not needed for the release.
 
 Then a CHANGELOG pass and the release. notlob-vids is updated after the
 format settles, at slice 5.
@@ -445,14 +620,14 @@ thing in a `.lob` file or package is a node"):
 > node: modules, sections, prose paragraphs, code blocks, bullet lists,
 > claims, tests and the names code defines. Nodes and `CONTAINS` edges
 > are a forest, one tree per file: `CONTAINS` is position, where each node
-> is written. `USES`, `REFERENCES` and `IMPORTS` are a directed graph over
-> the forest: what each call, reference and listing resolves to. What a
-> node is (a claim, a paragraph, a symbol) is its kind; which scope a name
-> belongs to is derived from the tree. Each node has its file and its
-> first and last line. Text is held once, on the leaf it was written in; a
-> symbol's text is the lines of its code block. What a consumer wants as
-> one string is derived. An element of the document that is missing from
-> the graph is a bug.
+> is written. `USES`, `REFERENCES`, `IMPORTS` and `USES_EXTERNAL` are a
+> directed graph over the forest: what each call, reference, listing and
+> external declaration resolves to. What a node is (a claim, a paragraph,
+> a symbol) is its kind; which scope a name belongs to is derived from the
+> tree. Each node has its file and its first and last line. Text is held
+> once, on the leaf it was written in; a symbol's text is the lines of its
+> code block. What a consumer wants as one string is derived. An element of
+> the document that is missing from the graph is a bug.
 >
 > The graph is exported at three levels of detail (`outline`, `index`,
 > `full`), each a view of the same structure written by its own

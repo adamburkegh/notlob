@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import pytest
 
+from kitcalls import collecting
 from notlob import from_tree, parse
 from notlob.bindings import LintResult
-from notlob.bindings.python.lint import lint_python, parse_source_map
+from notlob.bindings.python import lint as python_lint
+from notlob.bindings.python.lint import parse_source_map
+
+lint_python = collecting(python_lint.lint_python)
 
 
 def _module(text: str):

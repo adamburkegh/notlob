@@ -158,7 +158,10 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
     into a single entry.  Multiple pattern-matching equations for the
     same function are also merged.  Indented continuation lines
     (where-clauses, guards, multi-line type signatures) are folded into
-    the ``source`` field of their enclosing definition.
+    the ``source`` field of their enclosing definition.  ``first_line``
+    and ``last_line`` are the definition's lines within *lines*; they are
+    contiguous, since a blank line ends a definition, so a name defined
+    again after a blank line is a second entry of the same name.
 
     >>> [s.name for s in extract_symbols(["    f :: Int -> Int", "    f x = x + 1"])]
     ['f']
@@ -173,15 +176,18 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
     result:    list[SymbolInfo] = []
     cur_name:  str | None       = None
     cur_lines: list[str]        = []
+    cur_first                   = 0
 
     def _flush() -> None:
         if cur_name is not None:
             result.append(SymbolInfo(
                 name=cur_name,
                 source="\n".join(cur_lines),
+                first_line=cur_first,
+                last_line=cur_first + len(cur_lines) - 1,
             ))
 
-    for raw in source_lines:
+    for number, raw in enumerate(source_lines, 1):
         line = raw.rstrip()
 
         if not line:
@@ -214,6 +220,7 @@ def extract_symbols(lines: Sequence[str]) -> list[SymbolInfo]:
             _flush()
             cur_name  = name
             cur_lines = [line]
+            cur_first = number
 
     _flush()   # final definition
     return result

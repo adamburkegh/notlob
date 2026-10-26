@@ -190,8 +190,8 @@ class TestCmdBuildPython:
         """A Python module that references another lob module gets it
         inlined -- regression test for the build artifact previously
         omitting cross-module dependency code entirely (NameError at
-        execution time, since notlob test/run resolve #References via
-        ModuleCache at runtime, but a build artifact has no loader)."""
+        execution time, since a build artifact has no loader around it,
+        so what the module needs has to be inlined)."""
         root = _py_project(tmp_path)
         _write(root, "roman/numerals.lob", (
             "#Roman Numerals\n\n"

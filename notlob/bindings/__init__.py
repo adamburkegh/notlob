@@ -13,7 +13,9 @@ Usage::
     from notlob.bindings.python import kit
     enrich(graph, module, kit.extract_symbols)
     source = kit.assemble(module)
-    results = kit.run_examples(module, file_path=path)
+    claims = claims_to_run(graph, module_address(module.title))
+    examples = [c for c in claims if c.kind == "EXAMPLE"]
+    results = kit.run_examples(module, examples, file_path=path, deps=deps)
 """
 
 from __future__ import annotations
@@ -24,7 +26,44 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Generator, Sequence
 
-from ..model import Claim, CodeBlock, Module, Subheading
+from ..model import CodeBlock, Module
+
+
+# ── What a binding is handed to run ──────────────────────────
+#
+# notlob works out which claims and tests a module has, from its graph;
+# a binding runs what it is handed and keeps everything about its
+# language: assembling, splitting assertions, running, reporting.
+
+@dataclass(frozen=True)
+class ClaimToRun:
+    """A claim or test of a module, as notlob found it, for a binding to
+    run.
+
+    address     The address its results are reported at: its own for an
+                ``~example``, a ``~property``, a ``~run`` and a ``~test``,
+                and for a run of bare assertions the address of the
+                ``##group`` or ``#Tests`` it is written in.
+    kind        ``"EXAMPLE"``, ``"PROPERTY"``, ``"RUN"`` or ``"TEST"``
+                (a ``NodeKind`` name, as ``notlob.graph`` imports this
+                module).
+    lines       Its lines, one for each line of the file; blank ones are
+                kept. A claim's are dedented.
+    first_line  The line of the file that ``lines[0]`` is on, or ``None``
+                when it is not known.
+    sigil_line  The line of its ``~sigil``; ``None`` for a run of bare
+                assertions, which has none.
+    name        The name of a named ``~property`` or ``~test``.
+    mode        When a ``~run`` runs: ``"on-load"`` or ``"on-invocation"``
+                (what a bare ``~run`` means).
+    """
+    address:    str
+    kind:       str
+    lines:      list[str]
+    first_line: int | None
+    sigil_line: int | None
+    name:       str | None = None
+    mode:       str | None = None
 
 
 # ── Claim result types ────────────────────────────────────────
@@ -79,12 +118,20 @@ class ClaimResult:
 class SymbolInfo:
     """A symbol extracted from a code block.
 
-    name    The top-level defined name (function, class, variable).
-    source  The dedented source text for that definition, or None
-            when the extractor cannot supply a precise slice.
+    name        The top-level defined name (function, class, variable).
+    source      The dedented source text for that definition, or None
+                when the extractor cannot supply a precise slice.
+    first_line  The first line of the definition, 1-based within the
+                lines the extractor was given; None when not supplied.
+    last_line   Its last non-blank line, in the same terms.
+
+    A binding that leaves the lines unset still works: the graph keeps
+    *source* on the symbol's node, as it has no lines to read it by.
     """
-    name:   str
-    source: str | None = None
+    name:       str
+    source:     str | None = None
+    first_line: int | None = None
+    last_line:  int | None = None
 
 
 #: Callable that maps indented code lines to SymbolInfo objects.
@@ -132,18 +179,56 @@ class BindingKit:
                      by design.  ``None`` when the binding does not
                      implement static call analysis.
     assemble         Code assembly: Module → executable string.
-    run_examples     (module, *, file_path=None) -> list[ClaimResult]
-    run_properties   (module, *, file_path=None) -> list[ClaimResult]
-    run_tests        (module, *, file_path=None) -> list[ClaimResult]
-    lint             (module, *, root=None) -> list[LintResult], or None
-                     when the binding does not support static analysis.
+    run_examples     (module, claims, *, file_path=None, root=None,
+                     deps=()) -> list[ClaimResult]
+    run_properties   (module, claims, *, file_path=None, root=None,
+                     deps=()) -> list[ClaimResult]
+    run_tests        (module, claims, *, file_path=None, root=None,
+                     deps=()) -> list[ClaimResult]
+    lint             (module, claims, *, root=None) -> list[LintResult],
+                     or None when the binding does not support static
+                     analysis.
     extension        File extension for build artifacts (e.g. ``"py"``,
                      ``"hs"``, ``"ts"``).
     comment_prefix   Location-comment prefix used in assembled/build
                      output (e.g. ``"#"``, ``"--"``, ``"//"``).
-    build            (module, file_path=None) -> str, the assembly used
-                     by ``notlob build``, or None when the binding
-                     doesn't support it.
+    build            (module, claims, file_path=None, *, deps=())
+                     -> str, the assembly used by ``notlob build``, or
+                     None when the binding doesn't support it.
+    complete_references
+                     True when ``extract_calls`` reports every name the
+                     code refers to (not only calls), outside strings and
+                     comments.  Loading follows use only for a binding
+                     that sets this: a listed module whose names the
+                     code does not refer to is then a citation and is not
+                     loaded.  False (the default) means use cannot be
+                     determined, and every listing except one of a
+                     descendant module is loaded.
+
+    ``claims`` is a list of :class:`ClaimToRun`: the claims and tests of
+    *module* that notlob found, which the binding runs. notlob collects
+    them from the module's graph, wherever they are written (the body,
+    subheadings, an ``#Appendix``, ``#Tests``), and gives each callable
+    only the kinds it runs: ``"EXAMPLE"`` claims to ``run_examples``,
+    ``"PROPERTY"`` to ``run_properties``, ``"TEST"`` to ``run_tests``,
+    ``"RUN"`` to ``build``, and all of them to ``lint``. *module* stays
+    for assembly. A binding keeps everything about its language:
+    assembling code, splitting a claim into assertions, running,
+    reporting.
+
+    ``root`` is the project root (a ``Path``), or ``None`` without a
+    project, given to ``run_examples``, ``run_properties`` and
+    ``run_tests`` as ``lint`` has it: a binding that finds its toolchain
+    in the project reads it (TypeScript's ``node_modules``), and the
+    others accept it.
+
+    ``deps`` is a sequence of :class:`~notlob.model.Module`: the modules
+    whose code *module*'s code needs, and what those need, dependencies
+    first, each once. notlob works that out from the package graph
+    (``notlob.project.load_order``) and parses them; ``run_examples``,
+    ``run_properties``, ``run_tests`` and ``build`` inline them before
+    the module's own code and load nothing themselves. It is empty when
+    there is no project to load from.
 
     Runner and lint callables are typed as Callable[..., list] to avoid
     a circular import; element types are ClaimResult and LintResult
@@ -159,6 +244,7 @@ class BindingKit:
     extension:       str                        = "py"
     comment_prefix:  str                        = "#"
     build:           Callable[..., str]  | None = None
+    complete_references: bool                   = False
 
 
 # ── Lint result type ──────────────────────────────────────────
@@ -213,41 +299,27 @@ def assemble_section(
 
 # ── Shared ~run collection ───────────────────────────────────
 
-def collect_run_bodies(module: Module) -> tuple[list[str], list[str]]:
+def run_bodies(claims: Sequence[ClaimToRun]) -> tuple[list[str], list[str]]:
     """Return ``(on_load_bodies, on_invocation_bodies)`` -- dedented,
-    stripped text for each ``~run`` claim in *module* (module body and
-    subheadings), grouped by declared mode and preserving document
-    order within each group.
+    stripped text for each ``~run`` in *claims*, grouped by its mode and
+    preserving document order within each group.
 
-    Bare ``~run`` defaults to ``on-invocation`` -- the notlob
-    equivalent of ``if __name__ == "__main__":`` (see DESIGN.md).
-    ``~run on-load`` fires unconditionally whenever the built artifact
-    is loaded at all, not just when it's the entry point. What each
-    binding's ``build()`` does with that distinction -- or whether it
-    supports ``on-load`` at all -- is entirely up to that binding.
+    A bare ``~run`` is ``on-invocation`` -- the notlob equivalent of
+    ``if __name__ == "__main__":`` (see DESIGN.md). ``~run on-load``
+    fires unconditionally whenever the built artifact is loaded at all,
+    not just when it's the entry point. What each binding's ``build()``
+    does with that distinction -- or whether it supports ``on-load`` at
+    all -- is entirely up to that binding.
     """
     on_load: list[str] = []
     on_invocation: list[str] = []
-
-    def _mode(sigil: str) -> str:
-        parts = sigil.split(None, 1)
-        return parts[1] if len(parts) > 1 else "on-invocation"
-
-    def _collect(body: list) -> None:
-        for item in body:
-            if isinstance(item, Claim) and item.sigil.startswith("~run"):
-                text = textwrap.dedent("\n".join(item.lines)).strip()
-                if not text:
-                    continue
-                target = (
-                    on_load if _mode(item.sigil) == "on-load"
-                    else on_invocation
-                )
-                target.append(text)
-            elif isinstance(item, Subheading):
-                _collect(item.body)
-
-    _collect(module.body)
+    for claim in claims:
+        if claim.kind != "RUN":
+            continue
+        text = textwrap.dedent("\n".join(claim.lines)).strip()
+        if not text:
+            continue
+        (on_load if claim.mode == "on-load" else on_invocation).append(text)
     return on_load, on_invocation
 
 

@@ -1,0 +1,63 @@
+{
+ "binding.lob": {
+  "examples": [],
+  "properties": [],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": []
+ },
+ "pricing/discounts.lob": {
+  "examples": [
+   [
+    "pricing/discounts#example#1",
+    "apply_discount(Decimal('0.8'), Decimal('100')) == Decimal('80')",
+    15
+   ],
+   [
+    "pricing/discounts#Stacking Discounts#example#1",
+    "(apply_discount(Decimal('0.8'),\napply_discount(Decimal('0.9'), Decimal('100')))\n== Decimal('72'))",
+    27
+   ]
+  ],
+  "properties": [
+   [
+    "pricing/discounts#Stacking Discounts#property#1",
+    "~property",
+    31
+   ]
+  ],
+  "runs": {
+   "on_invocation": [],
+   "on_load": []
+  },
+  "tests": [
+   [
+    "pricing/discounts#Tests#boundary conditions",
+    "apply_discount(Decimal('1'), Decimal('100')) == Decimal('100')",
+    51
+   ],
+   [
+    "pricing/discounts#Tests#boundary conditions",
+    "apply_discount(Decimal('0'), Decimal('100')) == Decimal('0')",
+    52
+   ],
+   [
+    "pricing/discounts#Tests#boundary conditions",
+    "apply_discount(Decimal('0.5'), Decimal('0')) == Decimal('0')",
+    53
+   ],
+   [
+    "pricing/discounts#Tests#composition#composition_is_commutative",
+    "(apply_discount(Decimal('0.8'),\napply_discount(Decimal('0.9'), Decimal('100')))\n== Decimal('72'))",
+    62
+   ],
+   [
+    "pricing/discounts#Tests#composition#composition_is_commutative",
+    "(apply_discount(Decimal('0.9'),\napply_discount(Decimal('0.8'), Decimal('100')))\n== Decimal('72'))",
+    65
+   ]
+  ]
+ }
+}

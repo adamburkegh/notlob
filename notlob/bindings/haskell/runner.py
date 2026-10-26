@@ -61,15 +61,10 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import Any
+from typing import Sequence
 
-from notlob.bindings import ClaimResult, Status
-from notlob.graph import (
-    claim_address, module_address, property_address, subheading_address,
-)
-from notlob.model import (
-    Claim, Module, NamedTest, Subheading, TestsSection, TestGroup,
-)
+from notlob.bindings import ClaimResult, ClaimToRun, Status
+from notlob.model import Module
 from notlob.bindings.haskell.assemble import _merge_modules
 from notlob.bindings.haskell.symbols import extract_symbols
 
@@ -180,51 +175,6 @@ def _hs_string_escape(s: str) -> str:
          .replace('\r', '\\r')
          .replace('\t', '\\t')
     )
-
-
-# ── Dependency loading ────────────────────────────────────────
-
-def _load_dep_modules(
-    module: Module,
-    file_path: Path | None,
-) -> list[Module]:
-    """Return the lob-ref dependency modules of *module* in declaration order.
-
-    Resolves each ``#Title`` lob-ref in *module*'s ``#References``
-    section to its ``.lob`` file under the project root, parses it, and
-    returns the resulting Module objects.  Dependencies that cannot be
-    found or parsed are silently skipped — GHC will report the missing
-    symbol as a compile error, which is surfaced through the normal
-    claim-result machinery.
-
-    Returns an empty list when *file_path* is ``None`` (no project
-    context available) or when no project root is found.
-    """
-    if file_path is None:
-        return []
-
-    # Lazy imports: keep runner.py free of top-level circular deps
-    from notlob.project import (           # noqa: PLC0415
-        find_project_root,
-        module_lob_refs,
-        resolve_module_path,
-    )
-    from notlob.parser import parse_file   # noqa: PLC0415
-    from notlob.model import from_tree     # noqa: PLC0415
-
-    root = find_project_root(file_path)
-    if root is None:
-        return []
-
-    result: list[Module] = []
-    for dep_addr in module_lob_refs(module):
-        try:
-            dep_path = resolve_module_path(dep_addr, root)
-            result.append(from_tree(parse_file(dep_path)))
-        except Exception:
-            pass  # missing dep — will surface as GHC compile error
-
-    return result
 
 
 # ── Harness builders ──────────────────────────────────────────
@@ -480,141 +430,52 @@ def _parse_property_output(
     )
 
 
-# ── Claim collectors ──────────────────────────────────────────
+# ── What the claims handed over come to ───────────────────────
 
-def _collect_example_assertions(
-    body: list,
-    containing_addr: str,
-    assertions: list[tuple[str, str, int | None]],
-) -> None:
-    """Append (address, expression, source_line) from ~example claims."""
-    example_n = 0
-    for item in body:
-        if not (isinstance(item, Claim) and item.sigil == "~example"):
-            continue
-        example_n += 1
-        addr = claim_address(containing_addr, "example", example_n)
-        base = (item.start_line + 1) if item.start_line else None
-        for expr, offset in _iter_assertions(item.lines):
-            sl = (base + offset) if base else None
-            assertions.append((addr, expr, sl))
+def _assertions(
+    claims: Sequence[ClaimToRun],
+) -> list[tuple[str, str, int | None]]:
+    """Return (address, expression, source_line) for every assertion of
+    the ``~example`` claims and tests in *claims*.
 
-
-def _collect_tests_assertions(
-    tests_section: TestsSection,
-    tests_addr: str,
-    assertions: list[tuple[str, str, int | None]],
-) -> None:
-    """Append (address, expression, source_line) from a TestsSection.
-
-    Prose commentary (interspersed with assertions, at either level)
-    is not evaluated. ``~test <name>`` blocks get their own address
-    (``group_addr#name``), matching the Python binding's addressing --
-    see notlob.graph.property_address.
+    A claim is split into its assertions by this language's own rule
+    (``_iter_assertions``), one for each non-blank line.
     """
-    line_offsets = tests_section.line_offsets or {}
-    bare: list[str] = []
-    bare_indices: list[int] = []
-    for idx, item in enumerate(tests_section.items):
-        if isinstance(item, str):
-            bare.append(item)
-            bare_indices.append(idx)
-        elif isinstance(item, TestGroup):
-            if bare:
-                first_line = line_offsets.get(bare_indices[0])
-                for expr, offset in _iter_assertions(bare):
-                    sl = (first_line + offset) if first_line else None
-                    assertions.append((tests_addr, expr, sl))
-                bare = []
-                bare_indices = []
-            group_addr = f"{tests_addr}#{item.title}"
-            _collect_group_assertions(item, group_addr, assertions)
-        # ProseBlock: commentary, not evaluated.
-    if bare:
-        first_line = line_offsets.get(bare_indices[0])
-        for expr, offset in _iter_assertions(bare):
-            sl = (first_line + offset) if first_line else None
-            assertions.append((tests_addr, expr, sl))
-
-
-def _collect_group_assertions(
-    group: TestGroup,
-    group_addr: str,
-    assertions: list[tuple[str, str, int | None]],
-) -> None:
-    """Append (address, expression, source_line) from one TestGroup.
-
-    Bare lines share group_addr; each NamedTest gets its own address
-    (group_addr#name), with all its assertion lines sharing that one
-    address.  ProseBlock items are commentary, not evaluated.
-    """
-    group_offsets = group.line_offsets or {}
-    group_bare: list[str] = []
-    group_bare_indices: list[int] = []
-
-    def _flush_bare() -> None:
-        if not group_bare:
-            return
-        first_line = group_offsets.get(group_bare_indices[0])
-        base = first_line or (
-            (group.start_line + 1) if group.start_line else None
-        )
-        for expr, offset in _iter_assertions(group_bare):
-            sl = (base + offset) if base else None
-            assertions.append((group_addr, expr, sl))
-        group_bare.clear()
-        group_bare_indices.clear()
-
-    for gidx, gitem in enumerate(group.items):
-        if isinstance(gitem, str):
-            group_bare.append(gitem)
-            group_bare_indices.append(gidx)
-        elif isinstance(gitem, NamedTest):
-            _flush_bare()
-            addr = property_address(group_addr, gitem.name)
-            base = (gitem.start_line + 1) if gitem.start_line else None
-            for expr, offset in _iter_assertions(gitem.lines):
-                sl = (base + offset) if base else None
-                assertions.append((addr, expr, sl))
-        # ProseBlock: commentary, not evaluated.
-
-    _flush_bare()
+    assertions: list[tuple[str, str, int | None]] = []
+    for claim in claims:
+        for expr, offset in _iter_assertions(claim.lines):
+            sl = (claim.first_line + offset) if claim.first_line else None
+            assertions.append((claim.address, expr, sl))
+    return assertions
 
 
 # ── Public claim runners ──────────────────────────────────────
 
 def run_examples(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     file_path: Path | None = None,
-    cache: Any = None,
+    root: Path | None = None,
     keep_dir: Path | None = None,
+    deps: Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all ~example claims in *module* and return results.
+    """Run the ~example *claims* of *module* and return results.
 
-    Builds a single runghc harness containing all ~example assertions
-    across the module body and all subheadings, executes it, and
-    returns one ClaimResult per assertion line.
+    Builds a single runghc harness containing all their assertions,
+    executes it, and returns one ClaimResult per assertion line.
 
-    *file_path* is used to locate the project root for dependency
-    resolution; lob-ref dependencies are inlined into the harness.
+    *deps*, the modules whose code *module* needs (dependencies first),
+    are inlined into the harness.
 
     If *keep_dir* is set the harness source is written there as
     ``_examples.hs`` before execution.
     """
-    mod_addr = module_address(module.title)
-    assertions: list[tuple[str, str, int | None]] = []
-
-    _collect_example_assertions(module.body, mod_addr, assertions)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _collect_example_assertions(item.body, sub_addr, assertions)
-
+    assertions = _assertions(claims)
     if not assertions:
         return []
 
-    dep_modules = _load_dep_modules(module, file_path)
-    harness     = _build_examples_harness(module, assertions, dep_modules)
+    harness     = _build_examples_harness(module, assertions, list(deps))
     keep_path   = (keep_dir / "_examples.hs") if keep_dir else None
     stdout, stderr, rc = _run_harness(harness, keep_path=keep_path)
     return _parse_output(stdout, stderr, rc, assertions, file_path)
@@ -622,43 +483,30 @@ def run_examples(
 
 def run_tests(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     binding: dict | None = None,
     file_path: Path | None = None,
-    cache: Any = None,
+    root: Path | None = None,
     keep_dir: Path | None = None,
+    deps: Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all #Tests assertions in *module* and return results.
+    """Run the tests in *claims*, the #Tests assertions of *module*, and
+    return results.
 
     Assertions are treated as Boolean Haskell expressions, one per
-    non-blank assertion line.  Named ``##`` groups receive addresses of
-    the form ``<module>#Tests#<group>``; ungrouped assertions use
-    ``<module>#Tests``.
+    non-blank assertion line.  Each run of bare assertions is reported
+    at its own address, ``<module>#Tests#<group>#test#<n>``
+    (``<module>#Tests#test#<n>`` outside any group).
 
     If *keep_dir* is set the harness source is written there as
     ``_tests.hs`` before execution.
     """
-    if module.post_text is None:
-        return []
-
-    tests_section = next(
-        (s for s in module.post_text.sections
-         if isinstance(s, TestsSection)),
-        None,
-    )
-    if tests_section is None:
-        return []
-
-    mod_addr   = module_address(module.title)
-    tests_addr = f"{mod_addr}#Tests"
-    assertions: list[tuple[str, str, int | None]] = []
-
-    _collect_tests_assertions(tests_section, tests_addr, assertions)
-
+    assertions = _assertions(claims)
     if not assertions:
         return []
 
-    dep_modules = _load_dep_modules(module, file_path)
-    harness     = _build_examples_harness(module, assertions, dep_modules)
+    harness     = _build_examples_harness(module, assertions, list(deps))
     keep_path   = (keep_dir / "_tests.hs") if keep_dir else None
     stdout, stderr, rc = _run_harness(harness, keep_path=keep_path)
     return _parse_output(stdout, stderr, rc, assertions, file_path)
@@ -666,83 +514,69 @@ def run_tests(
 
 def run_properties(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     binding: dict | None = None,
     file_path: Path | None = None,
-    cache: Any = None,
+    root: Path | None = None,
     keep_dir: Path | None = None,
+    deps: Sequence[Module] = (),
 ) -> list[ClaimResult]:
-    """Run all ~property claims in *module* and return results.
+    """Run the ~property *claims* of *module* and return results.
 
     Each claim block is run in its own subprocess.  The property
     function name is extracted from the claim lines using the Haskell
     symbol extractor; the first function found in the block is used.
 
-    Named properties (``~property name``) use the sigil name as the
-    address fragment; unnamed properties use an ordinal.
+    A claim reports at the address notlob gave it: a named property's
+    name, or an ordinal among the properties of the section it is in.
 
     If *keep_dir* is set each property harness is written there as
     ``_prop_<name>.hs`` before execution.
     """
-    mod_addr    = module_address(module.title)
-    dep_modules = _load_dep_modules(module, file_path)
+    dep_modules = list(deps)
     results: list[ClaimResult] = []
-    prop_n = 0
 
-    def _run_prop_in(body: list, containing_addr: str) -> None:
-        nonlocal prop_n
-        for item in body:
-            if not (isinstance(item, Claim)
-                    and item.sigil.startswith("~property")):
-                continue
-            prop_n += 1
+    for claim in claims:
+        addr  = claim.address
+        sigil = "~property" + (f" {claim.name}" if claim.name else "")
+        sl    = claim.sigil_line
 
-            parts = item.sigil.split(None, 1)
-            if len(parts) > 1:
-                addr = property_address(containing_addr, parts[1].strip())
-            else:
-                addr = claim_address(containing_addr, "property", prop_n)
+        syms = extract_symbols(claim.lines)
+        if not syms:
+            results.append(ClaimResult(
+                address=addr,
+                line=sigil,
+                status=Status.ERROR,
+                error=ValueError(
+                    "no function found in ~property block; "
+                    "define a top-level property function"
+                ),
+                source_line=sl,
+                file_path=str(file_path) if file_path else None,
+            ))
+            continue
 
-            sl = item.start_line
-
-            syms = extract_symbols(item.lines)
-            if not syms:
-                results.append(ClaimResult(
-                    address=addr,
-                    line=item.sigil,
-                    status=Status.ERROR,
-                    error=ValueError(
-                        "no function found in ~property block; "
-                        "define a top-level property function"
-                    ),
-                    source_line=sl,
-                    file_path=str(file_path) if file_path else None,
-                ))
-                continue
-
-            prop_name  = syms[0].name
-            safe_name  = re.sub(r"[^A-Za-z0-9_]", "_", prop_name)
-            harness    = _build_property_harness(
-                module, item.lines, addr, prop_name, dep_modules,
+        prop_name  = syms[0].name
+        safe_name  = re.sub(r"[^A-Za-z0-9_]", "_", prop_name)
+        harness    = _build_property_harness(
+            module, claim.lines, addr, prop_name, dep_modules,
+        )
+        keep_path  = (
+            keep_dir / f"_prop_{safe_name}.hs"
+        ) if keep_dir else None
+        stdout, stderr, rc = _run_harness(
+            harness,
+            extra_packages=["QuickCheck"],
+            keep_path=keep_path,
+        )
+        results.append(
+            _parse_property_output(
+                stdout, stderr, rc, addr, sigil,
+                source_line=sl, file_path=file_path,
             )
-            keep_path  = (
-                keep_dir / f"_prop_{safe_name}.hs"
-            ) if keep_dir else None
-            stdout, stderr, rc = _run_harness(
-                harness,
-                extra_packages=["QuickCheck"],
-                keep_path=keep_path,
-            )
-            results.append(
-                _parse_property_output(
-                    stdout, stderr, rc, addr, item.sigil,
-                    source_line=sl, file_path=file_path,
-                )
-            )
+        )
 
-    _run_prop_in(module.body, mod_addr)
-    for item in module.body:
-        if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
-            _run_prop_in(item.body, sub_addr)
+    return results
 
     return results

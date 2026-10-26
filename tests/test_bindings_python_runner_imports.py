@@ -1,19 +1,23 @@
 """Tests for cross-file import support in the Python claim runner.
 
 Verifies that run_examples, run_properties, and run_tests correctly
-inline lob-ref dependency source (via _load_dep_modules + file_path,
-matching build_python) when evaluating claims. The old mechanism was
-an in-process ModuleCache passed as a `cache=` argument -- superseded
-because claims now run in a subprocess, which has no access to an
-in-memory cache from the parent process. `cache` is still accepted by
-all three functions for BindingKit call-site compatibility but is
-unused; dependency resolution is entirely file_path-driven now.
+inline the lob-ref dependency source they are handed (the modules notlob
+works out the module needs, as a command does for the project the
+file_path is in, matching build_python) when evaluating claims. Claims
+run in a subprocess, which has no access to an in-memory namespace in the
+parent process, so dependencies are handed over as `deps` and inlined.
 """
 
 from pathlib import Path
 
+from kitcalls import in_project
 from notlob import from_tree, parse
-from notlob.bindings.python.runner import Status, run_examples, run_properties, run_tests
+from notlob.bindings.python import kit, runner
+from notlob.bindings.python.runner import Status
+
+run_examples = in_project(runner.run_examples, kit, "EXAMPLE")
+run_properties = in_project(runner.run_properties, kit, "PROPERTY")
+run_tests = in_project(runner.run_tests, kit, "TEST")
 
 
 # ── Helpers ───────────────────────────────────────────────────

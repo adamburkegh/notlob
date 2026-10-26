@@ -9,7 +9,7 @@ Assembly order
   1. #References lines  (import preamble; no location comment)
   2. Module-level code blocks  (preceded by "# <module_address>")
   3. Subheading code blocks in document order
-     (each group preceded by "# <subheading_address>")
+     (each group preceded by "# <the subheading's address>")
   4. #Appendix code blocks, if any -- same status as main-body code,
      not test-only or build-only.  #Appendix isn't structurally
      mandated to be test-support: an author might move a supporting
@@ -46,7 +46,7 @@ from __future__ import annotations
 import textwrap
 
 from notlob.bindings import assemble_section, collect_blocks
-from notlob.graph import module_address, subheading_address
+from notlob.graph import module_address, named_address
 from notlob.model import (
     AppendixSection, Module, ReferencesSection, Subheading,
 )
@@ -99,7 +99,7 @@ def assemble(module: Module) -> str:
     # ── 3. Subheading code blocks ────────────────────────────────
     for item in module.body:
         if isinstance(item, Subheading):
-            sub_addr = subheading_address(mod_addr, item.title)
+            sub_addr = named_address(mod_addr, item.title)
             sub_blocks = collect_blocks(item.body)
             if sub_blocks:
                 chunks.append(assemble_section(
@@ -125,7 +125,7 @@ def assemble(module: Module) -> str:
                     # under #Appendix, so a ##Name reference from the
                     # main body resolves to the same address this
                     # location comment names.
-                    sub_addr = subheading_address(mod_addr, item.title)
+                    sub_addr = named_address(mod_addr, item.title)
                     sub_blocks = collect_blocks(item.body)
                     if sub_blocks:
                         chunks.append(assemble_section(
@@ -144,18 +144,25 @@ def assemble(module: Module) -> str:
     return result
 
 
-def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
+def assemble_with_deps(
+    module: Module, dep_modules: list[Module], module_prelude: str = "",
+) -> str:
     """Assemble *module* with *dep_modules* inlined before it.
 
-    Used by ``build_python`` so a build artifact is genuinely
-    standalone-executable: ``notlob test``/``notlob run`` resolve
-    cross-module ``#References`` at execution time via ``ModuleCache``,
-    but a build artifact has no loader around it, so dependency source
-    has to be inlined directly instead. Dependencies are assembled with
-    the same ``assemble()`` used for the target module, so each one's
-    own ``#References`` language imports come along for free — no
-    separate import-merging step is needed. Mirrors
+    Used by ``build_python`` and the claim runners so what runs is
+    genuinely standalone-executable: there is no loader around it, so
+    dependency source has to be inlined directly. Dependencies are
+    assembled with the same ``assemble()`` used for the target module,
+    so each one's own ``#References`` language imports come along for
+    free — no separate import-merging step is needed. Mirrors
     ``notlob.bindings.haskell.assemble.assemble_with_deps``.
+
+    *module_prelude*, if given, is a line of code placed between the
+    dependencies and the module's own code (the claim runners use it to
+    set ``__file__`` to the module's ``.lob`` path; a build does not, so
+    an artifact carries no source path). Limitation: it is one shared
+    namespace, so a dependency inlined before the module still sees the
+    harness's path when it loads, and the module's path afterwards.
 
     Returns an empty string if neither the module nor any dependency
     contains code.
@@ -163,6 +170,8 @@ def assemble_with_deps(module: Module, dep_modules: list[Module]) -> str:
     chunks = [text for dep in dep_modules if (text := assemble(dep))]
     own = assemble(module)
     if own:
+        if module_prelude:
+            chunks.append(module_prelude)
         chunks.append(own)
     return "\n\n\n".join(chunks)
 

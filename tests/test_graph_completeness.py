@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from notlob import from_tree, parse
 from notlob.graph import (
-    NodeKind, build, enrich, claim_address,
-    subheading_address,
+    NodeKind, build, enrich, anonymous_address,
+    named_address,
 )
 from notlob.bindings.python.symbols import extract_symbols
 from notlob.model import Claim, Subheading
@@ -123,7 +123,7 @@ class TestRunInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        addr = claim_address("comprehensive", "run", 1)
+        addr = anonymous_address("comprehensive", NodeKind.RUN, 1)
         node = graph.node(addr)
         assert node is not None
         assert node.kind == NodeKind.RUN
@@ -132,10 +132,10 @@ class TestRunInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        addr = claim_address("comprehensive", "run", 1)
+        addr = anonymous_address("comprehensive", NodeKind.RUN, 1)
         node = graph.node(addr)
-        assert node.content is not None
-        assert "print(helper())" in node.content["code"]
+        assert node.text is not None
+        assert "print(helper())" in node.text
 
 
 class TestExamplesInGraph:
@@ -143,7 +143,7 @@ class TestExamplesInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        addr = claim_address("comprehensive", "example", 1)
+        addr = anonymous_address("comprehensive", NodeKind.EXAMPLE, 1)
         node = graph.node(addr)
         assert node is not None
         assert node.kind == NodeKind.EXAMPLE
@@ -152,8 +152,8 @@ class TestExamplesInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        sub_addr = subheading_address("comprehensive", "Sub Section")
-        addr = claim_address(sub_addr, "example", 1)
+        sub_addr = named_address("comprehensive", "Sub Section")
+        addr = anonymous_address(sub_addr, NodeKind.EXAMPLE, 1)
         node = graph.node(addr)
         assert node is not None
         assert node.kind == NodeKind.EXAMPLE
@@ -170,22 +170,30 @@ class TestTestsInGraph:
     def test_bare_tests(self):
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
-        node = graph.node("comprehensive#Tests")
-        assert node is not None
-        assert node.kind == NodeKind.TEST
+        section = graph.node("comprehensive#Tests")
+        assert section is not None
+        assert section.kind == NodeKind.TESTS
+        run = graph.node("comprehensive#Tests#test#1")
+        assert run is not None
+        assert run.kind == NodeKind.TEST
+        assert "helper() == 42" in run.text
 
     def test_named_group(self):
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         node = graph.node("comprehensive#Tests#edge cases")
         assert node is not None
-        assert node.kind == NodeKind.TEST
+        assert node.kind == NodeKind.TEST_GROUP
 
     def test_test_count(self):
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
+        # the bare assertions in #Tests and the group's own assertions;
+        # the group is a TEST_GROUP and the #Tests section a TESTS node
         tests = list(graph.nodes(kind=NodeKind.TEST))
         assert len(tests) == 2
+        assert len(list(graph.nodes(kind=NodeKind.TEST_GROUP))) == 1
+        assert len(list(graph.nodes(kind=NodeKind.TESTS))) == 1
 
 
 class TestPropertiesInGraph:
@@ -232,7 +240,7 @@ class TestSubheadingsInGraph:
     def test_subheading_present(self):
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
-        sub_addr = subheading_address("comprehensive", "Sub Section")
+        sub_addr = named_address("comprehensive", "Sub Section")
         node = graph.node(sub_addr)
         assert node is not None
         assert node.kind == NodeKind.SUBHEADING

@@ -28,8 +28,9 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Sequence
 
-from notlob.bindings import LintResult, LintToolUnavailable
+from notlob.bindings import ClaimToRun, LintResult, LintToolUnavailable
 from notlob.bindings.haskell.assemble import assemble
 from notlob.graph import module_address
 from notlob.model import Module
@@ -43,9 +44,14 @@ def parse_source_map(assembled_src: str) -> dict[int, str]:
 
 def lint_haskell(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     root: Path | None = None,
 ) -> list[LintResult]:
     """Assemble *module* and run hlint; return a list of LintResults.
+
+    *claims* are accepted for the kit's call shape; hlint looks at the
+    assembled source only, which leaves claims out.
 
     *root* is accepted for API symmetry with ``lint_python`` but is not
     currently used — hlint is a style checker that does not need

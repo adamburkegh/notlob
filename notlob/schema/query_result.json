@@ -2,10 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/query-result",
   "title": "QueryResult",
-  "description": "What the `notlob query ...` commands print to stdout, each a bare JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `references`, `referenced-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull and `content` prints a NodeOrNull whose node carries `content`; both print `null` and exit 1 when the address or label does not resolve. A node here is the name-graph's node (the `Node` and `Content` definitions are identical to those in name_graph.json; a test keeps them identical). Unlike `test --json` and `check --json` these outputs are not wrapped in a versioned object, so their shape follows the name-graph's. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
+  "description": "What the `notlob query ...` commands print to stdout, each a JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `references`, `referenced-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull. `content` prints a SubtreeOrNull: the subtree at an address as a document in the shape of `notlob graph --level full` with a `root`. All print `null` and exit 1 when the address or label does not resolve. A node, a reference and an edge here are the name-graph's (`Node`, `GraphRef` and `Edge` are identical to `GraphNode`, `GraphRef` and `GraphEdge` in name_graph.json; a test keeps them identical); a query prints a node as `notlob graph --level outline` does. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
   "anyOf": [
     {"$ref": "#/definitions/NodeList"},
     {"$ref": "#/definitions/Node"},
+    {"$ref": "#/definitions/Subtree"},
     {"type": "null"}
   ],
   "definitions": {
@@ -21,8 +22,49 @@
         {"type": "null"}
       ]
     },
+    "Subtree": {
+      "description": "The node at `root` and what it contains, down the depth asked for, at the `full` level: the nodes in document order, and the edges whose source is among them (CONTAINS within the subtree, and the references, uses and imports from it). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not among the nodes.",
+      "type": "object",
+      "required": [
+        "version",
+        "level",
+        "root",
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "description": "The version of this document format; that of `notlob graph`.",
+          "const": 2
+        },
+        "level": {
+          "description": "Always `full`.",
+          "const": "full"
+        },
+        "root": {
+          "description": "The address the subtree is of.",
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Node"}
+        },
+        "edges": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Edge"}
+        }
+      }
+    },
+    "SubtreeOrNull": {
+      "description": "A subtree, or null when the address does not resolve.",
+      "anyOf": [
+        {"$ref": "#/definitions/Subtree"},
+        {"type": "null"}
+      ]
+    },
     "Node": {
-      "description": "A named node: module, subheading, symbol, property, example, test, or external.",
+      "description": "One element of a .lob file: a module, a section, a paragraph, a code block, a claim, a test, a symbol, or an external file.",
       "type": "object",
       "required": [
         "address",
@@ -40,7 +82,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "What type of named thing this node represents.",
+          "description": "What kind of element this node is.",
           "type": "string",
           "enum": [
             "MODULE",
@@ -50,36 +92,117 @@
             "EXAMPLE",
             "RUN",
             "TEST",
-            "EXTERNAL"
+            "EXTERNAL",
+            "PROSE",
+            "CODE",
+            "BULLETS",
+            "APPENDIX",
+            "TESTS",
+            "POST_TEXT",
+            "TEST_GROUP"
           ]
         },
-        "content": {
-          "description": "Source payload; present only when include_content=True.",
-          "$ref": "#/definitions/Content"
+        "named": {
+          "description": "True where the document gives the node a name (a heading, a `##group`, a `~property` or a `~test`); its `label` is the name. Absent for an anonymous node and for what a document does not name.",
+          "const": true
+        },
+        "mode": {
+          "description": "When a RUN runs; present on a RUN only. A bare `~run` is `on-invocation`.",
+          "type": "string",
+          "enum": [
+            "on-load",
+            "on-invocation"
+          ]
+        },
+        "file": {
+          "description": "The .lob file it is written in, relative to the project root, with '/' separators. Absent for an external file and for a module built on its own.",
+          "type": "string"
         },
         "start_line": {
-          "description": "1-based source line number where this node begins in its .lob file.",
+          "description": "1-based line of its file where it begins.",
           "type": "integer"
+        },
+        "end_line": {
+          "description": "1-based last non-blank line of its file that it occupies.",
+          "type": "integer"
+        },
+        "size": {
+          "description": "The characters of text held at or under the node, each leaf's text counted once; a symbol holds none of its own, so it adds nothing to its section and its own size is that of its lines. Present from `index` on.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "refs": {
+          "description": "The references a paragraph holds, in the order written. Present on a PROSE node from `index` on.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphRef"
+          }
+        },
+        "text": {
+          "description": "The text the node holds: a paragraph with its references written with their sigils, a dedented code block, a bullet list's items one to a line, a claim's dedented lines, a run of assertions or a named test as written. Present at `full` on each node that holds text, and never on a symbol (its lines are in its code block).",
+          "type": "string"
         }
       }
     },
-    "Content": {
-      "description": "Source content attached to a node.",
+    "GraphRef": {
+      "description": "A `#Label` or `##Label` written in a paragraph.",
       "type": "object",
+      "required": [
+        "label",
+        "sub",
+        "start_line"
+      ],
       "additionalProperties": false,
       "properties": {
-        "prose": {
-          "description": "Plain text of prose blocks (refs re-serialised with sigil).",
+        "label": {
+          "description": "What it names, without the sigil.",
           "type": "string"
         },
-        "code": {
-          "description": "Dedented source code for the node.",
+        "sub": {
+          "description": "True for `##Label`, which names a subheading of the module only.",
+          "type": "boolean"
+        },
+        "start_line": {
+          "description": "1-based line where it is written.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "Edge": {
+      "description": "A directed relationship between two nodes.",
+      "type": "object",
+      "required": [
+        "source",
+        "target",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "description": "Address of the source node.",
           "type": "string"
         },
-        "bullet_block_count": {
-          "description": "Number of bullet lists (`* item` blocks) directly in the section. Present only when it is at least 1; the bullet items' text is part of `prose`.",
-          "type": "integer",
-          "minimum": 1
+        "target": {
+          "description": "Address of the target node.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "CONTAINS: a node to what is written in it (the trees); REFERENCES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
+          "type": "string",
+          "enum": [
+            "CONTAINS",
+            "REFERENCES",
+            "USES",
+            "IMPORTS",
+            "USES_EXTERNAL"
+          ]
+        },
+        "start_line": {
+          "description": "1-based line of the source's file of the first reference or call site, where the edge has one. Where edges are merged, the earliest.",
+          "type": "integer"
         }
       }
     }

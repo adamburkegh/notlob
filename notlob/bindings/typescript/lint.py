@@ -38,8 +38,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from typing import Sequence
+
 from notlob.bindings import (
-    LintResult, LintToolUnavailable, parse_source_map,
+    ClaimToRun, LintResult, LintToolUnavailable, parse_source_map,
 )
 from notlob.bindings.typescript.assemble import assemble
 from notlob.bindings.typescript.runner import node_bin
@@ -64,9 +66,14 @@ _TSC_FLAGS = [
 
 def lint_typescript(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     root: Path | None = None,
 ) -> list[LintResult]:
     """Assemble *module* and run ``tsc --noEmit``; return LintResults.
+
+    *claims* are accepted for the kit's call shape; ``tsc`` checks the
+    assembled source only, which leaves claims out.
 
     When *root* is provided and the module has lob-ref dependencies,
     their assembled sources are prepended so cross-module names resolve.

@@ -6,7 +6,10 @@ Assembles the Haskell ``BindingKit`` from its submodules and exposes
 Usage::
 
     from notlob.bindings.haskell import kit
-    results = kit.run_examples(module, file_path=path)
+    results = kit.run_examples(module, examples, file_path=path)
+
+where *examples* are the ``~example`` claims notlob collected from the
+module's graph (``notlob.graph.claims_to_run``).
 
 Runner availability
 -------------------
@@ -17,12 +20,13 @@ rather than raising.
 """
 
 from pathlib import Path
+from typing import Sequence
 
-from notlob.bindings import BindingKit, collect_run_bodies
+from notlob.bindings import BindingKit, ClaimToRun, run_bodies
 from notlob.bindings.haskell.assemble import assemble, assemble_with_deps
 from notlob.bindings.haskell.lint import lint_haskell
 from notlob.bindings.haskell.runner import (
-    _load_dep_modules, run_examples, run_tests, run_properties,
+    run_examples, run_tests, run_properties,
 )
 from notlob.bindings.haskell.symbols import extract_calls, extract_symbols
 from notlob.model import Module
@@ -30,14 +34,18 @@ from notlob.model import Module
 
 def build_haskell(
     module: Module,
+    claims: Sequence[ClaimToRun],
     file_path: Path | None = None,
+    *,
+    deps: Sequence[Module] = (),
 ) -> str:
     """Assemble *module* with inlined deps for the build command.
 
-    Loads lob-ref dependencies from the project tree rooted at
-    *file_path*, inlines their code before the module's own code, then
-    appends the target module's own ``~run`` claim bodies so the
-    artifact has an entry point when compiled/executed.
+    Inlines *deps*, the modules whose code *module* needs, before the
+    module's own code, then appends the target module's own ``~run``
+    claim bodies so the artifact has an entry point when
+    compiled/executed. *file_path* is accepted for the shared
+    ``BindingKit`` call site.
 
     ``~run`` (bare) and ``~run on-invocation`` are equivalent here and
     need no guard code: Haskell's ``import`` never executes ``IO``
@@ -53,10 +61,9 @@ def build_haskell(
     for) or silently doing nothing (which would misrepresent that the
     build succeeded with the requested behaviour intact).
     """
-    dep_modules = _load_dep_modules(module, file_path)
-    source = assemble_with_deps(module, dep_modules)
+    source = assemble_with_deps(module, list(deps))
 
-    on_load, on_invocation = collect_run_bodies(module)
+    on_load, on_invocation = run_bodies(claims)
     if on_load:
         raise ValueError(
             "~run on-load is not supported by the Haskell binding -- "

@@ -15,6 +15,7 @@ from notlob import (
     PostText, TestsSection, TestGroup,
     BindingSection, ReferencesSection,
 )
+from notlob.model import AppendixSection, NamedTest
 
 
 def model(source: str) -> Module:
@@ -324,3 +325,357 @@ class TestBulletBlock:
         sub = m.body[0]
         assert isinstance(sub, Subheading)
         assert isinstance(sub.body[0], BulletBlock)
+
+
+# ── Positions ────────────────────────────────────────────────
+#
+# Every element of the model has a first and a last line, 1-based and
+# inclusive. The last line is the last non-blank line of the element:
+# the blank lines the grammar keeps at the end of a block do not count.
+
+def at(element) -> tuple[int | None, int | None]:
+    return (element.start_line, element.end_line)
+
+
+def post(m: Module, kind):
+    return [s for s in m.post_text.sections if isinstance(s, kind)]
+
+
+class TestProsePosition:
+    def test_one_line(self):
+        m = model("#T\n\nOne line.\n")
+        assert at(m.body[0]) == (3, 3)
+
+    def test_several_lines_and_a_second_paragraph(self):
+        m = model("#T\n\nFirst para\nsecond line.\n\nNext.\n")
+        assert [at(b) for b in m.body] == [(3, 4), (6, 6)]
+
+    def test_a_paragraph_with_references(self):
+        m = model("#T\nSee #Foo Bar.\nAnd ##Baz.\n")
+        assert at(m.body[0]) == (2, 3)
+
+
+class TestBlockPositions:
+    def test_code_block_excludes_trailing_blank_lines(self):
+        m = model("#T\n    a = 1\n\n    b = 2\n\n\nProse.\n")
+        assert at(m.body[0]) == (2, 4)
+        assert at(m.body[1]) == (7, 7)
+
+    def test_one_line_code_block(self):
+        m = model("#T\n    a = 1\n")
+        assert at(m.body[0]) == (2, 2)
+
+    def test_claim_excludes_trailing_blank_lines(self):
+        m = model("#T\n~example\n    x == 1\n    y == 2\n\n\nAfter.\n")
+        assert at(m.body[0]) == (2, 4)
+
+    def test_claim_with_no_body_is_its_sigil_line(self):
+        m = model("#T\n~example\n\nAfter.\n")
+        assert at(m.body[0]) == (2, 2)
+
+    def test_bullet_block(self):
+        m = model("#T\n* a\n* b\n* c\n")
+        assert at(m.body[0]) == (2, 4)
+
+    def test_lone_asterisk_bullet(self):
+        m = model("#T\n*\n")
+        assert at(m.body[0]) == (2, 2)
+
+
+class TestSectionPositions:
+    def test_subheading_runs_to_its_last_item(self):
+        m = model("#T\n\n##Sub\n\nProse.\n\n    code\n\n\n##Empty\n")
+        sub, empty = m.body
+        assert at(sub) == (3, 7)
+        assert [at(i) for i in sub.body] == [(5, 5), (7, 7)]
+
+    def test_subheading_with_no_items_is_its_heading_line(self):
+        m = model("#T\n\n##Sub\n\n\n##Empty\n")
+        assert [at(s) for s in m.body] == [(3, 3), (6, 6)]
+
+    def test_module_without_post_text(self):
+        m = model("#T\n\nText.\n\n\n")
+        assert at(m) == (1, 3)
+
+    def test_module_with_only_a_title(self):
+        assert at(model("#T\n")) == (1, 1)
+
+    def test_module_includes_its_post_text(self):
+        m = model("#T\n\nProse.\n\n---\n\n#References\n    #Foo\n\n")
+        assert at(m) == (1, 8)
+
+    def test_module_includes_a_bare_separator(self):
+        assert at(model("#T\n\n---\n")) == (1, 3)
+
+
+class TestPostTextPosition:
+    def test_it_runs_from_the_separator_to_the_last_section_line(self):
+        m = model("#T\n\nProse.\n\n---\n\n#References\n    #Foo\n\n")
+        assert at(m.post_text) == (5, 8)
+        assert at(m) == (1, 8)
+
+    def test_its_last_line_is_the_modules(self):
+        m = model(_TESTS)
+        assert at(m.post_text) == (3, 14)
+        assert m.post_text.end_line == m.end_line
+
+    def test_a_bare_separator_is_one_line(self):
+        assert at(model("#T\n\n---\n").post_text) == (3, 3)
+
+    def test_trailing_blank_lines_are_not_part_of_it(self):
+        assert at(model("#T\n\n---\n\n#Tests\n\n\n\n").post_text) == (3, 5)
+
+    def test_it_holds_its_sections(self):
+        m = model(
+            "#T\n\n---\n\n#Tests\n    a == 1\n\n#Appendix\n\nProse.\n")
+        post_text = m.post_text
+        assert [at(s) for s in post_text.sections] == [(5, 6), (8, 10)]
+        assert at(post_text) == (3, 10)
+
+
+_TESTS = (
+    "#T\n"              # 1
+    "\n"                # 2
+    "---\n"             # 3
+    "\n"                # 4
+    "#Tests\n"          # 5
+    "\n"                # 6
+    "##g\n"             # 7
+    "    a == 1\n"      # 8
+    "\n"                # 9
+    "~test nm\n"        # 10
+    "    b == 2\n"      # 11
+    "\n"                # 12
+    "\n"                # 13
+    "##h\n"             # 14
+)
+
+
+class TestTestsPositions:
+    def test_tests_section_runs_to_its_last_group(self):
+        (tests,) = post(model(_TESTS), TestsSection)
+        assert at(tests) == (5, 14)
+
+    def test_group_excludes_trailing_blank_lines(self):
+        (tests,) = post(model(_TESTS), TestsSection)
+        g, h = tests.items
+        assert at(g) == (7, 11)
+        assert at(h) == (14, 14)
+
+    def test_named_test(self):
+        (tests,) = post(model(_TESTS), TestsSection)
+        named = [i for i in tests.items[0].items
+                 if isinstance(i, NamedTest)]
+        assert [at(n) for n in named] == [(10, 11)]
+
+    def test_prose_in_a_group(self):
+        m = model(
+            "#T\n\n---\n\n#Tests\n\n##g\n    a == 1\n\n"
+            "Commentary\non two lines.\n")
+        (tests,) = post(m, TestsSection)
+        prose = [i for i in tests.items[0].items
+                 if isinstance(i, ProseBlock)]
+        assert [at(p) for p in prose] == [(10, 11)]
+        assert at(tests.items[0]) == (7, 11)
+
+    def test_bare_assertions_and_prose_at_the_section_level(self):
+        m = model("#T\n\n---\n\n#Tests\n    a == 1\n\nCommentary.\n")
+        (tests,) = post(m, TestsSection)
+        assert at(tests) == (5, 8)
+        assert at(tests.items[1]) == (8, 8)
+
+    def test_tests_section_with_no_items(self):
+        (tests,) = post(model("#T\n\n---\n\n#Tests\n"), TestsSection)
+        assert at(tests) == (5, 5)
+
+
+class TestOtherPostTextPositions:
+    def test_binding_section(self):
+        m = model(
+            "#T\n\n---\n\n#Binding\n    ~language python\n"
+            "    ~external a.txt\n\n")
+        (binding,) = post(m, BindingSection)
+        assert at(binding) == (5, 7)
+
+    def test_binding_section_with_no_declarations(self):
+        m = model("#T\n\n---\n\n#Binding\n")
+        (binding,) = post(m, BindingSection)
+        assert at(binding) == (5, 5)
+
+    def test_references_section(self):
+        m = model("#T\n\n---\n\n#References\n    #Foo\n    import x\n\n")
+        (refs,) = post(m, ReferencesSection)
+        assert at(refs) == (5, 7)
+
+    def test_references_section_with_no_lines(self):
+        m = model("#T\n\n---\n\n#References\n")
+        (refs,) = post(m, ReferencesSection)
+        assert at(refs) == (5, 5)
+
+    def test_appendix_runs_to_its_last_item(self):
+        m = model(
+            "#T\n\n---\n\n#Appendix Notes\n\nProse.\n\n    code\n\n\n")
+        (appendix,) = post(m, AppendixSection)
+        assert at(appendix) == (5, 9)
+        assert [at(i) for i in appendix.body] == [(7, 7), (9, 9)]
+
+    def test_appendix_with_no_items(self):
+        m = model("#T\n\n---\n\n#Appendix\n")
+        (appendix,) = post(m, AppendixSection)
+        assert at(appendix) == (5, 5)
+
+    def test_the_per_line_positions_are_unchanged(self):
+        m = model(
+            "#T\n\n---\n\n#Binding\n    ~language python\n"
+            "    ~external a.txt\n    ~on-build hook.py\n\n"
+            "#References\n    #Foo\n    import x\n")
+        (binding,) = post(m, BindingSection)
+        (refs,) = post(m, ReferencesSection)
+        assert binding.external_lines == [7]
+        assert binding.on_build_line == 8
+        assert refs.line_numbers == [11, 12]
+
+
+class TestRomanPositions:
+    """`examples/roman/roman/numerals.lob`, whose lines are fixed."""
+
+    def roman(self) -> Module:
+        return from_tree(parse_file(EXAMPLES / "roman/roman/numerals.lob"))
+
+    def sub(self, title: str) -> Subheading:
+        return next(i for i in self.roman().body
+                    if isinstance(i, Subheading) and i.title == title)
+
+    def test_the_module(self):
+        assert at(self.roman()) == (1, 105)
+
+    def test_the_body_items(self):
+        body = self.roman().body
+        prose = [at(i) for i in body if isinstance(i, ProseBlock)]
+        code = [at(i) for i in body if isinstance(i, CodeBlock)]
+        claims = [at(i) for i in body if isinstance(i, Claim)]
+        assert prose == [(3, 6), (8, 10), (32, 35)]
+        assert code == [(12, 25)]
+        assert claims == [(27, 30), (37, 38)]
+
+    def test_decoding(self):
+        sub = self.sub("Decoding")
+        assert at(sub) == (40, 60)
+        assert [at(i) for i in sub.body] == [(42, 44), (46, 56), (58, 60)]
+
+    def test_round_trip(self):
+        sub = self.sub("Round-Trip")
+        assert at(sub) == (62, 71)
+        assert [at(i) for i in sub.body] == [(64, 66), (68, 71)]
+
+    def test_tests_section_and_groups(self):
+        (tests,) = post(self.roman(), TestsSection)
+        assert at(tests) == (75, 103)
+        groups = {g.title: g for g in tests.items
+                  if isinstance(g, TestGroup)}
+        assert at(groups["encoding"]) == (77, 93)
+        assert at(groups["decoding"]) == (95, 98)
+        assert at(groups["round-trip"]) == (100, 103)
+
+    def test_inside_the_encoding_group(self):
+        (tests,) = post(self.roman(), TestsSection)
+        encoding = next(g for g in tests.items
+                        if isinstance(g, TestGroup)
+                        and g.title == "encoding")
+        prose = [i for i in encoding.items if isinstance(i, ProseBlock)]
+        named = [i for i in encoding.items if isinstance(i, NamedTest)]
+        assert [at(p) for p in prose] == [(88, 90)]
+        assert [(n.name, at(n)) for n in named] == [("mcmxciv", (92, 93))]
+
+    def test_references(self):
+        (refs,) = post(self.roman(), ReferencesSection)
+        assert at(refs) == (105, 105)
+
+    def test_the_post_text(self):
+        assert at(self.roman().post_text) == (73, 105)
+
+
+# The invariant, over every example project: every element has a first
+# and a last line, the first is not after the last, the items of a
+# container (the module, the post-text, a subheading, an appendix, the
+# #Tests section, a test group) are in order and do not overlap, and each
+# lies within the container that holds it. A test of this shape notices an
+# element that someone forgets.
+
+def _bare_span(owner, index: int):
+    line = (owner.line_offsets or {}).get(index)
+    return None if line is None else (line, line)
+
+
+def _items(container):
+    """What *container* directly holds, in source order, as
+    (label, element, span). A bare assertion line has no element of its
+    own; a blank one holds no position and is left out."""
+    if isinstance(container, Module):
+        held = [*container.body, *([container.post_text]
+                                   if container.post_text else [])]
+    elif isinstance(container, PostText):
+        held = container.sections
+    elif isinstance(container, (Subheading, AppendixSection)):
+        held = container.body
+    elif isinstance(container, (TestsSection, TestGroup)):
+        held = container.items
+    else:
+        return []
+    out = []
+    for i, item in enumerate(held):
+        label = f"{type(item).__name__}[{i}]"
+        if not isinstance(item, str):
+            out.append((label, item, at(item)))
+        elif item.strip():
+            out.append((label, None, _bare_span(container, i)))
+    return out
+
+
+def _problems(element, name: str = "module") -> list[str]:
+    start, end = at(element)
+    if start is None or end is None:
+        return [f"{name}: no position"]
+    problems = []
+    if start > end:
+        problems.append(f"{name}: starts at {start}, ends at {end}")
+    lines = []
+    if isinstance(element, ReferencesSection):
+        lines = element.line_numbers
+    elif isinstance(element, BindingSection):
+        lines = [*element.external_lines, element.on_build_line]
+    for line in lines:
+        if line is not None and not start <= line <= end:
+            problems.append(f"{name}: line {line} is outside {start}-{end}")
+    previous = start
+    for label, child, span in _items(element):
+        if span is None or None in span:
+            problems.append(f"{name}/{label}: no position")
+            continue
+        first, last = span
+        if first <= previous:
+            problems.append(
+                f"{name}/{label}: {span} does not follow line {previous}")
+        if last > end:
+            problems.append(f"{name}/{label}: {span} is outside {start}-{end}")
+        previous = max(previous, last)
+        if child is not None:
+            problems += _problems(child, f"{name}/{label}")
+    return problems
+
+
+def _example_files() -> list[Path]:
+    return sorted(EXAMPLES.rglob("*.lob"))
+
+
+class TestPositionsInEveryExample:
+    def test_the_examples_are_found(self):
+        assert EXAMPLES / "roman/roman/numerals.lob" in _example_files()
+
+    def test_every_element_has_a_consistent_position(self):
+        failures = {}
+        for path in _example_files():
+            problems = _problems(from_tree(parse_file(path)))
+            if problems:
+                failures[str(path.relative_to(EXAMPLES))] = problems
+        assert not failures

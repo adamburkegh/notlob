@@ -8,10 +8,14 @@ injected automatically — no binding declaration needed.
 
 from pathlib import Path
 
+from kitcalls import collecting
 from notlob import parse, parse_file, from_tree
 from notlob.bindings.python.harness import build_properties_harness
-from notlob.bindings.python.runner import ClaimResult, Status, run_properties
+from notlob.bindings.python.runner import (
+    ClaimResult, Status, run_properties as _run_properties,
+)
 
+run_properties = collecting(_run_properties, "PROPERTY")
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -133,7 +137,7 @@ class TestAddresses:
             "    @given(n=st.integers())\n"
             "    def _(n): assert f(n) == n\n"
         )
-        assert ran(src)[0].address == "t#S#identity"
+        assert ran(src)[0].address == "t#identity"
 
     def test_ordinals_reset_per_subheading(self):
         src = (

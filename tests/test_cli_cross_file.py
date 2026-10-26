@@ -1,5 +1,5 @@
-"""Tests for cross-file CLI behaviour: ModuleCache wiring, -m flag,
-prose cross-reference validation, and module address validation."""
+"""Tests for cross-file CLI behaviour: loading what a module needs, -m
+flag, prose cross-reference validation, and module address validation."""
 
 from pathlib import Path
 

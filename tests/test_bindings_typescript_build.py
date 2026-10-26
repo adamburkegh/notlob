@@ -13,9 +13,12 @@ from pathlib import Path
 
 import pytest
 
+from kitcalls import collecting
 from notlob import from_tree, parse
-from notlob.bindings.typescript import build_typescript
+from notlob.bindings.typescript import build_typescript as _build_typescript
 from notlob.bindings.typescript.runner import _tsx_cmd
+
+build_typescript = collecting(_build_typescript, 'RUN')
 
 
 def built(source: str) -> str:

@@ -68,19 +68,27 @@ import subprocess
 import sys
 from pathlib import Path
 
+from typing import Sequence
+
 from notlob.bindings import (
-    LintResult, LintToolUnavailable, collect_run_bodies, parse_source_map,
+    ClaimToRun, LintResult, LintToolUnavailable, parse_source_map,
 )
 from notlob.bindings.python.assemble import assemble
 from notlob.graph import module_address
-from notlob.model import Module, TestsSection
+from notlob.model import Module
 
 
 def lint_python(
     module: Module,
+    claims: Sequence[ClaimToRun],
+    *,
     root: Path | None = None,
 ) -> list[LintResult]:
     """Assemble *module* and run ruff; return a list of LintResults.
+
+    *claims* are every claim and test of the module, which the assembled
+    source leaves out: a name only one of them uses is not reported as an
+    unused import.
 
     When *root* is provided and the module has lob-ref dependencies, an
     ``F821`` finding for a name one of them defines is suppressed (see
@@ -99,7 +107,7 @@ def lint_python(
     dep_names  = _dependency_names(module, root) if root else frozenset()
     source_map = parse_source_map(mod_source)
     mod_addr   = module_address(module.title)
-    claim_text = _claim_text(module)
+    claim_text = _claim_text(claims)
 
     return _run_ruff(mod_source, source_map, mod_addr, claim_text, dep_names)
 
@@ -136,42 +144,15 @@ def _dependency_names(module: Module, root: Path) -> frozenset[str]:
     return frozenset(names)
 
 
-def _claim_text(module: Module) -> str:
-    """Concatenated raw source of every claim in *module*.
-
-    Covers ``~example`` (module body and subheadings), ``#Tests``
-    (bare assertions, named ``~test`` blocks, and groups), ``~property``
-    bodies, and ``~run`` bodies (any mode) -- every claim-like block
+def _claim_text(claims: Sequence[ClaimToRun]) -> str:
+    """Concatenated raw source of every one of *claims*: ``~example``,
+    ``#Tests`` (bare assertions and named ``~test`` blocks),
+    ``~property`` and ``~run`` (any mode) -- every claim-like block
     whose code ``assemble()`` leaves out of the linted source. Used only
     to check whether a name ruff considers unused is in fact used by
     one of them; see the module docstring.
     """
-    # Local import avoids a hard dependency between the lint and
-    # runner submodules for callers that only need one of them.
-    from notlob.bindings.python.runner import (
-        _collect_example_assertions, _collect_properties,
-        _collect_test_assertions,
-    )
-
-    parts = [expr for _, expr, _ in _collect_example_assertions(module)]
-    parts += [block for _, _, _, block in _collect_properties(module)]
-    on_load, on_invocation = collect_run_bodies(module)
-    parts += on_load + on_invocation
-
-    if module.post_text is not None:
-        tests_section = next(
-            (s for s in module.post_text.sections
-             if isinstance(s, TestsSection)),
-            None,
-        )
-        if tests_section is not None:
-            mod_addr = module_address(module.title)
-            parts += [
-                expr for _, expr, _ in
-                _collect_test_assertions(tests_section, mod_addr)
-            ]
-
-    return "\n".join(parts)
+    return "\n".join("\n".join(claim.lines) for claim in claims)
 
 
 _UNUSED_IMPORT_RE = re.compile(r"^`([\w.]+)` imported but unused")

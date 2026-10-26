@@ -6,12 +6,14 @@ assertion in the #Tests post-text section and returns ClaimResults.
 
 from pathlib import Path
 
+from kitcalls import collecting
 from notlob import parse, parse_file, from_tree
 from notlob.bindings.python.harness import build_tests_harness
 from notlob.bindings.python.runner import (
-    ClaimResult, Status, run_tests,
+    ClaimResult, Status, run_tests as _run_tests,
 )
 
+run_tests = collecting(_run_tests, "TEST")
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -46,7 +48,7 @@ class TestBareAssertions:
 
     def test_bare_address(self):
         src = "#T\n    x = 1\n---\n#Tests\n    x == 1\n"
-        assert ran(src)[0].address == "t#Tests"
+        assert ran(src)[0].address == "t#Tests#test#1"
 
     def test_bare_multiword_module_address(self):
         src = (
@@ -56,7 +58,7 @@ class TestBareAssertions:
             "#Tests\n"
             "    x == 1\n"
         )
-        assert ran(src)[0].address == "roman/numerals#Tests"
+        assert ran(src)[0].address == "roman/numerals#Tests#test#1"
 
     def test_bare_failing(self):
         src = "#T\n    x = 2\n---\n#Tests\n    x == 1\n"
@@ -74,14 +76,14 @@ class TestGroups:
             "#T\n    x = 1\n"
             "---\n#Tests\n##basics\n    x == 1\n"
         )
-        assert ran(src)[0].address == "t#Tests#basics"
+        assert ran(src)[0].address == "t#Tests#basics#test#1"
 
     def test_group_with_spaces_in_title(self):
         src = (
             "#T\n    x = 1\n"
             "---\n#Tests\n##boundary conditions\n    x == 1\n"
         )
-        assert ran(src)[0].address == "t#Tests#boundary conditions"
+        assert ran(src)[0].address == "t#Tests#boundary conditions#test#1"
 
     def test_multiple_groups(self):
         src = (
@@ -91,8 +93,8 @@ class TestGroups:
             "##b\n    y == 2\n"
         )
         results = ran(src)
-        assert results[0].address == "t#Tests#a"
-        assert results[1].address == "t#Tests#b"
+        assert results[0].address == "t#Tests#a#test#1"
+        assert results[1].address == "t#Tests#b#test#1"
 
     def test_multiple_assertions_in_group(self):
         src = (
@@ -132,8 +134,8 @@ class TestMixed:
             "##group\n    y == 2\n"
         )
         results = ran(src)
-        assert results[0].address == "t#Tests"
-        assert results[1].address == "t#Tests#group"
+        assert results[0].address == "t#Tests#test#1"
+        assert results[1].address == "t#Tests#group#test#1"
 
 
 # ── Integration: example files ────────────────────────────────
@@ -151,7 +153,7 @@ class TestExampleFiles:
     def test_pricing_discounts_group_addresses(self):
         results = self._run(EXAMPLES / "retail/pricing/discounts.lob")
         addrs = {r.address for r in results}
-        assert "pricing/discounts#Tests#boundary conditions" in addrs
+        assert "pricing/discounts#Tests#boundary conditions#test#1" in addrs
         assert "pricing/discounts#Tests#composition#composition_is_commutative" in addrs
 
     def test_roman_numerals_all_pass(self):
@@ -163,9 +165,9 @@ class TestExampleFiles:
     def test_roman_numerals_group_addresses(self):
         results = self._run(EXAMPLES / "roman/roman/numerals.lob")
         addrs = {r.address for r in results}
-        assert "roman/numerals#Tests#encoding"   in addrs
-        assert "roman/numerals#Tests#decoding"   in addrs
-        assert "roman/numerals#Tests#round-trip" in addrs
+        assert "roman/numerals#Tests#encoding#test#1"   in addrs
+        assert "roman/numerals#Tests#decoding#test#1"   in addrs
+        assert "roman/numerals#Tests#round-trip#test#1" in addrs
 
 
 # ── Keep-dir: _tests.py contains assert statements ────────────
@@ -190,14 +192,14 @@ class TestKeepDirTests:
         module = from_tree(parse(self._src()))
         run_tests(module, keep_dir=tmp_path)
         content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
-        assert "'t#Tests'" in content
+        assert "'t#Tests#test#1'" in content
 
     def test_tests_py_group_address(self, tmp_path):
         src = "#T\n    x = 1\n---\n#Tests\n##basics\n    x == 1\n"
         module = from_tree(parse(src))
         run_tests(module, keep_dir=tmp_path)
         content = (tmp_path / "_tests.py").read_text(encoding="utf-8")
-        assert "'t#Tests#basics'" in content
+        assert "'t#Tests#basics#test#1'" in content
 
     def test_tests_py_is_executable(self, tmp_path):
         module = from_tree(parse(self._src()))

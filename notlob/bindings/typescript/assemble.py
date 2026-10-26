@@ -10,7 +10,7 @@ Assembly order
   1. #References lines  (import statements; lob-refs dropped)
   2. Module-level code blocks  (preceded by ``// <module_address>``)
   3. Subheading code blocks in document order
-     (each group preceded by ``// <subheading_address>``)
+     (each group preceded by ``// <the subheading's address>``)
   4. #Appendix code blocks, if any -- same status as main-body code,
      not test-only or build-only.  See notlob.bindings.python.assemble's
      module docstring for the reasoning (identical here).
@@ -28,7 +28,7 @@ from __future__ import annotations
 import textwrap
 
 from notlob.bindings import assemble_section, collect_blocks
-from notlob.graph import module_address, subheading_address
+from notlob.graph import module_address, named_address
 from notlob.model import (
     AppendixSection, Module, ReferencesSection, Subheading,
 )
@@ -60,7 +60,7 @@ def assemble(module: Module) -> str:
     # ── 3. Subheading code blocks ────────────────────────────────
     for item in module.body:
         if isinstance(item, Subheading):
-            sub_addr   = subheading_address(mod_addr, item.title)
+            sub_addr   = named_address(mod_addr, item.title)
             sub_blocks = collect_blocks(item.body)
             if sub_blocks:
                 chunks.append(assemble_section(f'// {sub_addr}', sub_blocks))
@@ -77,7 +77,7 @@ def assemble(module: Module) -> str:
                 ))
             for item in section.body:
                 if isinstance(item, Subheading):
-                    sub_addr   = subheading_address(mod_addr, item.title)
+                    sub_addr   = named_address(mod_addr, item.title)
                     sub_blocks = collect_blocks(item.body)
                     if sub_blocks:
                         chunks.append(assemble_section(

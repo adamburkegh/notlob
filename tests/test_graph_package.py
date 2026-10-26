@@ -19,6 +19,7 @@ from notlob import (
     NameGraph, Node, NodeKind, Edge, EdgeKind,
 )
 from notlob.bindings.python import extract_symbols
+from notlob.graph import references_of
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -229,6 +230,81 @@ class TestBuildPackage:
 
 # ── Integration: gutenberg example ───────────────────────────
 
+_SHAPES = (
+    "#Shapes\n\n    class Layout:\n        pass\n\n"
+    "##Layout\n\nPlacing.\n\n    def place():\n        return Layout()\n\n"
+    "---\n\n#References\n"
+)
+_CLIENT = (
+    "#Client\n\n    def use():\n        return place()\n\n"
+    "---\n\n#References\n    #Shapes\n"
+)
+_ALPHA = "#Alpha\n\n    def double(x):\n        return x * 2\n"
+
+
+class TestCollisions:
+    """A module whose names collide stops the package graph, unless the
+    caller gives a list to collect the collisions in."""
+
+    def _project(self, tmp_path):
+        for name, text in (("shapes", _SHAPES), ("client", _CLIENT),
+                           ("alpha", _ALPHA)):
+            (tmp_path / f"{name}.lob").write_text(text, encoding="utf-8")
+        return tmp_path
+
+    def test_without_a_list_it_raises(self, tmp_path):
+        from notlob import AddressCollisionError
+        with pytest.raises(AddressCollisionError):
+            build_package(self._project(tmp_path), extract_symbols)
+
+    def test_with_a_list_the_collision_is_collected_with_the_path(
+        self, tmp_path,
+    ):
+        root = self._project(tmp_path)
+        collisions = []
+        build_package(root, extract_symbols, collisions=collisions)
+        assert [(p, e.address) for p, e in collisions] == [
+            (root / "shapes.lob", "shapes#Layout")]
+
+    def test_the_colliding_module_keeps_its_structure_without_symbols(
+        self, tmp_path,
+    ):
+        graph = build_package(
+            self._project(tmp_path), extract_symbols, collisions=[])
+        assert graph.node("shapes").kind == NodeKind.MODULE
+        assert graph.node("shapes#Layout").kind == NodeKind.SUBHEADING
+        assert [n for n in graph.nodes(NodeKind.SYMBOL)
+                if graph.module_of(n.address) == "shapes"] == []
+
+    def test_the_other_modules_are_built_in_full(self, tmp_path):
+        graph = build_package(
+            self._project(tmp_path), extract_symbols, collisions=[])
+        assert graph.node("alpha#double").kind == NodeKind.SYMBOL
+        assert graph.node("client#use").kind == NodeKind.SYMBOL
+
+    def test_imports_of_the_colliding_module_are_kept(self, tmp_path):
+        graph = build_package(
+            self._project(tmp_path), extract_symbols, collisions=[])
+        assert [(e.source, e.target)
+                for e in graph.edges(EdgeKind.IMPORTS)] == [
+            ("client", "shapes")]
+
+    def test_a_restated_heading_is_collected_too(self, tmp_path):
+        (tmp_path / "notes.lob").write_text(
+            "#Notes\n\n##Same\n\nOne.\n\n##Same\n\nTwo.\n", encoding="utf-8")
+        collisions = []
+        graph = build_package(tmp_path, extract_symbols,
+                              collisions=collisions)
+        assert [e.address for _p, e in collisions] == ["notes#Same"]
+        assert graph.node("notes#Same") is not None
+
+    def test_no_collision_collects_nothing(self, tmp_path):
+        (tmp_path / "alpha.lob").write_text(_ALPHA, encoding="utf-8")
+        collisions = []
+        build_package(tmp_path, extract_symbols, collisions=collisions)
+        assert collisions == []
+
+
 class TestGutenbergIntegration:
     ROOT = EXAMPLES / "gutenberg"
 
@@ -248,10 +324,19 @@ class TestGutenbergIntegration:
         ]
         assert any(n.address == "gutenberg/corpus" for n in imported)
 
-    def test_corpus_imports_nothing(self, pkg):
-        # corpus.lob has only Python imports, no lob-ref imports
-        imported = list(pkg.children("gutenberg/corpus", EdgeKind.IMPORTS))
-        assert imported == []
+    def test_corpus_lists_hamlet_to_cite_it(self, pkg):
+        # corpus.lob lists hamlet only because its prose cites it ("a
+        # module of the same shape as #Gutenberg Hamlet"); hamlet lists
+        # corpus because its code uses it. Mutual listing is ordinary.
+        imported = [
+            n.address for n in
+            pkg.children("gutenberg/corpus", EdgeKind.IMPORTS)
+        ]
+        assert imported == ["gutenberg/hamlet"]
+        cited = [
+            n.address for n in references_of(pkg, "gutenberg/corpus")
+        ]
+        assert "gutenberg/hamlet" in cited
 
     def test_resolve_corpus_from_hamlet_context(self, pkg):
         node = pkg.resolve("Gutenberg Corpus", context="gutenberg/hamlet")

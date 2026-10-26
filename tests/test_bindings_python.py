@@ -230,3 +230,43 @@ class TestExtractCalls:
 def test_syntax_error_source_is_not_present():
     result = extract_symbols(["    x = ("])
     assert result == []
+
+
+def _span(info):
+    return (info.name, info.first_line, info.last_line)
+
+
+class TestSymbolLines:
+    """The lines a symbol occupies, 1-based within the lines given."""
+
+    def test_several_definitions_a_multi_line_one_and_a_trailing_blank(self):
+        lines = [
+            "    X = 1",            # 1
+            "",                     # 2
+            "    def f(a):",        # 3
+            "        return a",     # 4
+            "",                     # 5
+            "    class C:",         # 6
+            "        pass",         # 7
+            "",                     # 8
+        ]
+        assert [_span(s) for s in extract_symbols(lines)] == [
+            ("X", 1, 1), ("f", 3, 4), ("C", 6, 7)]
+
+    def test_a_decorated_function_starts_at_its_def(self):
+        lines = ["    @dec", "    def f():", "        pass"]
+        (info,) = extract_symbols(lines)
+        assert _span(info) == ("f", 2, 3)
+        assert info.source.startswith("def f")
+
+    def test_every_target_of_an_assignment_has_its_lines(self):
+        lines = ["    pass_through = 1", "    a = b = (", "        2)"]
+        spans = [_span(s) for s in extract_symbols(lines)]
+        assert spans == [("pass_through", 1, 1), ("a", 2, 3), ("b", 2, 3)]
+
+    def test_the_lines_are_those_of_the_source(self):
+        lines = ["    def f():", "        return 1", "", "    X = 2"]
+        for info in extract_symbols(lines):
+            dedented = [ln[4:] for ln in lines]
+            held = dedented[info.first_line - 1:info.last_line]
+            assert "\n".join(held) == info.source
