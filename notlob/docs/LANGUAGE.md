@@ -560,7 +560,7 @@ where they apply): an array, or for `resolve` a single node, or `null`
 with exit code 1 when it does not resolve. `children` follows any edge kind
 the graph holds (`CONTAINS` by default, and a section's paragraphs and code
 blocks are among its children); `search` finds the nodes `outline` shows;
-`references` and `referenced-by` give a section for a paragraph.
+`cites` and `cited-by` give a section for a paragraph.
 `content` prints the subtree at an address as a `notlob graph --level full`
 document with a `root`: each line of text once, on the leaf it is written
 in, except that a symbol whose code block is not in the answer carries its
@@ -568,7 +568,7 @@ text; `--depth N` stops N containment steps down (0 is the node alone).
 The shapes are specified by `schema/query_result.json`.
 `notlob graph` prints the graph itself, `{version, level, nodes, edges}`
 (`schema/name_graph.json`): one tree of nodes for each file, joined by
-`CONTAINS` edges, with `REFERENCES`, `USES`, `IMPORTS` and `USES_EXTERNAL`
+`CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL`
 edges between them. `--level` (a name or a number) says how much to show:
 `outline` (1, the default) every node but the paragraphs, code blocks and
 bullet lists, with their edges moved to the section that holds them;

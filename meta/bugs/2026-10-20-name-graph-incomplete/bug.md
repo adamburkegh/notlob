@@ -4,7 +4,11 @@
 walks a module instead of reading the graph.
 **Found by:** Adam, 2026-10-20, while reviewing the Appendix blind spot
 (`2026-10-19-appendix-not-in-graph`), which is one instance of this.
-**Status:** reopened, 2026-10-23. The fix below (`f4b9eb9`) was backed
+**Status:** fixed, 2026-10-26, in `6e54c9d`: every element of a file is
+a node of the graph, its text held once, and the checks, queries, export,
+claim collection and module loading read it
+(`meta/features/2026-10-23-name-graph-as-parse-tree/design.md`).
+Before that, reopened, 2026-10-23. The fix below (`f4b9eb9`) was backed
 out in `4230b04`: the completeness contract stands, but the representation
 it used stored each section's text, claims and references several times
 and exported that through the graph schemas. See

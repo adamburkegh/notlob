@@ -168,11 +168,11 @@
           "type": "string"
         },
         "kind": {
-          "description": "CONTAINS: a node to what is written in it (the trees); REFERENCES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
+          "description": "CONTAINS: a node to what is written in it (the trees); CITES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
           "type": "string",
           "enum": [
             "CONTAINS",
-            "REFERENCES",
+            "CITES",
             "USES",
             "IMPORTS",
             "USES_EXTERNAL"

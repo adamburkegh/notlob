@@ -10,9 +10,9 @@ first and last line it occupies.
 Tree:             :func:`build` makes a module's tree; :func:`enrich` adds
                   the symbols its code defines, through a language
                   binding.
-Cross-references: ``REFERENCES`` edges from the paragraph that holds a
+Cross-references: ``CITES`` edges from the paragraph that holds a
                   ``#Label`` to the node it names
-                  (:func:`add_references_edges`); ``USES`` edges from code
+                  (:func:`add_cites_edges`); ``USES`` edges from code
                   to the symbols it calls (:func:`add_uses_edges`).
 Package graph:    ``IMPORTS`` edges from ``#References`` lob-ref
                   declarations; ``build_package()`` lives in
@@ -54,7 +54,7 @@ This scheme is isomorphic to URI fragment addressing.
 Edge vocabulary
 ---------------
   CONTAINS      — parent → child, where a node is written; the tree
-  REFERENCES    — paragraph → the node a ``#Label`` in it names
+  CITES         — paragraph → the node a ``#Label`` in it names
   USES          — code → a symbol it refers to by name
   IMPORTS       — module → module
   USES_EXTERNAL — binding module → a file it declares
@@ -283,7 +283,7 @@ class EdgeKind(Enum):
     IMPORTS      = auto()   # module to module, from a #References line
     USES_EXTERNAL = auto()   # binding module to a file it declares
     USES          = auto()   # code to a symbol it refers to by name
-    REFERENCES    = auto()   # a paragraph to the node a #Label in it names
+    CITES         = auto()   # a paragraph to the node a #Label in it names
 
 
 @dataclass(frozen=True)
@@ -450,7 +450,7 @@ class NameGraph:
 
     Every element of a ``.lob`` file is a node, in one tree per file
     joined by ``CONTAINS`` edges (an element's parent is where it is
-    written); ``USES``, ``REFERENCES``, ``IMPORTS`` and ``USES_EXTERNAL``
+    written); ``USES``, ``CITES``, ``IMPORTS`` and ``USES_EXTERNAL``
     edges cross the trees.  Nodes are keyed by address; edges are stored
     as a list and also indexed by source for efficient child lookup, and a
     parent index finds a node's parent without a scan.
@@ -1244,12 +1244,12 @@ def claims_to_run(graph: NameGraph, module_address_: str) -> list[ClaimToRun]:
     return found
 
 
-def add_references_edges(graph: NameGraph) -> None:
-    """Populate REFERENCES edges from prose ``#Label`` cross-references.
+def add_cites_edges(graph: NameGraph) -> None:
+    """Populate CITES edges from prose ``#Label`` cross-references.
 
     Reads the references each ``PROSE`` leaf holds (``Node.refs``) and
     resolves each against the graph in the module the leaf is written
-    in.  A resolved reference becomes an ``EdgeKind.REFERENCES`` edge
+    in.  A resolved reference becomes an ``EdgeKind.CITES`` edge
     from the leaf that holds it to the node it names: one edge for each
     leaf and target, carrying the line of the first reference to it.
 
@@ -1270,7 +1270,7 @@ def add_references_edges(graph: NameGraph) -> None:
                 graph.add_edge(Edge(
                     source=leaf.address,
                     target=target.address,
-                    kind=EdgeKind.REFERENCES,
+                    kind=EdgeKind.CITES,
                     start_line=ref.start_line,
                 ))
                 seen.add(key)
@@ -1517,7 +1517,7 @@ def subtree(
     *depth* ``CONTAINS`` steps (``0`` the node alone, ``None`` all of
     them), written as ``full`` writes them. The edges are those whose
     source is among them: ``CONTAINS`` within the subtree, and the
-    references, uses and imports from it. Text is held once, so a symbol
+    citations, uses and imports from it. Text is held once, so a symbol
     has none, its lines being in the code block it is written in; but a
     symbol whose code block is not among the nodes carries its text, so
     the answer still shows each line of source. That is the symbol asked
@@ -1564,29 +1564,29 @@ def subtree(
             "root": address, "nodes": nodes, "edges": edges}
 
 
-def references_of(graph: NameGraph, address: str) -> list[Node]:
-    """The nodes that the node at *address* refers to, in the order
-    first found: those named in its paragraphs (as ``outline`` shows the
-    edges, a section's references are its paragraphs'), or, for a
-    paragraph itself, in it."""
+def cites_of(graph: NameGraph, address: str) -> list[Node]:
+    """The nodes that the node at *address* cites, in the order first
+    found: those named in its paragraphs (as ``outline`` shows the edges,
+    a section's citations are its paragraphs'), or, for a paragraph
+    itself, in it."""
     node = graph.node(address)
     if node is None:
         return []
     if KINDS[node.kind].block:
-        targets = [e.target for e in graph.edges(EdgeKind.REFERENCES)
+        targets = [e.target for e in graph.edges(EdgeKind.CITES)
                    if e.source == address]
     else:
         targets = [e["target"] for e in _document_edges(graph, "outline")
-                   if e["kind"] == "REFERENCES" and e["source"] == address]
+                   if e["kind"] == "CITES" and e["source"] == address]
     return _unique_nodes(graph, targets)
 
 
-def referenced_by(graph: NameGraph, address: str) -> list[Node]:
-    """The nodes that refer to the node at *address*, each once and in the
+def cited_by(graph: NameGraph, address: str) -> list[Node]:
+    """The nodes that cite the node at *address*, each once and in the
     order first found: a paragraph that does is given as the section that
     holds it."""
     sources = [e["source"] for e in _document_edges(graph, "outline")
-               if e["kind"] == "REFERENCES" and e["target"] == address]
+               if e["kind"] == "CITES" and e["target"] == address]
     return _unique_nodes(graph, sources)
 
 

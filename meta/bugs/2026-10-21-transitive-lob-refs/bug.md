@@ -4,7 +4,10 @@
 `notlob/bindings/python/runner.py` and `notlob/bindings/haskell/runner.py`
 (used by claims, and by `notlob build` for both).
 **Found by:** kamtrinia, notlob 0.5.4, Python binding, 2026-10-19.
-**Status:** reopened, 2026-10-23: the fix (`1468f0f`) was backed out in
+**Status:** fixed, 2026-10-26, in `6e54c9d`: notlob works out the load
+order from the graph (`project.load_order`) and hands every binding its
+dependencies (`deps`); the `1468f0f` tests are restored and pass.
+Before that, reopened, 2026-10-23: the fix (`1468f0f`) was backed out in
 `4230b04` with the name-graph refactor it was built on; see
 `meta/retrospectives/2026-10-23-name-graph-redundancy/`. Was: fixed,
 2026-10-21.

@@ -25,7 +25,7 @@ from notlob.commands import (
     cmd_query_children, cmd_query_content, cmd_query_resolve,
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
     cmd_query_callers, cmd_query_callees,
-    cmd_query_references, cmd_query_referenced_by,
+    cmd_query_cites, cmd_query_cited_by,
     QUERY_EDGE_KINDS, QUERY_NODE_KINDS,
 )
 from notlob.project import find_project_root, resolve_module_path
@@ -288,15 +288,15 @@ def main() -> None:
     )
     qcallees.add_argument("address")
 
-    qrefs = qsub.add_parser(
-        "references", help="list nodes prose-referenced by a given address"
+    qcites = qsub.add_parser(
+        "cites", help="list nodes cited in the prose of a given address"
     )
-    qrefs.add_argument("address")
+    qcites.add_argument("address")
 
-    qrefby = qsub.add_parser(
-        "referenced-by", help="list nodes whose prose references a given address"
+    qcitedby = qsub.add_parser(
+        "cited-by", help="list nodes whose prose cites a given address"
     )
-    qrefby.add_argument("address")
+    qcitedby.add_argument("address")
 
     qcont = qsub.add_parser(
         "content", help="show the subtree at an address, with its text"
@@ -389,10 +389,10 @@ def main() -> None:
             sys.exit(cmd_query_callers(args.address))
         elif op == "callees":
             sys.exit(cmd_query_callees(args.address))
-        elif op == "references":
-            sys.exit(cmd_query_references(args.address))
-        elif op == "referenced-by":
-            sys.exit(cmd_query_referenced_by(args.address))
+        elif op == "cites":
+            sys.exit(cmd_query_cites(args.address))
+        elif op == "cited-by":
+            sys.exit(cmd_query_cited_by(args.address))
         elif op == "content":
             sys.exit(cmd_query_content(args.address, args.depth))
         else:

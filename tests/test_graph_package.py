@@ -19,7 +19,7 @@ from notlob import (
     NameGraph, Node, NodeKind, Edge, EdgeKind,
 )
 from notlob.bindings.python import extract_symbols
-from notlob.graph import references_of
+from notlob.graph import cites_of
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -334,7 +334,7 @@ class TestGutenbergIntegration:
         ]
         assert imported == ["gutenberg/hamlet"]
         cited = [
-            n.address for n in references_of(pkg, "gutenberg/corpus")
+            n.address for n in cites_of(pkg, "gutenberg/corpus")
         ]
         assert "gutenberg/hamlet" in cited
 

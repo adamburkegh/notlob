@@ -14,7 +14,7 @@ from notlob import (
     NameGraph, NodeKind, Edge, EdgeKind,
     module_address, named_address,
 )
-from notlob.graph import Node, add_uses_edges, add_references_edges, enrich
+from notlob.graph import Node, add_uses_edges, add_cites_edges, enrich
 from notlob.bindings.python.symbols import extract_calls, extract_symbols
 
 
@@ -433,10 +433,10 @@ class TestUsesLines:
         assert sources == {"m#Tests#test#1", "m#Tests#g#test#1"}
 
 
-# ── add_references_edges ──────────────────────────────────────
+# ── add_cites_edges ──────────────────────────────────────
 
 def _refs_edges(g: NameGraph) -> list[dict]:
-    return [e for e in g.to_dict()["edges"] if e["kind"] == "REFERENCES"]
+    return [e for e in g.to_dict()["edges"] if e["kind"] == "CITES"]
 
 
 def _module_graph(source: str):
@@ -446,7 +446,7 @@ def _module_graph(source: str):
     return g, module
 
 
-class TestAddReferencesEdges:
+class TestAddCitesEdges:
     def test_module_prose_ref_to_subheading(self):
         src = (
             "#M\n"
@@ -455,7 +455,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_cites_edges(g)
         refs = _refs_edges(g)
         assert any(e["source"] == "m" and e["target"] == "m#Section"
                    for e in refs)
@@ -467,9 +467,9 @@ class TestAddReferencesEdges:
         it from the section the paragraph is in."""
         g, _module = _module_graph(
             "#M\nSee #Section here.\n##Section\n    code\n")
-        add_references_edges(g)
+        add_cites_edges(g)
         edges = [(e.source, e.target, e.start_line)
-                 for e in g.edges(EdgeKind.REFERENCES)]
+                 for e in g.edges(EdgeKind.CITES)]
         assert edges == [("m#prose#1", "m#Section", 2)]
 
     def test_subheading_prose_ref_to_other_subheading(self):
@@ -481,7 +481,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_cites_edges(g)
         refs = _refs_edges(g)
         assert any(e["source"] == "m#Alpha" and e["target"] == "m#Beta"
                    for e in refs)
@@ -489,7 +489,7 @@ class TestAddReferencesEdges:
     def test_unresolved_ref_emits_no_edge(self):
         src = "#M\nSee #Phantom here.\n"
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_cites_edges(g)
         assert _refs_edges(g) == []
 
     def test_deduplicates_repeated_ref(self):
@@ -500,7 +500,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_cites_edges(g)
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m" and e["target"] == "m#Section"]
         assert len(refs) == 1
@@ -513,7 +513,7 @@ class TestAddReferencesEdges:
             "    code\n"
         )
         g, module = _module_graph(src)
-        add_references_edges(g)
+        add_cites_edges(g)
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m" and e["target"] == "m#Section"]
         assert len(refs) == 1
@@ -526,7 +526,7 @@ class TestAddReferencesEdges:
         g.merge(build(mod_a))
         g.merge(build(mod_b))
         g.add_edge(Edge(source="a", target="b", kind=EdgeKind.IMPORTS))
-        add_references_edges(g)
+        add_cites_edges(g)
         refs = _refs_edges(g)
         assert any(e["source"] == "a" and e["target"] == "b" for e in refs)
 
@@ -563,7 +563,7 @@ class TestEdgesAccessor:
         ("a", "b", EdgeKind.USES),
         ("a", "c", EdgeKind.CONTAINS),
         ("b", "c", EdgeKind.USES),
-        ("c", "a", EdgeKind.REFERENCES),
+        ("c", "a", EdgeKind.CITES),
         ("a", "b", EdgeKind.CONTAINS),
     ]
 

@@ -82,8 +82,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   its code block. A `~run` of any mode is a `RUN` node with its `mode`
   (`on-load`, or `on-invocation` for a bare `~run`); a `~run on-load` was
   a `PROPERTY` before. `CONTAINS` is the only tree edge: `DEFINES` is
-  gone. A `REFERENCES` edge runs from the paragraph that holds the
-  reference, which keeps the references as written (`refs`).
+  gone. The `REFERENCES` edge is now `CITES` (the Turtle property is
+  `notlob:cites`), so that it no longer contradicts the `#References`
+  section, whose lines make `IMPORTS` edges; it runs from the paragraph
+  that holds the reference, which keeps the references as written (`refs`).
   The document is `{version: 2, level, nodes, edges}`, at one of three
   levels: `outline` (the default) has every node but paragraphs, code
   blocks and bullet lists, with their edges moved to the nearest node
@@ -110,9 +112,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 - **Breaking: `notlob query`.** Each query prints nodes as `notlob graph`
   does at `outline`. `content` prints the subtree at an address as a
   graph document at `full` (see "Added"). `children --kind` no longer
-  offers `DEFINES`. `references` and `referenced-by` read the references
-  each paragraph holds; `referenced-by` reports a paragraph as the
-  section that holds it.
+  offers `DEFINES`. `references` and `referenced-by` are now `cites` and
+  `cited-by`, to match the `CITES` edge: they read the citations each
+  paragraph holds, and `cited-by` reports a paragraph as the section that
+  holds it.
 - **Breaking, for language bindings (`BindingKit`, stable tier):** notlob
   now decides what a binding runs and what its code is loaded with, from
   the name-graph; the binding keeps everything about its language

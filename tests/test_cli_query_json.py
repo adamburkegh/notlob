@@ -23,7 +23,7 @@ from notlob import EdgeKind, NodeKind
 from notlob.commands import (
     cmd_query_callees, cmd_query_callers, cmd_query_children,
     cmd_query_content, cmd_query_imported_by, cmd_query_imports,
-    cmd_query_references, cmd_query_referenced_by, cmd_query_resolve,
+    cmd_query_cites, cmd_query_cited_by, cmd_query_resolve,
     cmd_query_search,
 )
 
@@ -108,8 +108,8 @@ def _in_order(doc) -> list[str]:
 
 
 class TestNodeLists:
-    """children, imports, imported-by, callers, callees, references,
-    referenced-by and search each print an array of nodes."""
+    """children, imports, imported-by, callers, callees, cites,
+    cited-by and search each print an array of nodes."""
 
     def test_search(self, project, capsys):
         rc, doc = _run(capsys, cmd_query_search, "helper")
@@ -189,39 +189,39 @@ class TestNodeLists:
         _validate(doc, "NodeList")
         assert _addresses(doc) == {"alpha#helper"}
 
-    def test_references_of_a_module(self, project, capsys):
-        _rc, doc = _run(capsys, cmd_query_references, "beta")
+    def test_cites_of_a_module(self, project, capsys):
+        _rc, doc = _run(capsys, cmd_query_cites, "beta")
         _validate(doc, "NodeList")
         assert _in_order(doc) == ["alpha"]
 
-    def test_the_references_of_a_section_are_its_paragraphs(
+    def test_the_cites_of_a_section_are_its_paragraphs(
         self, project, capsys,
     ):
-        _rc, doc = _run(capsys, cmd_query_references, "gamma#S")
+        _rc, doc = _run(capsys, cmd_query_cites, "gamma#S")
         assert _in_order(doc) == ["alpha"]
 
-    def test_a_paragraphs_own_references(self, project, capsys):
-        _rc, doc = _run(capsys, cmd_query_references, "gamma#S#prose#2")
+    def test_a_paragraphs_own_cites(self, project, capsys):
+        _rc, doc = _run(capsys, cmd_query_cites, "gamma#S#prose#2")
         assert _in_order(doc) == ["alpha"]
 
-    def test_a_modules_references_leave_out_its_sections(
+    def test_a_modules_cites_leave_out_its_sections(
         self, project, capsys,
     ):
         _write(project, "delta.lob",
                "#Delta\n\n##S\n\nSee #Alpha.\n\n---\n\n#References\n"
                "    #Alpha\n")
-        _rc, doc = _run(capsys, cmd_query_references, "delta")
+        _rc, doc = _run(capsys, cmd_query_cites, "delta")
         assert doc == []
 
-    def test_referenced_by_shows_the_section_that_holds_the_paragraph(
+    def test_cited_by_shows_the_section_that_holds_the_paragraph(
         self, project, capsys,
     ):
-        _rc, doc = _run(capsys, cmd_query_referenced_by, "alpha")
+        _rc, doc = _run(capsys, cmd_query_cited_by, "alpha")
         _validate(doc, "NodeList")
         assert _in_order(doc) == ["beta", "gamma", "gamma#S"]
 
-    def test_referenced_by_names_each_source_once(self, project, capsys):
-        _rc, doc = _run(capsys, cmd_query_referenced_by, "alpha")
+    def test_cited_by_names_each_source_once(self, project, capsys):
+        _rc, doc = _run(capsys, cmd_query_cited_by, "alpha")
         assert len(doc) == len(_addresses(doc))
 
     def test_empty_result_is_an_empty_array(self, project, capsys):
@@ -398,8 +398,8 @@ class TestNothingReadsTheLayer:
             (cmd_query_imported_by, ("alpha",)),
             (cmd_query_callers, ("alpha#helper",)),
             (cmd_query_callees, ("alpha#caller",)),
-            (cmd_query_references, ("beta",)),
-            (cmd_query_referenced_by, ("alpha",)),
+            (cmd_query_cites, ("beta",)),
+            (cmd_query_cited_by, ("alpha",)),
             (cmd_query_content, ("alpha",)),
             (cmd_query_content, ("alpha", 1)),
         ]

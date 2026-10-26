@@ -416,8 +416,8 @@ parse tree, with cross-references. Every element of a `.lob` file is a
 node: modules, sections, prose paragraphs, code blocks, bullet lists,
 claims, tests and the names code defines. Nodes and `CONTAINS` edges
 are a forest, one tree per file: `CONTAINS` is position, where each node
-is written. `USES`, `REFERENCES`, `IMPORTS` and `USES_EXTERNAL` are a
-directed graph over the forest: what each call, reference, listing and
+is written. `USES`, `CITES`, `IMPORTS` and `USES_EXTERNAL` are a
+directed graph over the forest: what each call, citation, listing and
 external declaration resolves to. What a node is (a claim, a paragraph,
 a symbol) is its kind; which scope a name belongs to is derived from the
 tree. Each node has its file and its first and last line. Text is held
@@ -452,11 +452,11 @@ The name-graph accumulates in layers, each adding richer information:
   or subheading in the current module, then module reached via a declared
   `IMPORTS` edge. Unresolved references are build errors, reported
   alongside address mismatches before any claim runs. Successfully resolved
-  mentions become `REFERENCES` edges, from the `PROSE` leaf that holds the
+  mentions become `CITES` edges, from the `PROSE` leaf that holds the
   mention to the target node, emitted by `build_package` once the
   modules and their imports are known, enabling navigation and
-  cross-reference analysis via `notlob query references` and `notlob
-  query referenced-by`. The leaf also holds the references as written
+  cross-reference analysis via `notlob query cites` and `notlob
+  query cited-by`. The leaf also holds the references as written
   (`refs`); an unresolved one has a `refs` entry and no edge.
 
 - *Package graph.* Module addresses resolved across a package, with

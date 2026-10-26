@@ -6,10 +6,13 @@
 **Found by:** reading the Python runner while designing the
 `assertion_block` rule (`meta/features/2026-10-23-name-graph-as-parse-tree`,
 D14), 2026-10-25. Not reported by a user.
-**Status:** open. Shown for Python by an expected-failure test,
-`tests/test_bindings_python_runner.py::TestTestsLinesAfterCommentary`
-(`xfail(strict=True)`: remove the marker when it is fixed). Haskell and
-TypeScript have the same code shape and are not yet shown by a test.
+**Status:** fixed, 2026-10-26, in `6e54c9d`: notlob collects the runs
+from the graph once (`claims_to_run`) and the runners run what they are
+handed, so commentary ends a run in every binding. The expected-failure
+test, `tests/test_bindings_python_runner.py::TestTestsLinesAfterCommentary`,
+passes with its marker removed.
+Was: open. Shown for Python by that test; Haskell and TypeScript had the
+same code shape.
 
 ## Summary
 

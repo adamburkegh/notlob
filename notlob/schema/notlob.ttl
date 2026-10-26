@@ -190,8 +190,8 @@ notlob:uses a owl:ObjectProperty ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .
 
-notlob:references a owl:ObjectProperty ;
-    rdfs:label "references" ;
-    rdfs:comment "A paragraph mentions another node with a #Label cross-reference; at the outline level, the section that holds the paragraph does." ;
+notlob:cites a owl:ObjectProperty ;
+    rdfs:label "cites" ;
+    rdfs:comment "A paragraph cites another node with a #Label cross-reference; at the outline level, the section that holds the paragraph does." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .

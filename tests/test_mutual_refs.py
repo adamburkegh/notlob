@@ -31,7 +31,7 @@ from notlob.bindings import Status
 from notlob.bindings.python import build_python as _build_python, kit
 from notlob.bindings.python.runner import run_examples as _run_examples
 from notlob.commands import cmd_test
-from notlob.graph import EdgeKind, references_of
+from notlob.graph import EdgeKind, cites_of
 from notlob.project import build_package
 
 run_examples = in_project(_run_examples, kit, "EXAMPLE")
@@ -203,7 +203,7 @@ class TestMutualReferencesAreInTheGraph:
     def test_the_prose_reference_resolves_and_is_an_edge(self, pair):
         graph = build_package(pair)
         assert "demo" in [
-            n.address for n in references_of(graph, "core")]
+            n.address for n in cites_of(graph, "core")]
 
 
 _SHOP = (

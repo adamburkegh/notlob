@@ -40,8 +40,8 @@ from notlob.bindings import (
 from notlob.bindings.python.runner import _resolve_python_interpreter
 from notlob.bindings import ClaimToRun
 from notlob.graph import (
-    KINDS, NameGraph, claims_to_run, module_address, node_summary,
-    parse_level, referenced_by, references_of, subtree,
+    KINDS, NameGraph, cited_by, cites_of, claims_to_run, module_address,
+    node_summary, parse_level, subtree,
 )
 from notlob.model import BindingSection
 from notlob.project import (
@@ -1496,23 +1496,22 @@ def cmd_query_callees(address: str) -> int:
     return _print_nodes(graph.children(address, EdgeKind.USES))
 
 
-def cmd_query_references(address: str) -> int:
-    """Print the nodes that *address* mentions with a prose ``#Label``
-    reference: those in its own paragraphs (a section's references are its
-    paragraphs')."""
+def cmd_query_cites(address: str) -> int:
+    """Print the nodes that *address* cites with a prose ``#Label``: those
+    in its own paragraphs (a section's citations are its paragraphs')."""
     graph = _require_graph()
     if graph is None:
         return 1
-    return _print_nodes(references_of(graph, address))
+    return _print_nodes(cites_of(graph, address))
 
 
-def cmd_query_referenced_by(address: str) -> int:
-    """Print the nodes whose prose refers to *address*, each once: a
-    paragraph that does is given as the section that holds it."""
+def cmd_query_cited_by(address: str) -> int:
+    """Print the nodes whose prose cites *address*, each once: a paragraph
+    that does is given as the section that holds it."""
     graph = _require_graph()
     if graph is None:
         return 1
-    return _print_nodes(referenced_by(graph, address))
+    return _print_nodes(cited_by(graph, address))
 
 
 # ── Check command ─────────────────────────────────────────────

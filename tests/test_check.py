@@ -469,7 +469,7 @@ class TestCheckImports:
 
     def test_symbol_mentioned_in_prose_flagged(self, tmp_path):
         # Plain text mention of a symbol name is not semantic usage;
-        # only a USES edge (code call) or REFERENCES edge (#Label) counts.
+        # only a USES edge (code call) or CITES edge (#Label) counts.
         self._write(tmp_path, "binding.lob",
                     "#P\n\n---\n\n#Binding\n    ~language python\n")
         self._write(tmp_path, "util.lob",

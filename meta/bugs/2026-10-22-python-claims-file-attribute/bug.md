@@ -4,7 +4,10 @@
 `notlob/bindings/python/assemble.py` (`assemble_with_deps`).
 **Found by:** running every example project end to end for the first time
 (`tests/test_example_projects.py`), 2026-10-22. Not reported by a user.
-**Status:** reopened, 2026-10-23: the fix (`1468f0f`) was backed out in
+**Status:** fixed, 2026-10-26, in `6e54c9d`, as resolved below; the
+`1468f0f` tests are restored and pass, and every example project now runs
+end to end in `tests/test_example_projects.py`.
+Before that, reopened, 2026-10-23: the fix (`1468f0f`) was backed out in
 `4230b04` with the name-graph refactor it was built on; see
 `meta/retrospectives/2026-10-23-name-graph-redundancy/`. Was: fixed,
 2026-10-22.

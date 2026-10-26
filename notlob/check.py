@@ -520,7 +520,7 @@ def check_quantifier(graph: NameGraph) -> list[Finding]:
 def check_imports(graph: NameGraph) -> list[Finding]:
     """Flag modules that import another module but make no use of it.
 
-    "Use" means a ``USES`` edge (code call) or ``REFERENCES`` edge (prose
+    "Use" means a ``USES`` edge (code call) or ``CITES`` edge (prose
     ``#Label`` mention) whose source is within the importing module's subtree
     and whose target is within the imported module's subtree.
 
@@ -536,7 +536,7 @@ def check_imports(graph: NameGraph) -> list[Finding]:
                 graph.module_of(e.source) == mod_root
                 and graph.module_of(e.target) == dep_root
                 for e in graph.edges()
-                if e.kind in (EdgeKind.USES, EdgeKind.REFERENCES)
+                if e.kind in (EdgeKind.USES, EdgeKind.CITES)
             )
             if not used:
                 findings.append(Finding(

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/query-result",
   "title": "QueryResult",
-  "description": "What the `notlob query ...` commands print to stdout, each a JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `references`, `referenced-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull. `content` prints a SubtreeOrNull: the subtree at an address as a document in the shape of `notlob graph --level full` with a `root`. All print `null` and exit 1 when the address or label does not resolve. A node, a reference and an edge here are the name-graph's (`Node`, `GraphRef` and `Edge` are identical to `GraphNode`, `GraphRef` and `GraphEdge` in name_graph.json; a test keeps them identical); a query prints a node as `notlob graph --level outline` does. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
+  "description": "What the `notlob query ...` commands print to stdout, each a JSON value. `children`, `imports`, `imported-by`, `callers`, `callees`, `cites`, `cited-by` and `search` print a NodeList (an empty array when nothing matches, exit code 0). `resolve` prints a NodeOrNull. `content` prints a SubtreeOrNull: the subtree at an address as a document in the shape of `notlob graph --level full` with a `root`. All print `null` and exit 1 when the address or label does not resolve. A node, a reference and an edge here are the name-graph's (`Node`, `GraphRef` and `Edge` are identical to `GraphNode`, `GraphRef` and `GraphEdge` in name_graph.json; a test keeps them identical); a query prints a node as `notlob graph --level outline` does. With no project, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
   "anyOf": [
     {"$ref": "#/definitions/NodeList"},
     {"$ref": "#/definitions/Node"},
@@ -23,7 +23,7 @@
       ]
     },
     "Subtree": {
-      "description": "The node at `root` and what it contains, down the depth asked for, at the `full` level: the nodes in document order, and the edges whose source is among them (CONTAINS within the subtree, and the references, uses and imports from it). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not among the nodes.",
+      "description": "The node at `root` and what it contains, down the depth asked for, at the `full` level: the nodes in document order, and the edges whose source is among them (CONTAINS within the subtree, and the citations, uses and imports from it). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not among the nodes.",
       "type": "object",
       "required": [
         "version",
@@ -190,11 +190,11 @@
           "type": "string"
         },
         "kind": {
-          "description": "CONTAINS: a node to what is written in it (the trees); REFERENCES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
+          "description": "CONTAINS: a node to what is written in it (the trees); CITES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
           "type": "string",
           "enum": [
             "CONTAINS",
-            "REFERENCES",
+            "CITES",
             "USES",
             "IMPORTS",
             "USES_EXTERNAL"

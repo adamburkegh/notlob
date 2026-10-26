@@ -35,7 +35,7 @@ from notlob.bindings.python import (
 from notlob.bindings.typescript import kit as typescript_kit
 from notlob.commands import cmd_graph
 from notlob.graph import (
-    LEVELS, _turtle_iri, _turtle_lit, _turtle_long_lit, add_references_edges,
+    LEVELS, _turtle_iri, _turtle_lit, _turtle_long_lit, add_cites_edges,
     add_uses_edges, turtle_class_name,
 )
 from notlob.project import build_package
@@ -117,7 +117,7 @@ def _everything_graph():
     module = from_tree(parse(_EVERYTHING))
     graph = build(module, "m.lob")
     enrich(graph, module, extract_symbols)
-    add_references_edges(graph)
+    add_cites_edges(graph)
     add_uses_edges(graph, extract_calls)
     graph.add_node(Node(address="index.html", label="index.html",
                         kind=NodeKind.EXTERNAL))

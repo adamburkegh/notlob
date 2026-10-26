@@ -21,7 +21,7 @@ from notlob import (
 from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import extract_symbols, kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
-from notlob.graph import LEVELS, add_references_edges, parse_level
+from notlob.graph import LEVELS, add_cites_edges, parse_level
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 SCHEMA = (
@@ -84,7 +84,7 @@ def _graph(source: str):
     module = from_tree(parse(source))
     graph = build(module)
     enrich(graph, module, extract_symbols)
-    add_references_edges(graph)
+    add_cites_edges(graph)
     return graph
 
 
@@ -217,8 +217,8 @@ class TestOutline:
 
     def test_a_reference_is_lifted_to_the_section_that_holds_it(self):
         edges = _graph(_EVERYTHING).to_dict()["edges"]
-        assert [e for e in edges if e["kind"] == "REFERENCES"] == [
-            {"source": "m", "target": "m#Sec", "kind": "REFERENCES",
+        assert [e for e in edges if e["kind"] == "CITES"] == [
+            {"source": "m", "target": "m#Sec", "kind": "CITES",
              "start_line": 3}]
 
     def test_two_references_from_one_section_merge_at_the_earlier_line(
@@ -227,8 +227,8 @@ class TestOutline:
         doc = _graph(
             "#M\n\n##S\n\nFirst #T.\n\nSecond #T.\n\n##T\n\nTarget.\n"
         ).to_dict()
-        assert [e for e in doc["edges"] if e["kind"] == "REFERENCES"] == [
-            {"source": "m#S", "target": "m#T", "kind": "REFERENCES",
+        assert [e for e in doc["edges"] if e["kind"] == "CITES"] == [
+            {"source": "m#S", "target": "m#T", "kind": "CITES",
              "start_line": 5}]
 
     def test_the_hidden_leaves_have_no_edges(self):

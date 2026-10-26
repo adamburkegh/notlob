@@ -507,7 +507,7 @@ _PROJECTS = [
     ("gutenberg", python_kit), ("haskell-roman", haskell_kit),
     ("ts-media", typescript_kit),
 ]
-_TREE_EDGES = {EdgeKind.CONTAINS, EdgeKind.USES, EdgeKind.REFERENCES,
+_TREE_EDGES = {EdgeKind.CONTAINS, EdgeKind.USES, EdgeKind.CITES,
                EdgeKind.IMPORTS, EdgeKind.USES_EXTERNAL}
 
 
