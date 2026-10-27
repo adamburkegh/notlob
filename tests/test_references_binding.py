@@ -205,7 +205,8 @@ class TestTheKinds:
     def test_what_outline_leaves_out(self):
         assert {k for k in NodeKind if KINDS[k].hidden_at_outline} == {
             NodeKind.PROSE, NodeKind.CODE, NodeKind.BULLETS,
-            NodeKind.LISTING, NodeKind.IMPORT, NodeKind.DECLARATION}
+            NodeKind.LISTING, NodeKind.IMPORT, NodeKind.DECLARATION,
+            NodeKind.POST_TEXT}
 
 
 # ── The nodes ────────────────────────────────────────────────
@@ -322,8 +323,8 @@ class TestBindingNodes:
                      if n["address"] == "proj#Binding#declaration#2")
         assert entry["declares"] == "external"
         assert entry["value"] == "data/pg1524.txt"
-        assert list(entry)[:6] == [
-            "address", "label", "kind", "declares", "value", "file"]
+        assert list(entry)[:4] == [
+            "address", "kind", "declares", "value"]
         bare = next(n for n in doc["nodes"]
                     if n["address"] == "proj#Binding#declaration#3")
         assert "value" not in bare

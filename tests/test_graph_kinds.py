@@ -39,7 +39,7 @@ class TestTheTable:
         ("claim", {K.EXAMPLE, K.PROPERTY, K.RUN}),
         ("runnable", {K.EXAMPLE, K.PROPERTY, K.RUN, K.TEST}),
         ("hidden_at_outline", {K.PROSE, K.CODE, K.BULLETS, K.LISTING,
-                               K.IMPORT, K.DECLARATION}),
+                               K.IMPORT, K.DECLARATION, K.POST_TEXT}),
         ("section", {K.SUBHEADING, K.APPENDIX}),
         ("region", {K.POST_TEXT}),
         ("text_in_holder", {K.SYMBOL}),

@@ -74,7 +74,7 @@ class TestCmdGraph:
         cmd_graph(target)
         data = json.loads(capsys.readouterr().out)
         for node in data["nodes"]:
-            assert {"address", "label", "kind"} <= set(node.keys())
+            assert {"address", "kind"} <= set(node.keys())
             assert node["kind"] in {"MODULE", "SUBHEADING", "SYMBOL", "PROPERTY"}
 
     def test_edge_shapes_valid(self, tmp_path, capsys):
@@ -86,13 +86,15 @@ class TestCmdGraph:
             assert {"source", "target", "kind"} <= set(edge.keys())
             assert edge["kind"] in {"CONTAINS", "IMPORTS"}
 
-    def test_a_node_names_its_file_in_a_project(self, tmp_path, capsys):
+    def test_a_module_names_its_file_in_a_project(self, tmp_path, capsys):
         root = _project(tmp_path)
         target = _write(root, "pkg/t.lob", "#Pkg T\n    def f(): pass\n")
         cmd_graph(target)
         data = json.loads(capsys.readouterr().out)
+        module = next(n for n in data["nodes"] if n["address"] == "pkg/t")
         sym = next(n for n in data["nodes"] if n["kind"] == "SYMBOL")
-        assert sym["file"] == "pkg/t.lob"
+        assert module["file"] == "pkg/t.lob"
+        assert "file" not in sym
         assert (sym["start_line"], sym["end_line"]) == (2, 2)
 
 

@@ -26,7 +26,7 @@ from notlob.commands import (
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
     cmd_query_callers, cmd_query_callees,
     cmd_query_cites, cmd_query_cited_by,
-    QUERY_EDGE_KINDS, QUERY_NODE_KINDS,
+    QUERY_EDGE_KINDS, QUERY_NODE_KINDS, use_utf8_streams,
 )
 from notlob.project import find_project_root, resolve_module_path
 
@@ -84,6 +84,7 @@ def _add_file_arg(p, required: bool = True) -> None:
 
 
 def main() -> None:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="notlob",
         description="Notlob literate programming toolkit.",

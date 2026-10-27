@@ -71,6 +71,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
+- **notlob's output is UTF-8 on every platform, and JSON no longer
+  escapes non-ASCII.** `notlob` reconfigures its standard streams to
+  UTF-8 (the CLI at start-up; the MCP server for stdin, stdout and
+  stderr), where a pipe or redirect on Windows used the system codepage
+  and raised `UnicodeEncodeError` on prose outside it. Every JSON notlob
+  prints or writes (`graph`, `query`, `check --json`, `test --json`, the
+  `~on-build` manifest, MCP responses) is written with
+  `ensure_ascii=False`, so an em dash is `—`, not `—`. A consumer
+  that decoded piped output in a legacy codepage must read UTF-8. There
+  is no flag to escape.
 - **Breaking: the name-graph is the parse tree of each `.lob` file, with
   cross-references** (`notlob graph`, `schema/name_graph.json`). Every
   element of a file is a node, contained by what it is written in, in
@@ -89,21 +99,27 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   holds its first and last line and none of the text, which is read from
   its code block. A `~run` of any mode is a `RUN` node with its `mode`
   (`on-load`, or `on-invocation` for a bare `~run`); a `~run on-load` was
-  a `PROPERTY` before. `CONTAINS` is the only tree edge: `DEFINES` is
-  gone. The `REFERENCES` edge is now `CITES` (the Turtle property is
+  a `PROPERTY` before. `DEFINES` is gone. The `REFERENCES` edge is now `CITES` (the Turtle property is
   `notlob:cites`), so that it no longer contradicts the `#References`
   section, whose lines make `IMPORTS` edges; it runs from the paragraph
   that holds the reference, which keeps the references as written (`refs`).
   The document is `{version: 2, level, nodes, edges}`, at one of three
   levels: `outline` (the default) has every node but paragraphs, code
-  blocks, bullet lists, listings, import statements and declarations,
-  with their edges moved to the nearest node shown; `index` adds those, each paragraph's `refs`, and each node's
-  `size`; `full` adds the text. A node written in a `.lob` file has its
-  `file`, `start_line` and `end_line`; a node the document names has
-  `"named": true`. `--content`
+  blocks, bullet lists, listings, import statements, declarations and the
+  region after the `---` (`POST_TEXT`), with their edges moved to the
+  nearest node shown; `index` adds those, each paragraph's `refs`, and
+  each node's `size`; `full` adds the text. The document says each thing
+  once: only a module has a `label` (its title) and a `file`, as any other
+  node's follow from its address; and `nodes` is in the order the files
+  are written, each module and then what is written in it, depth first,
+  with the `CONTAINS` edges first in `edges`, in that order too, so a
+  node's children are in the order they are written. A node has its
+  `start_line` and `end_line`; a node the document names has `"named": true`. A query
+  answer stands on its own, so it keeps `label` and `file`. `--content`
   and the `content` object are gone: use `--level full`, or `notlob
   query content` for part of the graph. The Turtle export prints the same
-  nodes and edges at the same levels.
+  nodes and edges at the same levels: `rdfs:label` and `notlob:file` on
+  modules only, and the tree as `notlob:contains` triples.
 - **Breaking: addresses.** A paragraph, code block or bullet list is
   addressed by position, as a claim already was (`mod#Decoding#prose#2`,
   `mod#code#1`). A named `~property` belongs to its module's namespace,

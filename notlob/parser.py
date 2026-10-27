@@ -124,4 +124,4 @@ def to_dict(node: Tree | Token) -> dict:
 
 def to_json(tree: Tree, *, indent: int = 2) -> str:
     """Serialise a parse Tree to a JSON string."""
-    return json.dumps(to_dict(tree), indent=indent)
+    return json.dumps(to_dict(tree), indent=indent, ensure_ascii=False)

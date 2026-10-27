@@ -30,6 +30,9 @@ SCHEMA = (
 
 _LEAVES = {"PROSE", "CODE", "BULLETS", "LISTING", "IMPORT", "DECLARATION"}
 
+#: What the outline leaves out: the leaves, and the region after the ---.
+_LEFT_OUT = _LEAVES | {"POST_TEXT"}
+
 #: A source with every kind of node in it.
 _EVERYTHING = (
     "#M\n"                       # 1
@@ -157,7 +160,7 @@ class TestOutline:
         graph = _graph(_EVERYTHING)
         doc = graph.to_dict(level="outline")
         shown = {n.address for n in graph.nodes()
-                 if n.kind.name not in _LEAVES}
+                 if n.kind.name not in _LEFT_OUT}
         assert set(_by_address(doc)) == shown
 
     def test_the_kinds_it_shows(self):
@@ -165,21 +168,23 @@ class TestOutline:
                  _graph(_EVERYTHING).to_dict()["nodes"]}
         assert kinds == {
             "MODULE", "SUBHEADING", "SYMBOL", "EXAMPLE", "PROPERTY", "RUN",
-            "POST_TEXT", "TESTS", "TEST_GROUP", "TEST", "APPENDIX"}
+            "TESTS", "TEST_GROUP", "TEST", "APPENDIX"}
 
     def test_the_fields_of_a_node(self):
         nodes = _by_address(_graph(_EVERYTHING).to_dict())
         assert nodes["m#Sec"] == {
-            "address": "m#Sec", "label": "Sec", "kind": "SUBHEADING",
+            "address": "m#Sec", "kind": "SUBHEADING",
             "named": True, "start_line": 22, "end_line": 27}
         assert nodes["m#f"]["start_line"] == 8
         assert nodes["m#f"]["end_line"] == 9
 
     def test_a_module_built_in_a_project_names_its_file(self):
         nodes = _by_address(_roman().to_dict())
+        assert nodes["roman/numerals"]["file"] == "roman/numerals.lob"
+        assert nodes["roman/numerals"]["label"] == "Roman Numerals"
         assert nodes["roman/numerals#to_roman"] == {
-            "address": "roman/numerals#to_roman", "label": "to_roman",
-            "kind": "SYMBOL", "file": "roman/numerals.lob",
+            "address": "roman/numerals#to_roman",
+            "kind": "SYMBOL",
             "start_line": 19, "end_line": 25}
 
     def test_named_is_where_the_document_gives_a_name(self):
@@ -191,12 +196,13 @@ class TestOutline:
         assert "named" not in nodes["m#f"]
         assert "named" not in nodes["m#Tests#test#1"]
 
-    def test_the_name_itself_is_never_printed_it_is_the_label(self):
+    def test_the_name_itself_is_never_printed_it_is_in_the_address(self):
         for level in LEVELS:
             doc = _graph(_EVERYTHING).to_dict(level=level)
             assert all("name" not in n for n in doc["nodes"])
         nodes = _by_address(_graph(_EVERYTHING).to_dict())
-        assert nodes["m#p"]["label"] == "p"
+        assert "label" not in nodes["m#p"]
+        assert nodes["m#p"]["address"].endswith("#p")
 
     def test_a_run_has_its_mode_and_nothing_else_does(self):
         nodes = _by_address(_graph(_EVERYTHING).to_dict())
@@ -347,12 +353,12 @@ class TestEveryExample:
 
 def _hidden(index: dict) -> dict:
     """The outline of an `index` document, worked out from it alone: its
-    nodes without the anonymous leaves, the fields only `index` has taken
-    off, and their edges moved to the nearest node that is shown."""
+    nodes without what the outline leaves out, the fields only `index` has
+    taken off, and their edges moved to the nearest node that is shown."""
     parent = {e["target"]: e["source"] for e in index["edges"]
               if e["kind"] == "CONTAINS"}
     hidden = {n["address"] for n in index["nodes"]
-              if n["kind"] in _LEAVES}
+              if n["kind"] in _LEFT_OUT}
 
     def shown(address: str) -> str:
         while address in hidden:

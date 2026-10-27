@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/name-graph",
   "title": "NameGraph",
-  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. `level` says how much is shown: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS), with their edges moved to the section that holds them; `index` has every node, `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once.",
+  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. Only a module has a `label` and a `file`; any other node's follow from its address. `level` says how much is shown: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS, LISTING, IMPORT, DECLARATION) and the region after the `---` (POST_TEXT), with their edges moved to the section that holds them; `index` has every node, `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once.",
   "type": "object",
   "required": [
     "version",
@@ -26,14 +26,14 @@
       ]
     },
     "nodes": {
-      "description": "The nodes of the graph, in the order they were added.",
+      "description": "The nodes of the graph, in the order they are written: each module, then what is written in it, depth first, each node's siblings in the order they are written in the file; then each EXTERNAL, in the order added.",
       "type": "array",
       "items": {
         "$ref": "#/definitions/GraphNode"
       }
     },
     "edges": {
-      "description": "The directed edges of the graph.",
+      "description": "The directed edges of the graph. The CONTAINS edges come first, one into each node but a MODULE and an EXTERNAL, in the order the nodes are written, so a node's children come in the order they are written in the file; then the rest, in the order they were added.",
       "type": "array",
       "items": {
         "$ref": "#/definitions/GraphEdge"
@@ -46,9 +46,39 @@
       "type": "object",
       "required": [
         "address",
-        "label",
         "kind"
       ],
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "MODULE"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "label"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "label"
+              ]
+            },
+            {
+              "required": [
+                "file"
+              ]
+            }
+          ]
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "address": {
@@ -56,7 +86,7 @@
           "type": "string"
         },
         "label": {
-          "description": "Human-readable name as written in source.",
+          "description": "A module's title, as written. Present on a MODULE only: any other node's label follows from its address (what follows the last `#` for a named node; for an anonymous one its kind's segment and ordinal, as in `example#1`, or the segment alone for a kind that is not numbered, as in `post-text`; an EXTERNAL's address is its name).",
           "type": "string"
         },
         "kind": {
@@ -86,7 +116,7 @@
           ]
         },
         "named": {
-          "description": "True where the document gives the node a name (a heading, a `##group`, a `~property` or a `~test`); its `label` is the name. Absent for an anonymous node and for what a document does not name.",
+          "description": "True where the document gives the node a name (a heading, a `##group`, a `~property` or a `~test`); its address ends in the name. Absent for an anonymous node and for what a document does not name.",
           "const": true
         },
         "mode": {
@@ -112,7 +142,7 @@
           "type": "string"
         },
         "file": {
-          "description": "The .lob file it is written in, relative to the project root, with '/' separators. Absent for an external file and for a module built on its own.",
+          "description": "The .lob file a module is, relative to the project root, with '/' separators. Present on a MODULE only (and not on one built on its own): any other node's module is the part of its address before the first `#`.",
           "type": "string"
         },
         "start_line": {

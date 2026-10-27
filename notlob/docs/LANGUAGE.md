@@ -577,8 +577,12 @@ containment, and the other queries answer the cross-references. `--depth N`
 shapes are specified by `schema/query_result.json`.
 `notlob graph` prints the graph itself, `{version, level, nodes, edges}`
 (`schema/name_graph.json`): one tree of nodes for each file, joined by
-`CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL`
-edges between them. `#References` and `#Binding` are nodes like the other
+`CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL` edges
+between them. Each node says once what it is: only a module has a `label`
+(its title) and a `file`, as any other node's follow from its address.
+`nodes` is in the order the files are written, and the `CONTAINS` edges
+come first, in that order too, so a node's children are in the order they
+are written. `#References` and `#Binding` are nodes like the other
 sections (`REFERENCES`, `BINDING`): a listing is a `LISTING` (`#Title`),
 each import statement of the bound language one `IMPORT` (a statement over
 several lines is one node), and each `#Binding` line a `DECLARATION`, with
@@ -586,11 +590,13 @@ several lines is one node), and each `#Binding` line a `DECLARATION`, with
 `value`. An `IMPORTS` edge starts at the listing that makes it, and a
 `USES_EXTERNAL` edge at the declaration that names the file; at `outline`
 both start at their section. `--level` (a name or a number) says how much to show:
-`outline` (1, the default) every node but the paragraphs, code blocks and
-bullet lists, with their edges moved to the section that holds them;
-`index` (2) those too, the references a paragraph holds and a `size` for
+`outline` (1, the default) every node but the paragraphs, code blocks,
+bullet lists and the region after the `---`, with their edges moved to the
+section that holds them (the `CONTAINS` edges into their children come from
+the section too); `index` (2) those too, the references a paragraph holds and a `size` for
 each node; `full` (3) the `text` of each node that holds text, once.
 `notlob graph --format turtle` exports the same nodes and edges as RDF, at
-the same `--level`; its vocabulary is declared in `schema/notlob.ttl`
+the same `--level`, writing the tree as `notlob:contains` triples; its
+vocabulary is declared in `schema/notlob.ttl`
 (informal namespace `urn:notlob:ns:`), and node IRIs are relative
 references, so they resolve against wherever the file is loaded.

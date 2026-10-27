@@ -614,6 +614,15 @@ first, a list of files it may touch, and a stop point. Order:
    * **8d, UTF-8 output:** notlob writes UTF-8 on every platform and
      JSON stops escaping non-ASCII (Adam, 2026-10-27). Brief:
      `slice-8d-brief.md`.
+   * **8e, the graph document says each thing once:** `label` and
+     `file` on modules only, `POST_TEXT` hidden at outline, nodes and
+     `CONTAINS` edges in writing order, the `CONTAINS` edges first and
+     then the cross-references (Adam, 2026-10-27, after an alpha read
+     by notlob-vids). A `parent` field in place of the
+     `CONTAINS` edges was built and backed out: it changed the export's
+     shape for one edge kind, the tree is not repetition, and Turtle
+     had to turn it back into `contains`. The export stays nodes and
+     edges, the same shape as the Turtle. Brief: `slice-8e-brief.md`.
 7. **Duplicate-name warning** (D10): a `notlob check` advisory for the
    same name in different scopes, beside the `typos` check. It also makes
    the doubtful `USES` edges of the global label index visible until

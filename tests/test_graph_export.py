@@ -196,7 +196,7 @@ class TestToDict:
         assert isinstance(d["nodes"], list)
         assert isinstance(d["edges"], list)
         assert all(
-            {"address", "label", "kind"} <= set(n.keys())
+            {"address", "kind"} <= set(n.keys())
             for n in d["nodes"]
         )
 

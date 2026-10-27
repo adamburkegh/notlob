@@ -434,7 +434,7 @@ class TestMcpTools:
         kinds = self._tool("notlob_query_search")["kind"]["enum"]
         assert set(kinds) == {k.name for k in NodeKind} - {
             "PROSE", "CODE", "BULLETS", "LISTING", "IMPORT",
-            "DECLARATION"}
+            "DECLARATION", "POST_TEXT"}
 
     def test_content_takes_a_depth(self):
         depth = self._tool("notlob_query_content")["depth"]
@@ -456,10 +456,17 @@ class TestSchema:
     def test_the_node_is_the_graphs_node(self):
         """One node shape, specified twice (the written schemas must each
         stand alone, so no cross-file $ref): the definitions must not
-        drift apart."""
+        drift apart. An answer stands on its own, so it keeps the `label`
+        and `file` that the document keeps on its modules only."""
         mine, graph = _schema()["definitions"], _schema("name_graph.json")[
             "definitions"]
-        assert mine["Node"] == graph["GraphNode"]
+        assert (set(mine["Node"]["properties"])
+                == set(graph["GraphNode"]["properties"]))
+        for name, definition in graph["GraphNode"]["properties"].items():
+            if name not in ("label", "file", "named"):
+                assert mine["Node"]["properties"][name] == definition, name
+        assert (mine["Node"]["properties"]["named"]["const"]
+                == graph["GraphNode"]["properties"]["named"]["const"])
         assert mine["GraphRef"] == graph["GraphRef"]
         assert mine["Edge"] == graph["GraphEdge"]
 

@@ -180,7 +180,8 @@ class KindFacts:
     hidden_at_outline
                      the ``outline`` leaves it out, and moves its edges to
                      the section that holds it: a paragraph, code block,
-                     bullet list, listing, import statement or declaration
+                     bullet list, listing, import statement or declaration,
+                     and the region after the ``---``
     section          a section of the document
     region           a region of the tree, no part of an address
     text_in_holder   its text is lines of the node that holds it
@@ -223,7 +224,8 @@ KINDS: dict[NodeKind, KindFacts] = {
     NodeKind.APPENDIX: KindFacts(
         section=True, segment="appendix", numbered=True),
     NodeKind.TESTS: KindFacts(opens_scope=True),
-    NodeKind.POST_TEXT: KindFacts(region=True, segment="post-text"),
+    NodeKind.POST_TEXT: KindFacts(
+        hidden_at_outline=True, region=True, segment="post-text"),
     NodeKind.TEST_GROUP: KindFacts(opens_scope=True),
     NodeKind.REFERENCES: KindFacts(),
     NodeKind.BINDING: KindFacts(),
@@ -392,10 +394,9 @@ def turtle_class_name(kind: NodeKind) -> str:
 def _turtle_node(node: dict) -> list[str]:
     """The lines that write *node*, an entry of the document, as one
     Turtle subject."""
-    parts = [
-        f"rdfs:label {_turtle_lit(node['label'])}",
-        f"notlob:address {_turtle_lit(node['address'])}",
-    ]
+    parts = [f"notlob:address {_turtle_lit(node['address'])}"]
+    if "label" in node:
+        parts.insert(0, f"rdfs:label {_turtle_lit(node['label'])}")
     if node.get("named"):
         parts.append("notlob:named true")
     for key in ("mode", "declares", "value"):
@@ -787,12 +788,18 @@ class NameGraph:
         :data:`LEVELS`):
 
         * ``outline`` (1): every node but the anonymous leaves
-          (paragraphs, code blocks, bullet lists), with an edge to or
-          from one of those moved to the section that holds it.
+          (paragraphs, code blocks, bullet lists) and the region after
+          the ``---``, with an edge to or from one of those moved to the
+          section that holds it.
         * ``index`` (2): every node, the references a paragraph holds, and
           a ``size`` for each node.
         * ``full`` (3): and the ``text`` of each node that holds text,
           once.
+
+        ``nodes`` is in the order the files are written, and the
+        ``CONTAINS`` edges, one into each node but a module and an
+        ``EXTERNAL``, in that order too. Only a module has a ``label`` and
+        a ``file``.
 
         Raises ``ValueError`` for a level that is none of these.
         """
@@ -814,7 +821,8 @@ class NameGraph:
         *indent* controls pretty-printing; pass ``None`` for compact
         single-line output.  *level* is forwarded to :meth:`to_dict`.
         """
-        return json.dumps(self.to_dict(level=level), indent=indent)
+        return json.dumps(
+            self.to_dict(level=level), indent=indent, ensure_ascii=False)
 
     def to_turtle(
         self,
@@ -825,7 +833,9 @@ class NameGraph:
 
         It writes the nodes and edges that :meth:`to_dict` does at the
         same *level* (see there for what each level shows), with the
-        edges lifted the same way. A node's ``named``, ``mode`` and
+        edges lifted the same way, the tree among them as
+        ``notlob:contains`` triples. Only a module has an
+        ``rdfs:label`` and a ``notlob:file``. A node's ``named``, ``mode`` and
         ``size``, a paragraph's references (``notlob:ref``) and a node's
         ``text`` are written as the level gives them; an edge is a triple
         without its line, which RDF has no place for (the JSON carries
@@ -849,7 +859,8 @@ class NameGraph:
             "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
             "",
         ]
-        for node in _document_nodes(self, level):
+        nodes = _document_nodes(self, level)
+        for node in nodes:
             lines += _turtle_node(node)
             lines.append("")
         for edge in _document_edges(self, level):
@@ -1588,21 +1599,32 @@ def _sizes(graph: NameGraph) -> dict[str, int]:
     return sizes
 
 
-def _node_entry(node: Node, level: str, sizes: dict[str, int]) -> dict:
-    """The node as the document writes it at *level*; *sizes* is
-    :func:`_sizes` of its graph, needed from ``index`` on."""
-    d: dict = {
-        "address": node.address,
-        "label":   node.label,
-        "kind":    node.kind.name,
-    }
+def _what_it_is(node: Node) -> dict:
+    """What a node is, apart from where it is: the facts both a query's
+    answer and the document write for it."""
+    d: dict = {}
     if node.name is not None:
         d["named"] = True
-    for field_name in ("mode", "declares", "value", "file", "start_line",
-                       "end_line"):
+    for field_name in ("mode", "declares", "value"):
         value = getattr(node, field_name)
         if value is not None:
             d[field_name] = value
+    return d
+
+
+def _where_it_is(node: Node) -> dict:
+    """The lines a node is written on."""
+    return {key: getattr(node, key) for key in ("start_line", "end_line")
+            if getattr(node, key) is not None}
+
+
+def _what_the_level_adds(
+    node: Node, level: str, sizes: dict[str, int],
+) -> dict:
+    """What the document adds for a node from ``index`` on: its size, the
+    references a paragraph holds and, at ``full``, its text. *sizes* is
+    :func:`_sizes` of its graph."""
+    d: dict = {}
     if level != "outline":
         d["size"] = sizes[node.address]
         if node.kind == NodeKind.PROSE:
@@ -1616,26 +1638,90 @@ def _node_entry(node: Node, level: str, sizes: dict[str, int]) -> dict:
     return d
 
 
+def _node_entry(node: Node, level: str, sizes: dict[str, int]) -> dict:
+    """The node as the document writes it at *level*. Only a module has a
+    ``label``, its title, and a ``file``: any other node's follow from its
+    address."""
+    d: dict = {"address": node.address}
+    if node.kind == NodeKind.MODULE:
+        d["label"] = node.label
+    d["kind"] = node.kind.name
+    d.update(_what_it_is(node))
+    if node.kind == NodeKind.MODULE and node.file is not None:
+        d["file"] = node.file
+    d.update(_where_it_is(node))
+    d.update(_what_the_level_adds(node, level, sizes))
+    return d
+
+
+def _is_left_out(node: Node, level: str) -> bool:
+    return level == "outline" and KINDS[node.kind].hidden_at_outline
+
+
+def _in_writing_order(
+    graph: NameGraph, level: str,
+) -> list[tuple[Node, str | None]]:
+    """The nodes the document shows at *level*, each with the address of
+    the node above it that is shown, in the order they are written: each
+    module, then what is written in it depth first, siblings by
+    ``start_line``; then any other node but an ``EXTERNAL``, then the
+    ``EXTERNAL`` nodes, in the order they were added. What a level leaves
+    out is passed through: its children belong to the node above."""
+    def held(address: str) -> list[Node]:
+        found: list[Node] = []
+        for child in graph.children(address):
+            if _is_left_out(child, level):
+                found += held(child.address)
+            else:
+                found.append(child)
+        return found
+
+    order: list[tuple[Node, str | None]] = []
+    seen: set[str] = set()
+
+    def walk(node: Node, parent: str | None) -> None:
+        seen.add(node.address)
+        order.append((node, parent))
+        below = sorted(held(node.address),
+                       key=lambda n: n.start_line or 0)
+        for child in below:
+            walk(child, node.address)
+
+    for module in graph.nodes(NodeKind.MODULE):
+        walk(module, None)
+    others = [n for n in graph.nodes()
+              if n.address not in seen and not _is_left_out(n, level)]
+    for node in others:
+        if node.kind != NodeKind.EXTERNAL:
+            order.append((node, None))
+    for node in others:
+        if node.kind == NodeKind.EXTERNAL:
+            order.append((node, None))
+    return order
+
+
 def _document_nodes(graph: NameGraph, level: str) -> list[dict]:
-    """The nodes of the document at *level*, in the order they were added
-    to the graph."""
+    """The nodes of the document at *level*, in writing order (see
+    :func:`_in_writing_order`)."""
     sizes = _sizes(graph) if level != "outline" else {}
     return [
-        _node_entry(node, level, sizes) for node in graph.nodes()
-        if not (level == "outline" and KINDS[node.kind].hidden_at_outline)
+        _node_entry(node, level, sizes)
+        for node, _ in _in_writing_order(graph, level)
     ]
 
 
 def _document_edges(graph: NameGraph, level: str) -> list[dict]:
-    """The edges of the document at *level*, in the order they were added.
-    At ``outline`` an edge to or from a node that is left out is moved to
-    the nearest node above it that is shown, along ``CONTAINS``; edges
-    that are then the same (source, target and kind) are one, at the
-    earliest line, and a ``CONTAINS`` edge to a node left out is dropped."""
+    """The edges of the document at *level*: the ``CONTAINS`` edges first,
+    one into each node but a module and an ``EXTERNAL``, in writing order
+    (see :func:`_in_writing_order`) so a node's children come in the order
+    they are written; then the rest, in the order they were added. At
+    ``outline`` an edge to or from a node that is left out is moved to the
+    nearest node above it that is shown, along ``CONTAINS``; edges that are
+    then the same (source, target and kind) are one, at the earliest
+    line."""
     def hidden(address: str) -> bool:
         node = graph.node(address)
-        return (level == "outline" and node is not None
-                and KINDS[node.kind].hidden_at_outline)
+        return node is not None and _is_left_out(node, level)
 
     def shown(address: str) -> str | None:
         while hidden(address):
@@ -1645,9 +1731,14 @@ def _document_edges(graph: NameGraph, level: str) -> list[dict]:
             address = parent.address
         return address
 
-    merged: dict[tuple[str, str, str], dict] = {}
+    merged: dict[tuple[str, str, str], dict] = {
+        (parent, node.address, "CONTAINS"): {
+            "source": parent, "target": node.address, "kind": "CONTAINS"}
+        for node, parent in _in_writing_order(graph, level)
+        if parent is not None
+    }
     for edge in graph.edges():
-        if edge.kind == EdgeKind.CONTAINS and hidden(edge.target):
+        if edge.kind == EdgeKind.CONTAINS:
             continue
         source, target = shown(edge.source), shown(edge.target)
         if source is None or target is None:
@@ -1668,8 +1759,16 @@ def _document_edges(graph: NameGraph, level: str) -> list[dict]:
 # ── Answers to queries ────────────────────────────────────────
 
 def node_summary(node: Node) -> dict:
-    """The node as ``outline`` writes it: what a query prints for it."""
-    return _node_entry(node, "outline", {})
+    """The node as a query prints it: its ``label`` and ``file`` as well,
+    for an answer stands on its own, with no module beside it to look them
+    up in."""
+    d: dict = {"address": node.address, "label": node.label,
+               "kind": node.kind.name}
+    d.update(_what_it_is(node))
+    if node.file is not None:
+        d["file"] = node.file
+    d.update(_where_it_is(node))
+    return d
 
 
 def content_tree(

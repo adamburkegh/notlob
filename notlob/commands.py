@@ -53,6 +53,20 @@ from notlob.project import (
 )
 
 
+def use_utf8_streams(*streams) -> None:
+    """Make the standard streams write (and read) UTF-8.
+
+    Without this Python picks the system codepage for a pipe or a
+    redirect, which cannot hold most of the text a `.lob` file may.
+    Streams that cannot be reconfigured (a test's capture, say) are
+    left as they are.
+    """
+    for stream in streams or (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
+
+
 # ── Language dispatch ─────────────────────────────────────────
 
 @lru_cache(maxsize=None)
@@ -749,7 +763,7 @@ def cmd_test(
         }
         if path is None:
             output["checks"] = check_findings
-        print(json.dumps(output, indent=2))
+        print(json.dumps(output, indent=2, ensure_ascii=False))
     else:
         parts = [f"{n_pass} passed"]
         if n_fail:
@@ -915,7 +929,7 @@ def _render_package_json(project_slug: str) -> str:
             "typescript": "^5.4.0",
         },
     }
-    return json.dumps(data, indent=2) + "\n"
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 def _render_tsconfig() -> str:
@@ -935,7 +949,7 @@ def _render_tsconfig() -> str:
             "strict": False,
         },
     }
-    return json.dumps(data, indent=2) + "\n"
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 def _scaffold_files(language: str, project_slug: str) -> list[tuple[str, str]]:
@@ -1074,8 +1088,9 @@ def _run_build_hook(
 ) -> None:
     """Run the ``~on-build`` hook script if declared in *binding*.
 
-    The hook receives a JSON manifest written to a temporary file whose
-    path is passed as its first argument.  The shape is specified by
+    The hook receives a JSON manifest, written as UTF-8 without escapes,
+    to a temporary file whose path is passed as its first argument.  The
+    shape is specified by
     ``notlob/schema/build_manifest.json`` (written to ``schema/`` by
     ``notlob docs``).  The manifest contains:
 
@@ -1130,7 +1145,7 @@ def _run_build_hook(
     with tempfile.NamedTemporaryFile(
         suffix=".json", mode="w", encoding="utf-8", delete=False,
     ) as f:
-        json.dump(manifest, f, indent=2)
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
         manifest_path = f.name
 
     try:
@@ -1411,7 +1426,8 @@ QUERY_NODE_KINDS = tuple(
 
 
 def _print_nodes(nodes) -> int:
-    print(json.dumps([node_summary(n) for n in nodes], indent=2))
+    print(json.dumps(
+        [node_summary(n) for n in nodes], indent=2, ensure_ascii=False))
     return 0
 
 
@@ -1440,7 +1456,8 @@ def cmd_query_resolve(label: str, context: str | None = None) -> int:
     if graph is None:
         return 1
     node = graph.resolve(label, context)
-    print(json.dumps(node_summary(node) if node else None, indent=2))
+    print(json.dumps(
+        node_summary(node) if node else None, indent=2, ensure_ascii=False))
     return 0 if node else 1
 
 
@@ -1541,7 +1558,7 @@ def cmd_check(
             "version": _CHECK_JSON_VERSION,
             "findings": [_collision_finding(exc)],
             "counts": {},
-        }, indent=2))
+        }, indent=2, ensure_ascii=False))
         return 1
     if graph is None:
         return 1
@@ -1555,7 +1572,7 @@ def cmd_check(
             "findings": [_finding_dict(f) for f in findings],
             "counts": counts,
         }
-        print(json.dumps(output, indent=2))
+        print(json.dumps(output, indent=2, ensure_ascii=False))
     else:
         if verbose:
             for name, n in counts.items():
@@ -1677,7 +1694,7 @@ def cmd_query_content(
         return 1
     if fmt == "json":
         document = content_tree(graph, address, depth)
-        print(json.dumps(document, indent=2))
+        print(json.dumps(document, indent=2, ensure_ascii=False))
         return 0 if document else 1
     try:
         text = _content_text(graph, project, address)

@@ -238,7 +238,6 @@ class TestEmittedTurtle:
         ).to_turtle()
         assert (
             "<t#to_roman> a notlob:Symbol ;\n"
-            '    rdfs:label "to_roman" ;\n'
             '    notlob:address "t#to_roman" ;\n'
             "    notlob:startLine 2 ;\n"
             "    notlob:endLine 3 ."
@@ -264,7 +263,10 @@ class TestEmittedTurtle:
         for node in graph.nodes():
             assert node.address in by_address, node.address
             subject = by_address[node.address]
-            assert str(parsed.value(subject, RDFS.label)) == node.label
+            if node.kind == NodeKind.MODULE:
+                assert str(parsed.value(subject, RDFS.label)) == node.label
+            else:
+                assert parsed.value(subject, RDFS.label) is None
             if node.kind == NodeKind.PROSE:
                 assert str(parsed.value(subject, _term("text"))) == (
                     node.text)
@@ -311,7 +313,8 @@ def _agreement(graph, level: str) -> None:
         subject = subjects[node["address"]]
         words = [w.capitalize() for w in node["kind"].split("_")]
         assert parsed.value(subject, RDF.type) == _term("".join(words))
-        assert str(parsed.value(subject, RDFS.label)) == node["label"]
+        label = parsed.value(subject, RDFS.label)
+        assert (None if label is None else str(label)) == node.get("label")
         for field, prop in (
                 ("file", "file"), ("start_line", "startLine"),
                 ("end_line", "endLine"), ("size", "size"),
@@ -408,15 +411,17 @@ class TestGraphFidelity:
             _term("address"))}
 
     @pytest.mark.parametrize("level", LEVELS)
-    def test_every_node_is_typed_labelled_and_addressed_once(
+    def test_every_node_is_typed_and_addressed_once_a_module_labelled(
         self, project_graph, level,
     ):
         parsed = _parse(project_graph.to_turtle(level=level))
         addr = self._address_of(parsed)
         assert len(addr) == len(project_graph.to_dict(level=level)["nodes"])
         for subject in addr:
+            kind = parsed.value(subject, RDF.type)
+            labels = len(list(parsed.objects(subject, RDFS.label)))
             assert len(list(parsed.objects(subject, RDF.type))) == 1
-            assert len(list(parsed.objects(subject, RDFS.label))) == 1
+            assert labels == (1 if kind == _term("Module") else 0)
             assert len(list(parsed.objects(subject, _term("address")))) == 1
 
     @pytest.mark.parametrize("level", LEVELS)

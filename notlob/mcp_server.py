@@ -352,6 +352,8 @@ def _handle(msg: dict) -> dict | None:
 
 def run_server() -> None:
     """Run the MCP server on stdin/stdout."""
+    from notlob.commands import use_utf8_streams
+    use_utf8_streams(sys.stdin, sys.stdout, sys.stderr)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -362,5 +364,5 @@ def run_server() -> None:
             continue
         response = _handle(msg)
         if response is not None:
-            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             sys.stdout.flush()
