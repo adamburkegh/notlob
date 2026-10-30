@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/name-graph",
   "title": "NameGraph",
-  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. Only a module has a `label` and a `file`; any other node's follow from its address. `level` says how much is shown: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS, LISTING, IMPORT, DECLARATION) and the region after the `---` (POST_TEXT), with their edges moved to the section that holds them; `index` has every node, `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once.",
+  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. A value that is a node of the graph is an edge and any other value is a field of its node, a list if it has several, so what is written (a paragraph's `refs`, a declaration's `value`) is a field and what it resolves to (CITES, IMPORTS, USES_EXTERNAL) is an edge. Only a module has a `label` and a `file`; any other node's follow from its address. `level` says how much is shown: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS, LISTING, IMPORT, DECLARATION) and the region after the `---` (POST_TEXT), with their edges moved to the section that holds them; `index` has every node, `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once.",
   "type": "object",
   "required": [
     "version",

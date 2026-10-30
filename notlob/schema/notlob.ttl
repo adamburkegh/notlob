@@ -12,6 +12,13 @@
 # classes are the node kinds (UpperCamelCase), the object properties are
 # the edge kinds and the reference a paragraph holds, and the datatype
 # properties are the literals a node carries. See tests/test_turtle.py.
+#
+# The rule: a value that is a node of the graph is an edge, an object
+# property whose range is notlob:Node; any other value is a field of its
+# node, and a field with several values is a list. What is written is a
+# field, and what it resolves to is an edge. A paragraph's reference
+# (notlob:ref) is an object property to a blank node, a structured value
+# that is not a node, so a field. See tests/test_field_or_edge.py.
 
 @prefix notlob: <urn:notlob:ns:> .
 @prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -27,12 +34,12 @@
 
 notlob:Node a owl:Class ;
     rdfs:label "Node" ;
-    rdfs:comment "A named thing in a notlob project. Every node has exactly one address and one label, and is an instance of exactly one of the kind classes below." .
+    rdfs:comment "A named thing in a notlob project. Every node has exactly one address, and is an instance of exactly one of the kind classes below. Only a module has an rdfs:label, its title: any other node's name follows from its address." .
 
 notlob:Module a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Module" ;
-    rdfs:comment "A .lob file; its address is its path relative to the project root, without the extension." .
+    rdfs:comment "A .lob file; its address is its path relative to the project root, without the extension, and its rdfs:label is its title." .
 
 notlob:Subheading a owl:Class ;
     rdfs:subClassOf notlob:Node ;
@@ -97,7 +104,7 @@ notlob:Tests a owl:Class ;
 notlob:PostText a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Post-text" ;
-    rdfs:comment "Everything after a module's --- separator: its #Tests section and its appendices. Part of the tree but not of an address." .
+    rdfs:comment "Everything after a module's --- separator: its #Tests section and its appendices. Part of the tree but not of an address. Not written at the outline level, where what it contains belongs to the node above it." .
 
 notlob:TestGroup a owl:Class ;
     rdfs:subClassOf notlob:Node ;
@@ -130,7 +137,7 @@ notlob:Declaration a owl:Class ;
     rdfs:comment "A declaration in #Binding: ~language, ~external, ~on-build or ~keep-generated-src. A uses_external edge starts at the one that names a file." .
 
 # ── What a node carries ──────────────────────────────────────
-# A node's human-readable name is `rdfs:label`.
+# A module's title is its `rdfs:label`; no other node has one.
 
 notlob:address a owl:DatatypeProperty ;
     rdfs:label "address" ;
@@ -140,7 +147,7 @@ notlob:address a owl:DatatypeProperty ;
 
 notlob:file a owl:DatatypeProperty ;
     rdfs:label "file" ;
-    rdfs:comment "The .lob file the node is written in, relative to the project root, with '/' separators. Absent for an external file." ;
+    rdfs:comment "The .lob file a module is, relative to the project root, with '/' separators. Written on a module only (and not on one built on its own): any other node's module is the part of its address before the first '#'." ;
     rdfs:domain notlob:Node ;
     rdfs:range xsd:string .
 
@@ -157,7 +164,7 @@ notlob:endLine a owl:DatatypeProperty ;
 
 notlob:named a owl:DatatypeProperty ;
     rdfs:label "named" ;
-    rdfs:comment "True where the document gives the node a name (a heading, a ##group, a ~property or a ~test); its rdfs:label is the name. Absent for an anonymous node." ;
+    rdfs:comment "True where the document gives the node a name (a heading, a ##group, a ~property or a ~test); its address ends in the name. Absent for an anonymous node." ;
     rdfs:domain notlob:Node ;
     rdfs:range xsd:boolean .
 
@@ -205,7 +212,7 @@ notlob:sub a owl:DatatypeProperty ;
 
 notlob:contains a owl:ObjectProperty ;
     rdfs:label "contains" ;
-    rdfs:comment "A node contains what is written in it: a module its sections and paragraphs, a code block its symbols. Each node but a module is contained by one node." ;
+    rdfs:comment "A node contains what is written in it: a module its sections and paragraphs, a code block its symbols. Each node but a module and an external file is contained by one node." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .
 
