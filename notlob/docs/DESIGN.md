@@ -593,9 +593,9 @@ binding's implementation is tied to a specific library.
   `dist/`).  After assembly, runs the `~on-build` hook if declared in
   `binding.lob`.  The primary entry point for browser-target languages.
 - `notlob weave` — render a `.lob` file (or project) as Markdown.
-- `notlob graph` — export the package name-graph as JSON, at one of
-  three levels of detail (`outline`, `index`, `full`), as JSON or as
-  Turtle.
+- `notlob graph` — the package name-graph, at one of three levels of
+  detail (`outline`, `index`, `full`): as text for a reader (the shape of
+  each file, in `notlob/outline.py`), or as JSON or Turtle for a program.
 - `notlob query` — navigate the name-graph from the command line
   (`children`, `resolve`, `search`, `imports`, `imported-by`,
   `content`).

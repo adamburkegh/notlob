@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/name-graph",
   "title": "NameGraph",
-  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. A value that is a node of the graph is an edge and any other value is a field of its node, a list if it has several, so what is written (a paragraph's `refs`, a declaration's `value`) is a field and what it resolves to (CITES, IMPORTS, USES_EXTERNAL) is an edge. Only a module has a `label` and a `file`; any other node's follow from its address. `level` says how much is shown: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS, LISTING, IMPORT, DECLARATION) and the region after the `---` (POST_TEXT), with their edges moved to the section that holds them; `index` has every node, `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once.",
+  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. A value that is a node of the graph is an edge and any other value is a field of its node, a list if it has several, so what is written (a paragraph's `refs`, a declaration's `value`) is a field and what it resolves to (CITES, IMPORTS, USES_EXTERNAL) is an edge. Only a module has a `label` and a `file`; any other node's follow from its address. `level` says how much is shown, and it is the same content as the text of `notlob graph` at that level: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS, LISTING, IMPORT, DECLARATION) and the region after the `---` (POST_TEXT), and the CONTAINS edges among them alone; `index` has every node, the other edges (the cross-references), `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once. A node gives the line it begins on and not where it ends: a reader takes that from the file.",
   "type": "object",
   "required": [
     "version",
@@ -17,7 +17,7 @@
       "const": 2
     },
     "level": {
-      "description": "How much of the graph is shown, and so which optional node fields to expect: `size` and `refs` from `index` on, `text` at `full`.",
+      "description": "How much of the graph is shown, and so which optional node fields to expect: the edges but CONTAINS, `size` and `refs` from `index` on, `text` at `full`.",
       "type": "string",
       "enum": [
         "outline",
@@ -147,10 +147,6 @@
         },
         "start_line": {
           "description": "1-based line of its file where it begins.",
-          "type": "integer"
-        },
-        "end_line": {
-          "description": "1-based last non-blank line of its file that it occupies.",
           "type": "integer"
         },
         "size": {

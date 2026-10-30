@@ -239,8 +239,7 @@ class TestEmittedTurtle:
         assert (
             "<t#to_roman> a notlob:Symbol ;\n"
             '    notlob:address "t#to_roman" ;\n'
-            "    notlob:startLine 2 ;\n"
-            "    notlob:endLine 3 ."
+            "    notlob:startLine 2 ."
         ) in text
 
     @pytest.mark.parametrize("source", [
@@ -317,7 +316,7 @@ def _agreement(graph, level: str) -> None:
         assert (None if label is None else str(label)) == node.get("label")
         for field, prop in (
                 ("file", "file"), ("start_line", "startLine"),
-                ("end_line", "endLine"), ("size", "size"),
+                ("size", "size"),
                 ("mode", "mode"), ("text", "text"), ("named", "named")):
             value = parsed.value(subject, _term(prop))
             if field in node:
@@ -438,7 +437,7 @@ class TestGraphFidelity:
 
 _DATATYPES = {
     "address": XSD.string, "file": XSD.string, "startLine": XSD.integer,
-    "endLine": XSD.integer, "named": XSD.boolean, "mode": XSD.string,
+    "named": XSD.boolean, "mode": XSD.string,
     "size": XSD.integer, "text": XSD.string, "sub": XSD.boolean,
     "declares": XSD.string, "value": XSD.string,
 }

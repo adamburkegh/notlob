@@ -44,6 +44,7 @@ from notlob.graph import (
     content_tree, module_address, node_summary, parse_level, sigil_of,
 )
 from notlob.model import BindingSection
+from notlob.outline import project_outline
 from notlob.project import (
     LobRefCycleError,
     address_from_path,
@@ -1308,9 +1309,13 @@ def cmd_build(
 
 # ── Graph export ──────────────────────────────────────────────
 
+#: The formats ``notlob graph`` prints.
+GRAPH_FORMATS = ("text", "json", "turtle")
+
+
 def cmd_graph(
     path:  Path | None = None,
-    fmt:   str         = "json",
+    fmt:   str         = "text",
     level: str | int | None = None,
 ) -> int:
     """Print the package name-graph to stdout.
@@ -1321,11 +1326,18 @@ def cmd_graph(
     project).
 
     The language binding (from ``binding.lob``) controls symbol
-    extraction.  *fmt* selects the output format: ``"json"`` (default)
-    or ``"turtle"`` (RDF Turtle).  Both are the graph itself at a *level*
+    extraction.  *fmt* selects the output format: ``"text"`` (the
+    default) is each module's file and the outline of what is written in
+    it, for a reader (see :mod:`notlob.outline`; at ``full`` each module
+    as ``query content`` prints it); ``"json"`` and ``"turtle"`` (RDF
+    Turtle) are the graph itself, for a program.  All are at a *level*
     of detail, by name or number (``outline``, the default, ``index`` or
     ``full``; see :meth:`notlob.graph.NameGraph.to_dict`).
     """
+    if fmt not in GRAPH_FORMATS:
+        print(f"ERROR  <graph>  unknown format {fmt!r}: choose "
+              f"{', '.join(GRAPH_FORMATS)}", file=sys.stderr)
+        return 1
     try:
         level = parse_level("outline" if level is None else level)
     except ValueError as exc:
@@ -1370,8 +1382,32 @@ def cmd_graph(
             graph.to_turtle(level=level).encode("utf-8")
         )
         sys.stdout.buffer.write(b"\n")
-    else:
+    elif fmt == "json":
         print(graph.to_json(level=level))
+    elif level == "full":
+        return _print_modules(graph, root)
+    else:
+        lone_file = (None if root is not None
+                     else _project_relative(str(path), None))
+        print(project_outline(graph, level, lone_file), end="")
+    return 0
+
+
+def _print_modules(graph: NameGraph, root: Path | None) -> int:
+    """Print each module of *graph* as ``query content`` prints it, with
+    a blank line between, or an error when there is no project to read
+    the files from."""
+    if root is None:
+        print("ERROR  <graph>  --level full as text needs a project to "
+              "read the files of; use --format json", file=sys.stderr)
+        return 1
+    try:
+        texts = [_content_text(graph, root, module.address)
+                 for module in graph.nodes(NodeKind.MODULE)]
+    except ValueError as exc:
+        print(f"ERROR  <graph>  {exc}", file=sys.stderr)
+        return 1
+    print("\n".join(texts), end="")
     return 0
 
 

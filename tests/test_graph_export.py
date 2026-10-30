@@ -154,7 +154,7 @@ class TestToDict:
         assert node["label"]   == "Roman Numerals"
         assert node["kind"]    == "MODULE"
         assert node["start_line"] == 1
-        assert node["end_line"] == 1
+        assert "end_line" not in node
 
     def test_edge_shape(self):
         d = _graph("#T\n##Section\n    code\n").to_dict()
@@ -184,7 +184,7 @@ class TestToDict:
         g2  = _graph("#B\n")
         g.merge(g2)
         g.add_edge(Edge(source="a", target="b", kind=EdgeKind.IMPORTS))
-        d     = g.to_dict()
+        d     = g.to_dict("index")
         kinds = {e["kind"] for e in d["edges"]}
         assert "CONTAINS" in kinds
         assert "IMPORTS"  in kinds

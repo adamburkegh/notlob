@@ -532,7 +532,7 @@ notlob query content <address> [--format json [--depth N]]  the source at an add
 notlob query children <address> list child nodes
 notlob query imports <address>  modules imported by an address
 notlob query imported-by <addr> modules that import an address
-notlob graph [--level LEVEL] [--format json|turtle]  export the name-graph
+notlob graph [--level LEVEL] [--format text|json|turtle]  the shape of each file, or the name-graph
 notlob mcp                      start the MCP tool server (stdin/stdout)
 ```
 
@@ -584,11 +584,12 @@ stderr with exit code 1.
 ~example   pricing/discounts#example#1   pricing/discounts.lob:15
 ```
 `--format json` prints the nodes as `notlob graph` does at `outline`
-(`address`, `label`, `kind`, and `named`, `mode`, `file`, `start_line`,
-`end_line` where they apply) as an array (`[]` when there is nothing to list),
-and `resolve` a single node. An address or label that is not a node prints
-`null` with exit code 1, and the error on stderr, as in text. `resolve` is deprecated: it prints as it did and says so
-on stderr; use `search`. `children` follows any edge kind the graph holds
+(`address`, `label`, `kind`, and `named`, `mode`, `file`, `start_line`
+where they apply) as an array (`[]` when there is nothing to list), and
+`resolve` a single node. An address or label that is not a node prints
+`null` with exit code 1, and the error on stderr, as in text. `resolve` is
+deprecated: it prints as it did and says so on stderr; use `search`.
+`children` follows any edge kind the graph holds
 (`CONTAINS` by default, and a section's paragraphs and code blocks are
 among its children); `search` finds the nodes `outline` shows; `cites` and
 `cited-by` give a section for a paragraph.
@@ -601,15 +602,42 @@ subtree instead, nested and narrow: each node has `address`, `kind`,
 `start_line`, and `named`, `mode`, `declares` and `value` where they apply,
 its `text` if it holds text (each line of text once, on the leaf it is
 written in, except that a symbol whose code block is not in the answer
-carries its text) and its `children`; the root also has `file` and
-`end_line`. There are no edges, labels, sizes or references: nesting is the
+carries its text) and its `children`; the root also has `file`. A node says
+where it begins and not where it ends: a reader takes that from the file,
+and the text form of `content` says what it printed in its header
+(`file:40-60`). There are no edges, labels, sizes or references: nesting is the
 containment, and the other queries answer the cross-references. `--depth N`
 (JSON only) stops N containment steps down (0 is the node alone). The
 shapes are specified by `schema/query_result.json`.
-`notlob graph` prints the graph itself, `{version, level, nodes, edges}`
-(`schema/name_graph.json`): one tree of nodes for each file, joined by
+`notlob graph` prints the whole project, for a reader as text by default,
+and for a program as the graph itself with `--format json` or `turtle`. A
+level (`--level`, a name or a number) says how much, and means the same
+content in each form. As text, each module is its file on a line alone,
+relative to the project root, and then a line for what is written in it:
+the name first, and the line it is written on in a column on the right,
+indented two spaces a step by what is written in what.
+```
+pricing/discounts.lob
+Pricing Discounts                        1
+  apply_discount                        11
+  ~example                              14
+  Stacking Discounts                    17
+    ~property                           31
+```
+A heading, group or module says its name (no hashes), a symbol its name,
+and a claim or a named test its sigil and then its name, if it has one; a
+run of bare assertions has no line of its own. `outline` (1, the default)
+is those lines. `index` (2) adds, under the node that holds each, in line
+order, a line for every cross-reference written there (`uses apply_discount`,
+`cites Stacking Discounts`, `imports Gutenberg Corpus`, the last under
+`References`) at the line it is written on, and for each `#Binding`
+declaration (`~language python`): the `uses` and `cites` are at `--level
+index`, not `outline`. `full` (3) is each module as `query content` prints
+it, one after another.
+With `--format json` (`schema/name_graph.json`) it prints
+`{version, level, nodes, edges}`: one tree of nodes for each file, joined by
 `CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL` edges
-between them. Each node says once what it is: only a module has a `label`
+between them from `index` on. Each node says once what it is: only a module has a `label`
 (its title) and a `file`, as any other node's follow from its address.
 `nodes` is in the order the files are written, and the `CONTAINS` edges
 come first, in that order too, so a node's children are in the order they
@@ -619,13 +647,13 @@ each import statement of the bound language one `IMPORT` (a statement over
 several lines is one node), and each `#Binding` line a `DECLARATION`, with
 `declares` (`language`, `external`, `on-build` or `keep-generated-src`) and
 `value`. An `IMPORTS` edge starts at the listing that makes it, and a
-`USES_EXTERNAL` edge at the declaration that names the file; at `outline`
-both start at their section. `--level` (a name or a number) says how much to show:
-`outline` (1, the default) every node but the paragraphs, code blocks,
-bullet lists and the region after the `---`, with their edges moved to the
-section that holds them (the `CONTAINS` edges into their children come from
-the section too); `index` (2) those too, the references a paragraph holds and a `size` for
-each node; `full` (3) the `text` of each node that holds text, once.
+`USES_EXTERNAL` edge at the declaration that names the file. A node gives
+the line it begins on, and no line where it ends. In JSON `outline` (1, the
+default) is every node but the paragraphs, code blocks, bullet lists and the
+region after the `---`, and the `CONTAINS` edges alone (those into their
+children come from the section that holds them); `index` (2) is those too,
+the other edges, the references a paragraph holds and a `size` for each
+node; `full` (3) adds the `text` of each node that holds text, once.
 `notlob graph --format turtle` exports the same nodes and edges as RDF, at
 the same `--level`, writing the tree as `notlob:contains` triples; its
 vocabulary is declared in `schema/notlob.ttl`

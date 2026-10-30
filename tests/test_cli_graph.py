@@ -41,7 +41,7 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 class TestCmdGraph:
     def test_outputs_valid_json(self, tmp_path, capsys):
         target = _write(tmp_path, "mod.lob", "#Mod\n    def f(): pass\n")
-        assert cmd_graph(target) == 0
+        assert cmd_graph(target, fmt="json") == 0
         out = capsys.readouterr().out
         data = json.loads(out)
         assert "nodes" in data
@@ -51,7 +51,7 @@ class TestCmdGraph:
     def test_standalone_file_has_module_node(self, tmp_path, capsys):
         target = _write(tmp_path, "roman/numerals.lob",
                         "#Roman Numerals\n    def to_roman(): pass\n")
-        cmd_graph(target)
+        cmd_graph(target, fmt="json")
         data  = json.loads(capsys.readouterr().out)
         addrs = {n["address"] for n in data["nodes"]}
         assert "roman/numerals" in addrs
@@ -62,7 +62,7 @@ class TestCmdGraph:
         _write(root, "app.lob",  "#App\n")
         target = _write(root, "lib.lob",
                         "#Lib\n    def helper(): pass\n")
-        cmd_graph(target)
+        cmd_graph(target, fmt="json")
         data  = json.loads(capsys.readouterr().out)
         addrs = {n["address"] for n in data["nodes"]}
         assert "lib" in addrs
@@ -71,7 +71,7 @@ class TestCmdGraph:
     def test_node_shapes_valid(self, tmp_path, capsys):
         target = _write(tmp_path, "t.lob",
                         "#T\n##Section\n    def f(): pass\n")
-        cmd_graph(target)
+        cmd_graph(target, fmt="json")
         data = json.loads(capsys.readouterr().out)
         for node in data["nodes"]:
             assert {"address", "kind"} <= set(node.keys())
@@ -80,7 +80,7 @@ class TestCmdGraph:
     def test_edge_shapes_valid(self, tmp_path, capsys):
         target = _write(tmp_path, "t.lob",
                         "#T\n##Section\n    def f(): pass\n")
-        cmd_graph(target)
+        cmd_graph(target, fmt="json")
         data = json.loads(capsys.readouterr().out)
         for edge in data["edges"]:
             assert {"source", "target", "kind"} <= set(edge.keys())
@@ -89,13 +89,14 @@ class TestCmdGraph:
     def test_a_module_names_its_file_in_a_project(self, tmp_path, capsys):
         root = _project(tmp_path)
         target = _write(root, "pkg/t.lob", "#Pkg T\n    def f(): pass\n")
-        cmd_graph(target)
+        cmd_graph(target, fmt="json")
         data = json.loads(capsys.readouterr().out)
         module = next(n for n in data["nodes"] if n["address"] == "pkg/t")
         sym = next(n for n in data["nodes"] if n["kind"] == "SYMBOL")
         assert module["file"] == "pkg/t.lob"
         assert "file" not in sym
-        assert (sym["start_line"], sym["end_line"]) == (2, 2)
+        assert sym["start_line"] == 2
+        assert "end_line" not in sym
 
 
 # ── cmd_graph --level ─────────────────────────────────────────
@@ -106,7 +107,7 @@ _LEVELLED = "#T\n\nSome text, see #Sec.\n\n    def f(): pass\n\n##Sec\n"
 class TestCmdGraphLevel:
     def _run(self, tmp_path, capsys, **kwargs):
         target = _write(tmp_path, "t.lob", _LEVELLED)
-        rc = cmd_graph(target, **kwargs)
+        rc = cmd_graph(target, **{"fmt": "json", **kwargs})
         captured = capsys.readouterr()
         return rc, captured
 
@@ -340,7 +341,7 @@ class TestCmdGraphContent:
         target = _write(tmp_path, "t.lob",
                         "#T\n    def f(): pass\n")
         for level in ("outline", "index", "full"):
-            cmd_graph(target, level=level)
+            cmd_graph(target, fmt="json", level=level)
             data = json.loads(capsys.readouterr().out)
             for node in data["nodes"]:
                 assert "content" not in node
@@ -350,7 +351,7 @@ class TestCmdGraphContent:
     ):
         target = _write(tmp_path, "t.lob",
                         "#T\n    def to_roman(n): return str(n)\n")
-        cmd_graph(target, level="full")
+        cmd_graph(target, fmt="json", level="full")
         data = json.loads(capsys.readouterr().out)
         sym = next(n for n in data["nodes"] if n["kind"] == "SYMBOL")
         assert "text" not in sym

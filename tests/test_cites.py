@@ -58,14 +58,12 @@ class TestTheEdgeKind:
         assert [e["kind"] for e in edges if e["source"] == "m#A#prose#1"
                 ] == ["CITES"]
 
-    def test_so_does_the_outline(self):
+    def test_the_outline_holds_the_tree_alone(self):
         edges = _graph().to_dict()["edges"]
-        assert {"source": "m#A", "target": "m#B", "kind": "CITES",
-                "start_line": 5} in edges
-        assert "REFERENCES" not in {e["kind"] for e in edges}
+        assert {e["kind"] for e in edges} == {"CONTAINS"}
 
     def test_so_does_turtle(self):
-        turtle = _graph().to_turtle()
+        turtle = _graph().to_turtle(level="index")
         assert "notlob:cites" in turtle
         assert "notlob:references" not in turtle
 

@@ -414,8 +414,7 @@ def _turtle_node(node: dict) -> list[str]:
             parts.append(f"notlob:{key} {_turtle_lit(node[key])}")
     if "file" in node:
         parts.append(f"notlob:file {_turtle_lit(node['file'])}")
-    for key, prop in (("start_line", "startLine"), ("end_line", "endLine"),
-                      ("size", "size")):
+    for key, prop in (("start_line", "startLine"), ("size", "size")):
         if key in node:
             parts.append(f"notlob:{prop} {node[key]}")
     for ref in node.get("refs", []):
@@ -1633,9 +1632,10 @@ def _what_it_is(node: Node) -> dict:
 
 
 def _where_it_is(node: Node) -> dict:
-    """The lines a node is written on."""
-    return {key: getattr(node, key) for key in ("start_line", "end_line")
-            if getattr(node, key) is not None}
+    """The line a node is written on. Nothing printed gives where it
+    ends: a reader takes that from the file, and the model keeps it for
+    ``query content``."""
+    return {} if node.start_line is None else {"start_line": node.start_line}
 
 
 def _what_the_level_adds(
@@ -1731,14 +1731,29 @@ def _document_nodes(graph: NameGraph, level: str) -> list[dict]:
 
 
 def _document_edges(graph: NameGraph, level: str) -> list[dict]:
-    """The edges of the document at *level*: the ``CONTAINS`` edges first,
-    one into each node but a module and an ``EXTERNAL``, in writing order
-    (see :func:`_in_writing_order`) so a node's children come in the order
-    they are written; then the rest, in the order they were added. At
-    ``outline`` an edge to or from a node that is left out is moved to the
-    nearest node above it that is shown, along ``CONTAINS``; edges that are
-    then the same (source, target and kind) are one, at the earliest
-    line."""
+    """The edges of the document at *level*: the ``CONTAINS`` edges, one
+    into each node but a module and an ``EXTERNAL``, in writing order (see
+    :func:`_in_writing_order`) so a node's children come in the order they
+    are written; and from ``index`` on the others, the cross-references,
+    in the order they were added. ``outline`` is the tree alone: a level
+    is the same content in text and in JSON, and the text of ``outline``
+    has no references."""
+    contains = [
+        {"source": parent, "target": node.address, "kind": "CONTAINS"}
+        for node, parent in _in_writing_order(graph, level)
+        if parent is not None
+    ]
+    if level == "outline":
+        return contains
+    return contains + _cross_references(graph, level)
+
+
+def _cross_references(graph: NameGraph, level: str) -> list[dict]:
+    """The edges but ``CONTAINS`` as they stand at *level*, in the order
+    they were added: an edge to or from a node that *level* leaves out is
+    moved to the nearest node above it that is shown, along ``CONTAINS``;
+    edges that are then the same (source, target and kind) are one, at the
+    earliest line."""
     def hidden(address: str) -> bool:
         node = graph.node(address)
         return node is not None and _is_left_out(node, level)
@@ -1751,12 +1766,7 @@ def _document_edges(graph: NameGraph, level: str) -> list[dict]:
             address = parent.address
         return address
 
-    merged: dict[tuple[str, str, str], dict] = {
-        (parent, node.address, "CONTAINS"): {
-            "source": parent, "target": node.address, "kind": "CONTAINS"}
-        for node, parent in _in_writing_order(graph, level)
-        if parent is not None
-    }
+    merged: dict[tuple[str, str, str], dict] = {}
     for edge in graph.edges():
         if edge.kind == EdgeKind.CONTAINS:
             continue
@@ -1774,6 +1784,14 @@ def _document_edges(graph: NameGraph, level: str) -> list[dict]:
                 > edge.start_line):
             merged[key]["start_line"] = edge.start_line
     return list(merged.values())
+
+
+def _lifted_citations(graph: NameGraph) -> list[dict]:
+    """The ``CITES`` edges lifted to the nodes ``outline`` shows: a
+    paragraph's citation is its section's. These answer ``query cites``
+    and ``cited-by``; the document at ``outline`` no longer holds them."""
+    return [e for e in _cross_references(graph, "outline")
+            if e["kind"] == "CITES"]
 
 
 # ── Answers to queries ────────────────────────────────────────
@@ -1812,7 +1830,7 @@ def content_tree(
     ``declares`` and ``value`` when set, its ``text`` when it holds text,
     and its ``children`` (what it contains, in document order) when it has
     any, down *depth* ``CONTAINS`` steps (``0`` the node alone, ``None``
-    all of them). The root also has its ``file`` and ``end_line``. There
+    all of them). The root also has its ``file``. There
     are no edges, labels, sizes or references: nesting is the containment,
     the address carries the label, and the references are written in the
     text.
@@ -1838,10 +1856,7 @@ def content_tree(
         if node is root:
             if node.file is not None:
                 d["file"] = node.file
-        if node.start_line is not None:
-            d["start_line"] = node.start_line
-        if node is root and node.end_line is not None:
-            d["end_line"] = node.end_line
+        d.update(_where_it_is(node))
         if KINDS[node.kind].text_in_holder:
             text = None if holder_in else graph.text(node.address)
         else:
@@ -1861,12 +1876,13 @@ def content_tree(
 
 
 def _citations(graph: NameGraph) -> list[Edge]:
-    """The ``CITES`` edges as ``outline`` shows them, each with the line
-    it is written on (the earliest, where edges were merged)."""
+    """The ``CITES`` edges lifted to the nodes ``outline`` shows, each
+    with the line it is written on (the earliest, where edges were
+    merged)."""
     return [
         Edge(source=e["source"], target=e["target"], kind=EdgeKind.CITES,
              start_line=e.get("start_line"))
-        for e in _document_edges(graph, "outline") if e["kind"] == "CITES"]
+        for e in _lifted_citations(graph)]
 
 
 def cites_edges(graph: NameGraph, address: str) -> list[Edge]:

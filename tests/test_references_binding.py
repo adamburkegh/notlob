@@ -465,13 +465,10 @@ class TestEdgesStartAtTheirLines:
             ("proj#Binding#declaration#2", "data/x.txt", 7),
             ("proj#Binding#declaration#3", "build.py", 8)]
 
-    def test_at_outline_they_lift_to_the_section(self, tmp_path):
+    def test_the_outline_holds_none_of_them(self, tmp_path):
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})
         edges = graph.to_dict("outline")["edges"]
-        assert {"source": "user#References", "target": "lib",
-                "kind": "IMPORTS", "start_line": 9} in edges
-        assert {"source": "proj#Binding", "target": "data/x.txt",
-                "kind": "USES_EXTERNAL", "start_line": 7} in edges
+        assert {e["kind"] for e in edges} == {"CONTAINS"}
 
     def test_at_index_they_start_at_the_line(self, tmp_path):
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})

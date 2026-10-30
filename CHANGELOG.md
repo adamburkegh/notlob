@@ -91,8 +91,26 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   code 1. A program that read the JSON adds `--format json`, which gives
   what the command gave before, except that an address that is not a node
   prints `null` and exits 1 (with the error on stderr), as the schema said
-  and as text does, where it printed `[]` and exited 0. The MCP query tools answer in text, as the
-  commands do. `query content` is unchanged.
+  and as text does, where it printed `[]` and exited 0. The MCP query
+  tools answer in text, as the commands do. `query content` is unchanged.
+- **Breaking: `notlob graph` answers a reader by default, and a level is
+  the same content in every format.** `--format text` (the default) prints,
+  for each module, its file on a line alone and then a line for each
+  heading, symbol and claim: the name, indented by what is written in what,
+  and the line it is written on in a column on the right. `--level outline`
+  (the default) is those lines, smaller than the file they outline, where
+  the JSON of `retail` was more than twice its size; `--level index` adds, under the node
+  that holds each, a line for every `uses`, `cites` and `imports` and for
+  each `#Binding` declaration; `--level full` is each module as `query
+  content` prints it. A program adds `--format json` (or `turtle`) to get
+  the graph, as it was, with two changes so that a level is the same
+  content in either form: at `outline` the document holds the `CONTAINS`
+  edges alone, and the cross-references (`CITES`, `USES`, `IMPORTS`,
+  `USES_EXTERNAL`) arrive at `--level index`; and no `end_line` is printed,
+  in the graph document, the query answers or `notlob:endLine` in the
+  Turtle, because a reader takes where a node ends from the file. The
+  document's `version` stays `2`. `query cites` and `cited-by` answer as
+  before. The MCP tool `notlob_graph` answers in text.
 - **Breaking: `notlob test` and `notlob check` take `--format text|json`,
   and `--json` is removed, with no alias.** Write `--format json` where
   you wrote `--json`; the JSON documents are unchanged. `notlob test
@@ -140,15 +158,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   The document is `{version: 2, level, nodes, edges}`, at one of three
   levels: `outline` (the default) has every node but paragraphs, code
   blocks, bullet lists, listings, import statements, declarations and the
-  region after the `---` (`POST_TEXT`), with their edges moved to the
-  nearest node shown; `index` adds those, each paragraph's `refs`, and
-  each node's `size`; `full` adds the text. The document says each thing
+  region after the `---` (`POST_TEXT`), and the `CONTAINS` edges among
+  them alone; `index` adds those, the cross-references (`CITES`, `USES`,
+  `IMPORTS`, `USES_EXTERNAL`), each paragraph's `refs`, and each node's
+  `size`; `full` adds the text. The document says each thing
   once: only a module has a `label` (its title) and a `file`, as any other
   node's follow from its address; and `nodes` is in the order the files
   are written, each module and then what is written in it, depth first,
   with the `CONTAINS` edges first in `edges`, in that order too, so a
   node's children are in the order they are written. A node has its
-  `start_line` and `end_line`; a node the document names has `"named": true`. A query
+  `start_line` and no end line; a node the document names has
+  `"named": true`. A query
   answer stands on its own, so it keeps `label` and `file`. `--content`
   and the `content` object are gone: use `--level full`, or `notlob
   query content` for part of the graph. The Turtle export prints the same
@@ -173,7 +193,7 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   lines from its file, which the `.lob` syntax already labels; asking for
   one section costs what the section is. `--format json` prints the
   subtree instead, nested and narrow (no edges, labels, sizes or
-  references; the file and last line on the root only), and `--depth` is
+  references; the file on the root only), and `--depth` is
   for it alone. The MCP tool `notlob_query_content` answers with text by
   default and takes `format`. `children --kind` no longer
   offers `DEFINES`. `references` and `referenced-by` are now `cites` and

@@ -23,7 +23,7 @@
       ]
     },
     "Content": {
-      "description": "A node and what it contains, down the depth asked for, nested: `children` are what the node contains, in document order. There are no edges (nesting is the containment; the other queries answer the cross-references), no label (the address carries it), no size and no references (they are written in the text). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not in the answer. The root also has its `file` and `end_line`.",
+      "description": "A node and what it contains, down the depth asked for, nested: `children` are what the node contains, in document order. There are no edges (nesting is the containment; the other queries answer the cross-references), no label (the address carries it), no size and no references (they are written in the text). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not in the answer. The root also has its `file`.",
       "type": "object",
       "required": [
         "address",
@@ -93,10 +93,6 @@
         },
         "start_line": {
           "description": "1-based line of its file where it begins.",
-          "type": "integer"
-        },
-        "end_line": {
-          "description": "1-based last non-blank line of its file that it occupies. On the root only.",
           "type": "integer"
         },
         "text": {
@@ -193,10 +189,6 @@
         },
         "start_line": {
           "description": "1-based line of its file where it begins.",
-          "type": "integer"
-        },
-        "end_line": {
-          "description": "1-based last non-blank line of its file that it occupies.",
           "type": "integer"
         },
         "size": {

@@ -170,7 +170,7 @@ class TestCmdGraphProjectMode:
         root = _project(tmp_path)
         _write(root, "mod.lob", "#Mod\n\n    def f(): pass\n")
         monkeypatch.chdir(root)
-        assert cmd_graph() == 0
+        assert cmd_graph(fmt="json") == 0
         data = json.loads(capsys.readouterr().out)
         addresses = [n["address"] for n in data["nodes"]]
         assert "mod" in addresses

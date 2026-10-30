@@ -279,7 +279,7 @@ def _enriched(source: str) -> NameGraph:
 
 
 def _uses_edges(g: NameGraph) -> list[dict]:
-    return [e for e in g.to_dict()["edges"] if e["kind"] == "USES"]
+    return [e for e in g.to_dict("index")["edges"] if e["kind"] == "USES"]
 
 
 class TestAddUsesEdges:
@@ -436,7 +436,7 @@ class TestUsesLines:
 # ── add_cites_edges ──────────────────────────────────────
 
 def _refs_edges(g: NameGraph) -> list[dict]:
-    return [e for e in g.to_dict()["edges"] if e["kind"] == "CITES"]
+    return [e for e in g.to_dict("index")["edges"] if e["kind"] == "CITES"]
 
 
 def _module_graph(source: str):
@@ -457,14 +457,14 @@ class TestAddCitesEdges:
         g, module = _module_graph(src)
         add_cites_edges(g)
         refs = _refs_edges(g)
-        assert any(e["source"] == "m" and e["target"] == "m#Section"
+        assert any(e["source"] == "m#prose#1" and e["target"] == "m#Section"
                    for e in refs)
 
     def test_the_edge_is_made_from_the_paragraph_that_holds_the_reference(
         self,
     ):
-        """The graph holds the edge from the paragraph; `to_dict` prints
-        it from the section the paragraph is in."""
+        """The graph holds the edge from the paragraph, and the document
+        prints it so from `index` on."""
         g, _module = _module_graph(
             "#M\nSee #Section here.\n##Section\n    code\n")
         add_cites_edges(g)
@@ -483,8 +483,8 @@ class TestAddCitesEdges:
         g, module = _module_graph(src)
         add_cites_edges(g)
         refs = _refs_edges(g)
-        assert any(e["source"] == "m#Alpha" and e["target"] == "m#Beta"
-                   for e in refs)
+        assert any(e["source"] == "m#Alpha#prose#1"
+                   and e["target"] == "m#Beta" for e in refs)
 
     def test_unresolved_ref_emits_no_edge(self):
         src = "#M\nSee #Phantom here.\n"
@@ -502,7 +502,7 @@ class TestAddCitesEdges:
         g, module = _module_graph(src)
         add_cites_edges(g)
         refs = [e for e in _refs_edges(g)
-                if e["source"] == "m" and e["target"] == "m#Section"]
+                if e["source"] == "m#prose#1" and e["target"] == "m#Section"]
         assert len(refs) == 1
 
     def test_ref_edge_carries_start_line(self):
@@ -515,7 +515,7 @@ class TestAddCitesEdges:
         g, module = _module_graph(src)
         add_cites_edges(g)
         refs = [e for e in _refs_edges(g)
-                if e["source"] == "m" and e["target"] == "m#Section"]
+                if e["source"] == "m#prose#1" and e["target"] == "m#Section"]
         assert len(refs) == 1
         assert refs[0].get("start_line") == 2
 
@@ -528,7 +528,8 @@ class TestAddCitesEdges:
         g.add_edge(Edge(source="a", target="b", kind=EdgeKind.IMPORTS))
         add_cites_edges(g)
         refs = _refs_edges(g)
-        assert any(e["source"] == "a" and e["target"] == "b" for e in refs)
+        assert any(e["source"] == "a#prose#1" and e["target"] == "b"
+                   for e in refs)
 
 
 # ── Accessors ────────────────────────────────────────────────

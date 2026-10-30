@@ -18,7 +18,7 @@ notlob weave                      render project as Markdown
 notlob new <name>                 create a new module
 notlob docs                       write language reference to notlob-docs/
 notlob check                      check naming consistency and imports
-notlob graph                      export the name-graph for the entire project
+notlob graph                      the shape of every file in the project
 notlob query search <pattern>     find nodes by label
 notlob query content <address>    show source at an address
 notlob query children <address>   list child nodes
@@ -46,6 +46,6 @@ Notlob source files should be written in a literate programming style. Each file
 
 ## Command Guidance
 
-Notlob has specific features which make it easier to search for concepts in documentation and code. Use `notlob graph` to get a project-level overview of a notlob project. Favour using `notlob query` over filesystem searches to navigate for the meaning of names and use of symbols throughout the codebase.
+Notlob has specific features which make it easier to search for concepts in documentation and code. Use `notlob graph` to get a project-level overview of a notlob project: for each file, its headings, symbols and claims with the line each is on. That is `--level outline`, the default; `--level index` adds the `uses`, `cites` and `imports` written under each, and `--format json` gives the graph itself, for a program. Favour using `notlob query` over filesystem searches to navigate for the meaning of names and use of symbols throughout the codebase.
 
 

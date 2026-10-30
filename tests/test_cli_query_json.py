@@ -270,7 +270,8 @@ class TestSingleNode:
     def test_a_node_names_its_file_and_lines(self, project, capsys):
         _rc, doc = _run(capsys, cmd_query_resolve, "helper", "alpha")
         assert doc["file"] == "alpha.lob"
-        assert (doc["start_line"], doc["end_line"]) == (8, 9)
+        assert doc["start_line"] == 8
+        assert "end_line" not in doc
 
 
 class TestNamed:
@@ -349,7 +350,8 @@ class TestQueryContent:
         assert node["address"] == "roman/numerals#to_roman"
         assert node["text"].startswith("def to_roman(n: int) -> str:")
         assert "return result" in node["text"]
-        assert (node["start_line"], node["end_line"]) == (19, 25)
+        assert node["start_line"] == 19
+        assert "end_line" not in node
 
     def test_a_symbols_text_is_there_when_its_code_block_is_not(
         self, project, capsys,

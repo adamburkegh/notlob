@@ -41,8 +41,7 @@ _NODE_FIELDS = {
     "kind": str(RDF.type), "named": NS + "named", "mode": NS + "mode",
     "declares": NS + "declares", "value": NS + "value",
     "file": NS + "file", "start_line": NS + "startLine",
-    "end_line": NS + "endLine", "size": NS + "size",
-    "refs": NS + "ref", "text": NS + "text",
+    "size": NS + "size", "refs": NS + "ref", "text": NS + "text",
 }
 _REF_FIELDS = {
     "label": str(RDFS.label), "sub": NS + "sub",

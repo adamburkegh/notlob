@@ -156,12 +156,6 @@ notlob:startLine a owl:DatatypeProperty ;
     rdfs:comment "The 1-based line of its file where a node begins, or where a reference is written. Absent when unknown." ;
     rdfs:range xsd:integer .
 
-notlob:endLine a owl:DatatypeProperty ;
-    rdfs:label "endLine" ;
-    rdfs:comment "The 1-based last non-blank line of its file that the node occupies. Absent when unknown." ;
-    rdfs:domain notlob:Node ;
-    rdfs:range xsd:integer .
-
 notlob:named a owl:DatatypeProperty ;
     rdfs:label "named" ;
     rdfs:comment "True where the document gives the node a name (a heading, a ##group, a ~property or a ~test); its address ends in the name. Absent for an anonymous node." ;
@@ -236,6 +230,6 @@ notlob:uses a owl:ObjectProperty ;
 
 notlob:cites a owl:ObjectProperty ;
     rdfs:label "cites" ;
-    rdfs:comment "A paragraph cites another node with a #Label cross-reference; at the outline level, the section that holds the paragraph does." ;
+    rdfs:comment "A paragraph cites another node with a #Label cross-reference. Written from the index level." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .

@@ -27,7 +27,8 @@ from notlob.commands import (
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
     cmd_query_callers, cmd_query_callees,
     cmd_query_cites, cmd_query_cited_by,
-    QUERY_EDGE_KINDS, QUERY_FORMATS, QUERY_NODE_KINDS, use_utf8_streams,
+    GRAPH_FORMATS, QUERY_EDGE_KINDS, QUERY_FORMATS, QUERY_NODE_KINDS,
+    use_utf8_streams,
 )
 from notlob.project import find_project_root, resolve_module_path
 
@@ -195,23 +196,27 @@ def main() -> None:
 
     graph_p = sub.add_parser(
         "graph",
-        help="export the package name-graph (JSON or Turtle RDF)",
+        help="show the package name-graph: the shape of each file, or "
+             "the graph itself (JSON or Turtle RDF)",
     )
     _add_file_arg(graph_p, required=False)
     graph_p.add_argument(
         "--level", "-l", default=None, metavar="LEVEL",
         help=(
-            "how much to show (either format): outline (1, the default) "
-            "is every "
-            "node but the paragraphs, code blocks and bullet lists; "
-            "index (2) adds those, the references a paragraph holds and "
-            "a size for each node; full (3) adds the text, once"
+            "how much to show: outline (1, the default) is the "
+            "structure of each file (text), or the nodes and their "
+            "containment (json, turtle); index (2) adds the "
+            "references, the uses, cites and imports, and the "
+            "declarations (text), or the references a paragraph "
+            "holds and a size for each node (json, turtle); full (3) "
+            "is each module's source (text), or adds the text, once "
+            "(json, turtle)"
         ),
     )
     graph_p.add_argument(
-        "--format", "-f", default="json",
-        choices=["json", "turtle"],
-        help="output format (default: json)",
+        "--format", "-f", default="text", choices=list(GRAPH_FORMATS),
+        help="output format: text for a reader (default), json or "
+             "turtle for a program",
     )
 
     query_p = sub.add_parser(

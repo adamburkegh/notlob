@@ -1,10 +1,10 @@
 """`notlob graph` prints the graph itself, at one of three levels.
 
-`outline` is what is here and how it is connected: every node but the
-anonymous leaves (paragraphs, code blocks, bullet lists), whose edges are
-lifted to the section that holds them. `index` adds those leaves, the
-references a paragraph holds, and a size for every node. `full` adds the
-text of each node that holds text, once.
+`outline` is what is here and how it is contained: every node but the
+anonymous leaves (paragraphs, code blocks, bullet lists), and the
+containment among them. `index` adds those leaves, the other edges (the
+cross-references), the references a paragraph holds, and a size for every
+node. `full` adds the text of each node that holds text, once.
 """
 
 from __future__ import annotations
@@ -21,7 +21,9 @@ from notlob import (
 from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import extract_symbols, kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
-from notlob.graph import LEVELS, add_cites_edges, parse_level
+from notlob.graph import (
+    LEVELS, add_cites_edges, cites_edges, parse_level,
+)
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 SCHEMA = (
@@ -174,9 +176,9 @@ class TestOutline:
         nodes = _by_address(_graph(_EVERYTHING).to_dict())
         assert nodes["m#Sec"] == {
             "address": "m#Sec", "kind": "SUBHEADING",
-            "named": True, "start_line": 22, "end_line": 27}
+            "named": True, "start_line": 22}
         assert nodes["m#f"]["start_line"] == 8
-        assert nodes["m#f"]["end_line"] == 9
+        assert "end_line" not in nodes["m#f"]
 
     def test_a_module_built_in_a_project_names_its_file(self):
         nodes = _by_address(_roman().to_dict())
@@ -185,7 +187,7 @@ class TestOutline:
         assert nodes["roman/numerals#to_roman"] == {
             "address": "roman/numerals#to_roman",
             "kind": "SYMBOL",
-            "start_line": 19, "end_line": 25}
+            "start_line": 19}
 
     def test_named_is_where_the_document_gives_a_name(self):
         nodes = _by_address(_graph(_EVERYTHING).to_dict())
@@ -221,21 +223,9 @@ class TestOutline:
         assert not [e for e in edges if "#code#" in e["source"]
                     or "#code#" in e["target"]]
 
-    def test_a_reference_is_lifted_to_the_section_that_holds_it(self):
+    def test_it_holds_containment_alone(self):
         edges = _graph(_EVERYTHING).to_dict()["edges"]
-        assert [e for e in edges if e["kind"] == "CITES"] == [
-            {"source": "m", "target": "m#Sec", "kind": "CITES",
-             "start_line": 3}]
-
-    def test_two_references_from_one_section_merge_at_the_earlier_line(
-        self,
-    ):
-        doc = _graph(
-            "#M\n\n##S\n\nFirst #T.\n\nSecond #T.\n\n##T\n\nTarget.\n"
-        ).to_dict()
-        assert [e for e in doc["edges"] if e["kind"] == "CITES"] == [
-            {"source": "m#S", "target": "m#T", "kind": "CITES",
-             "start_line": 5}]
+        assert {e["kind"] for e in edges} == {"CONTAINS"}
 
     def test_the_hidden_leaves_have_no_edges(self):
         doc = _graph(_EVERYTHING).to_dict()
@@ -265,6 +255,26 @@ class TestIndex:
             {"label": "Sec", "sub": False, "start_line": 3},
             {"label": "Sec", "sub": True, "start_line": 3}]
         assert "refs" not in nodes["m#code#1"]
+
+    def test_a_reference_is_an_edge_from_the_paragraph_that_holds_it(self):
+        edges = _graph(_EVERYTHING).to_dict(level="index")["edges"]
+        assert [e for e in edges if e["kind"] == "CITES"] == [
+            {"source": "m#prose#1", "target": "m#Sec", "kind": "CITES",
+             "start_line": 3}]
+
+    def test_two_references_in_one_section_are_two_edges(self):
+        doc = _graph(
+            "#M\n\n##S\n\nFirst #T.\n\nSecond #T.\n\n##T\n\nTarget.\n"
+        ).to_dict(level="index")
+        assert [(e["source"], e["start_line"]) for e in doc["edges"]
+                if e["kind"] == "CITES"] == [
+            ("m#S#prose#1", 5), ("m#S#prose#2", 7)]
+
+    def test_a_section_cites_a_node_once_at_the_earlier_line(self):
+        graph = _graph(
+            "#M\n\n##S\n\nFirst #T.\n\nSecond #T.\n\n##T\n\nTarget.\n")
+        assert [(e.source, e.target, e.start_line)
+                for e in cites_edges(graph, "m#S")] == [("m#S", "m#T", 5)]
 
     def test_every_node_has_a_size(self):
         doc = _graph(_EVERYTHING).to_dict(level="index")
@@ -336,7 +346,7 @@ class TestEveryExample:
             node.pop("text", None)
         assert index == full | {"level": "index"}
 
-    def test_outline_is_index_with_the_leaves_hidden_and_lifted(
+    def test_outline_is_index_with_the_leaves_hidden_and_containment_only(
         self, name, kit,
     ):
         graph = _project(name, kit)
@@ -354,7 +364,8 @@ class TestEveryExample:
 def _hidden(index: dict) -> dict:
     """The outline of an `index` document, worked out from it alone: its
     nodes without what the outline leaves out, the fields only `index` has
-    taken off, and their edges moved to the nearest node that is shown."""
+    taken off, and its containment moved to the nearest node that is
+    shown; the other edges are not in it."""
     parent = {e["target"]: e["source"] for e in index["edges"]
               if e["kind"] == "CONTAINS"}
     hidden = {n["address"] for n in index["nodes"]
@@ -369,7 +380,7 @@ def _hidden(index: dict) -> dict:
              for n in index["nodes"] if n["address"] not in hidden]
     merged: dict[tuple, dict] = {}
     for edge in index["edges"]:
-        if edge["kind"] == "CONTAINS" and edge["target"] in hidden:
+        if edge["kind"] != "CONTAINS" or edge["target"] in hidden:
             continue
         key = (shown(edge["source"]), shown(edge["target"]), edge["kind"])
         lifted = {"source": key[0], "target": key[1], "kind": key[2]}

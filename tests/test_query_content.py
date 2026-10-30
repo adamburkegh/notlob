@@ -221,13 +221,15 @@ class TestJson:
         assert [c["address"] for c in code["children"]] == [
             "roman/numerals#from_roman"]
 
-    def test_the_root_has_the_file_and_its_last_line(self, roman, capsys):
+    def test_the_root_has_the_file_and_no_node_its_last_line(
+        self, roman, capsys,
+    ):
         _rc, doc = _json(capsys, SECTION)
-        assert (doc["file"], doc["start_line"], doc["end_line"]) == (
-            "roman/numerals.lob", 40, 60)
+        assert (doc["file"], doc["start_line"]) == ("roman/numerals.lob", 40)
         for node in _walk(doc):
+            assert "end_line" not in node
             if node is not doc:
-                assert "file" not in node and "end_line" not in node
+                assert "file" not in node
 
     def test_no_edges_labels_sizes_or_references(self, roman, capsys):
         _rc, doc = _json(capsys, "roman/numerals")
@@ -256,7 +258,8 @@ class TestJson:
         _rc, doc = _json(capsys, "roman/numerals#to_roman")
         assert doc["text"].startswith("def to_roman(n: int) -> str:")
         assert "children" not in doc
-        assert (doc["start_line"], doc["end_line"]) == (19, 25)
+        assert doc["start_line"] == 19
+        assert "end_line" not in doc
 
     def test_depth_limits_the_nesting(self, roman, capsys):
         _rc, alone = _json(capsys, SECTION, 0)
