@@ -198,7 +198,7 @@ class TestWhatTheRunnerReports:
     def _claims(self, capsys):
         from notlob.commands import cmd_test
         cmd_test(EXAMPLES / "roman" / "roman" / "numerals.lob",
-                 json_mode=True)
+                 fmt="json")
         return json.loads(capsys.readouterr().out)["claims"]
 
     def test_a_bare_assertion_carries_its_blocks_address(self, capsys):

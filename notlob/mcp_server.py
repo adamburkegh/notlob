@@ -240,13 +240,13 @@ def _dispatch(name: str, arguments: dict) -> dict:
             only = (set(arguments["only"])
                     if "only" in arguments else None)
             out, rc = _capture(
-                cmd_test, path, only=only, json_mode=True,
+                cmd_test, path, only=only, fmt="json",
             )
         elif name == "notlob_check":
             only = (set(arguments["only"])
                     if "only" in arguments else None)
             out, rc = _capture(
-                cmd_check, only=only, json_mode=True,
+                cmd_check, only=only, fmt="json",
             )
         elif name == "notlob_graph":
             out, rc = _capture(cmd_graph, level=arguments.get("level"))

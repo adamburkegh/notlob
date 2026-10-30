@@ -110,10 +110,11 @@ class TestTheQueries:
     def test_cites_and_cited_by_exist(self, monkeypatch):
         called = []
         monkeypatch.setattr(
-            cli, "cmd_query_cites", lambda a: called.append(("cites", a)) or 0)
+            cli, "cmd_query_cites",
+            lambda a, fmt: called.append(("cites", a)) or 0)
         monkeypatch.setattr(
             cli, "cmd_query_cited_by",
-            lambda a: called.append(("cited-by", a)) or 0)
+            lambda a, fmt: called.append(("cited-by", a)) or 0)
         assert self._query(monkeypatch, "cites", "m#A") == 0
         assert self._query(monkeypatch, "cited-by", "m#B") == 0
         assert called == [("cites", "m#A"), ("cited-by", "m#B")]

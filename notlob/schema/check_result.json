@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/check-result",
   "title": "CheckResult",
-  "description": "The document printed by `notlob check --json`: the findings of the semantic checks over the project name-graph. Stdout holds only this document. Exit code is 1 when any finding has severity `error`, else 0, whether or not --json is given. If the graph cannot be built because two things in one module share a name, the document holds a single `names` finding and an empty `counts`. If there is no project (no binding.lob), nothing is printed to stdout, an error goes to stderr, and the exit code is 1. `version` is bumped on a breaking change.",
+  "description": "The document printed by `notlob check --format json`: the findings of the semantic checks over the project name-graph. Stdout holds only this document. Exit code is 1 when any finding has severity `error`, else 0, whatever the --format. If the graph cannot be built because two things in one module share a name, the document holds a single `names` finding and an empty `counts`. If there is no project (no binding.lob), nothing is printed to stdout, an error goes to stderr, and the exit code is 1. `version` is bumped on a breaking change.",
   "type": "object",
   "required": ["version", "findings", "counts"],
   "additionalProperties": false,
@@ -34,13 +34,13 @@
   },
   "definitions": {
     "CheckFinding": {
-      "description": "One semantic-check finding. This definition appears in both check_result.json (`notlob check --json`) and test_result.json (the `checks` list of `notlob test --json`); a test keeps the two identical.",
+      "description": "One semantic-check finding. This definition appears in both check_result.json (`notlob check --format json`) and test_result.json (the `checks` list of `notlob test --format json`); a test keeps the two identical.",
       "type": "object",
       "required": ["check", "message", "addresses", "severity"],
       "additionalProperties": false,
       "properties": {
         "check": {
-          "description": "Which check produced it. `names` is the synthetic finding `notlob test --json` reports for an address collision (two things in one module sharing a name); it is not a check `notlob check` runs.",
+          "description": "Which check produced it. `names` is the synthetic finding `notlob test --format json` reports for an address collision (two things in one module sharing a name); it is not a check `notlob check` runs.",
           "type": "string",
           "enum": [
             "imports", "typos", "conventions", "titles", "references",

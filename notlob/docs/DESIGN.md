@@ -682,7 +682,7 @@ the way `go/ast` and Python's `ast` are for those languages, not
 incidental internals. But not everything a tool can reach is something
 worth promising, so there are two tiers.
 
-**Stable.** The commands and their machine-readable output (`--json`,
+**Stable.** The commands and their machine-readable output (`--format json`,
 `graph --format`), the model types exported from `notlob`, the
 name-graph and the JSON schemas under `notlob/schema/`, and the
 `BindingKit` contract that language bindings register against. Changes
@@ -695,7 +695,7 @@ whatever the code happens to print. A schema ships in the package and is
 written out by `notlob docs`, so an agent working in another project can
 read it. A test validates real output against it, so the schema and the
 code cannot drift. An output that may change carries a `version` field,
-bumped on a breaking change. A new `--json` flag, or any other structured
+bumped on a breaking change. A new `--format json` output, or any other structured
 output meant for a program to read, is not finished until its schema is.
 This is the same premise as the rest of notlob: an agent does better
 against a hard formal check than against prose that describes one, and a

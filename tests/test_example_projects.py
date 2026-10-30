@@ -109,7 +109,7 @@ class TestExampleProject:
         `notlob test` in the project: no failure except the ones an
         example makes on purpose, no lint finding, no check error."""
         monkeypatch.chdir(project)
-        rc = cmd_test(None, json_mode=True)
+        rc = cmd_test(None, fmt="json")
         captured = capsys.readouterr()
         doc = json.loads(captured.out)
         failing = {c["address"] for c in doc["claims"]

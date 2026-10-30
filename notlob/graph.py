@@ -188,6 +188,11 @@ class KindFacts:
     segment          its part of an address when it is anonymous; ``None``
                      for a kind that is always named
     numbered         an anonymous address has an ordinal after the segment
+    sigil            the sigil that begins it in its file, ``None`` for a kind
+                     with none
+    sigil_needs_name it has its sigil only if the document names it: a
+                     test is written ``~test name``, but a run of bare
+                     assertions has no sigil
     """
     opens_scope:    bool = False
     claim:          bool = False
@@ -198,6 +203,8 @@ class KindFacts:
     text_in_holder: bool = False
     segment:        str | None = None
     numbered:       bool = False
+    sigil:          str | None = None
+    sigil_needs_name: bool = False
 
 
 #: The facts of each kind, one row for every :class:`NodeKind`.
@@ -207,13 +214,16 @@ KINDS: dict[NodeKind, KindFacts] = {
     NodeKind.SYMBOL: KindFacts(text_in_holder=True),
     NodeKind.PROPERTY: KindFacts(
         opens_scope=True, claim=True, runnable=True,
-        segment="property", numbered=True),
+        segment="property", numbered=True, sigil="~property"),
     NodeKind.EXAMPLE: KindFacts(
-        claim=True, runnable=True, segment="example", numbered=True),
+        claim=True, runnable=True, segment="example", numbered=True,
+        sigil="~example"),
     NodeKind.RUN: KindFacts(
-        claim=True, runnable=True, segment="run", numbered=True),
+        claim=True, runnable=True, segment="run", numbered=True,
+        sigil="~run"),
     NodeKind.TEST: KindFacts(
-        runnable=True, segment="test", numbered=True),
+        runnable=True, segment="test", numbered=True,
+        sigil="~test", sigil_needs_name=True),
     NodeKind.EXTERNAL: KindFacts(),
     NodeKind.PROSE: KindFacts(
         hidden_at_outline=True, segment="prose", numbered=True),
@@ -599,31 +609,41 @@ class NameGraph:
                         return node
         return None
 
-    def imports_of(self, module: str) -> list[Node]:
-        """The modules the module at *module* lists, in document order,
-        each once: the targets of the ``IMPORTS`` edges from the listings
-        written in its tree. An edge starts at the line that makes it, so
-        this is how a module, not a listing, is the answer."""
-        found: dict[str, Node] = {}
+    def import_edges(self, module: str) -> list[Edge]:
+        """The ``IMPORTS`` edges from the listings written in the tree of
+        the module at *module*, one to each module it lists (the first),
+        in document order. An edge starts at the line that makes it, so it
+        is a listing, not the module, that is its source."""
+        found: dict[str, Edge] = {}
         for edge in self._edges:
             if (edge.kind == EdgeKind.IMPORTS
+                    and edge.target in self._nodes
                     and self.module_of(edge.source) == module):
-                target = self._nodes.get(edge.target)
-                if target is not None:
-                    found.setdefault(target.address, target)
+                found.setdefault(edge.target, edge)
         return list(found.values())
 
-    def imported_by(self, module: str) -> list[Node]:
-        """The modules that list the module at *module*, each once, in
-        the order their listings were added."""
-        found: dict[str, Node] = {}
+    def importer_edges(self, module: str) -> list[Edge]:
+        """The ``IMPORTS`` edges into the module at *module*, one from
+        each module that lists it (the first), in the order their listings
+        were added."""
+        found: dict[str, Edge] = {}
         for edge in self._edges:
             if edge.kind == EdgeKind.IMPORTS and edge.target == module:
                 address = self.module_of(edge.source)
-                source = self._nodes.get(address) if address else None
-                if source is not None:
-                    found.setdefault(source.address, source)
+                if address in self._nodes:
+                    found.setdefault(address, edge)
         return list(found.values())
+
+    def imports_of(self, module: str) -> list[Node]:
+        """The modules the module at *module* lists, in document order,
+        each once (see :meth:`import_edges`)."""
+        return [self._nodes[e.target] for e in self.import_edges(module)]
+
+    def imported_by(self, module: str) -> list[Node]:
+        """The modules that list the module at *module*, each once, in
+        the order their listings were added (see :meth:`importer_edges`)."""
+        return [self._nodes[self.module_of(e.source)]
+                for e in self.importer_edges(module)]
 
     def edges(self, kind: EdgeKind | None = None) -> Iterator[Edge]:
         """Iterate over every edge, or every edge of *kind*, in the order
@@ -1771,6 +1791,16 @@ def node_summary(node: Node) -> dict:
     return d
 
 
+def sigil_of(node: Node) -> str:
+    """The sigil that begins the node in its file (``~example``,
+    ``~property``, ``~run``, or ``~test`` for a test the document names),
+    or ``""`` for a node with none."""
+    facts = KINDS[node.kind]
+    if facts.sigil is None or (facts.sigil_needs_name and node.name is None):
+        return ""
+    return facts.sigil
+
+
 def content_tree(
     graph: NameGraph, address: str, depth: int | None = None,
 ) -> dict | None:
@@ -1830,39 +1860,55 @@ def content_tree(
     return entry(root, depth, False)
 
 
-def cites_of(graph: NameGraph, address: str) -> list[Node]:
-    """The nodes that the node at *address* cites, in the order first
-    found: those named in its paragraphs (as ``outline`` shows the edges,
-    a section's citations are its paragraphs'), or, for a paragraph
-    itself, in it."""
+def _citations(graph: NameGraph) -> list[Edge]:
+    """The ``CITES`` edges as ``outline`` shows them, each with the line
+    it is written on (the earliest, where edges were merged)."""
+    return [
+        Edge(source=e["source"], target=e["target"], kind=EdgeKind.CITES,
+             start_line=e.get("start_line"))
+        for e in _document_edges(graph, "outline") if e["kind"] == "CITES"]
+
+
+def cites_edges(graph: NameGraph, address: str) -> list[Edge]:
+    """The ``CITES`` edges from the node at *address*, in the order first
+    found, one to each node it cites (the first): those named in its
+    paragraphs (as ``outline`` shows the edges, a section's citations are
+    its paragraphs'), or, for a paragraph itself, in it."""
     node = graph.node(address)
     if node is None:
         return []
     if KINDS[node.kind].hidden_at_outline:
-        targets = [e.target for e in graph.edges(EdgeKind.CITES)
-                   if e.source == address]
+        edges = list(graph.edges(EdgeKind.CITES))
     else:
-        targets = [e["target"] for e in _document_edges(graph, "outline")
-                   if e["kind"] == "CITES" and e["source"] == address]
-    return _unique_nodes(graph, targets)
+        edges = _citations(graph)
+    found: dict[str, Edge] = {}
+    for edge in edges:
+        if edge.source == address and graph.node(edge.target) is not None:
+            found.setdefault(edge.target, edge)
+    return list(found.values())
+
+
+def cited_by_edges(graph: NameGraph, address: str) -> list[Edge]:
+    """The ``CITES`` edges into the node at *address*, one from each node
+    that cites it (the first), in the order first found: a paragraph that
+    does is given as the section that holds it."""
+    found: dict[str, Edge] = {}
+    for edge in _citations(graph):
+        if edge.target == address and graph.node(edge.source) is not None:
+            found.setdefault(edge.source, edge)
+    return list(found.values())
+
+
+def cites_of(graph: NameGraph, address: str) -> list[Node]:
+    """The nodes that the node at *address* cites (see
+    :func:`cites_edges`)."""
+    return [graph.node(e.target) for e in cites_edges(graph, address)]
 
 
 def cited_by(graph: NameGraph, address: str) -> list[Node]:
-    """The nodes that cite the node at *address*, each once and in the
-    order first found: a paragraph that does is given as the section that
-    holds it."""
-    sources = [e["source"] for e in _document_edges(graph, "outline")
-               if e["kind"] == "CITES" and e["target"] == address]
-    return _unique_nodes(graph, sources)
-
-
-def _unique_nodes(graph: NameGraph, addresses: list[str]) -> list[Node]:
-    found: dict[str, Node] = {}
-    for address in addresses:
-        node = graph.node(address)
-        if node is not None:
-            found.setdefault(address, node)
-    return list(found.values())
+    """The nodes that cite the node at *address* (see
+    :func:`cited_by_edges`)."""
+    return [graph.node(e.source) for e in cited_by_edges(graph, address)]
 
 
 # ── Cross-reference validation ────────────────────────────────

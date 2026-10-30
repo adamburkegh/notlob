@@ -78,6 +78,33 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
+- **Breaking: `notlob query` answers a reader by default, and takes
+  `--format text|json`.** `search`, `children`, `imports`, `imported-by`,
+  `callers`, `callees`, `cites` and `cited-by` print text, a line a node,
+  in three columns aligned within the answer: its sigil (`~example`,
+  `~property`, `~run`, or `~test` for a named test; blank for what has
+  none), its address, and `file:line` from the project root. For a query
+  that follows an edge that line is where the edge is written (the use, the
+  citation, the listing), which the graph held and the answer dropped; for
+  `search` and `children` it is where the node starts. An empty answer
+  prints nothing; an address that is not a node is an error on stderr, exit
+  code 1. A program that read the JSON adds `--format json`, which gives
+  what the command gave before, except that an address that is not a node
+  prints `null` and exits 1 (with the error on stderr), as the schema said
+  and as text does, where it printed `[]` and exited 0. The MCP query tools answer in text, as the
+  commands do. `query content` is unchanged.
+- **Breaking: `notlob test` and `notlob check` take `--format text|json`,
+  and `--json` is removed, with no alias.** Write `--format json` where
+  you wrote `--json`; the JSON documents are unchanged. `notlob test
+  --json` is now an argument error. The flag is spelled as on `notlob
+  graph` and `notlob query content`.
+- **Every `file:line` notlob prints is relative to the project root**, with
+  `/` separators: `notlob test` printed `discounts.lob:15` and now prints
+  `pricing/discounts.lob:15`, a path that can be followed from the root.
+  Outside a project, a lone `.lob` file is named as it was given (it was
+  the bare file name, in the text and in the `file` of `--format json`).
+  A claim written over several lines is printed by `notlob test` on one
+  line, joined by single spaces, rather than breaking the format.
 - **notlob's output is UTF-8 on every platform, and JSON no longer
   escapes non-ASCII.** `notlob` reconfigures its standard streams to
   UTF-8 (the CLI at start-up; the MCP server for stdin, stdout and
@@ -266,6 +293,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   binding opts in by shipping a `BINDING.md` in its package directory.
   The built-in `BINDING.md` files are added to the package data; they
   were not shipped in installs before.
+
+### Deprecated
+- **`notlob query resolve`** will be removed; use `notlob query search`.
+  It is undocumented and not offered over MCP, and answers `null` for most
+  names. It works as it did (no `--format`, the same JSON) and prints
+  `DEPRECATED  <query>  query resolve will be removed; use query search`
+  to stderr.
 
 ### Fixed
 - **An `#Appendix` was invisible** to the name-graph and to claim

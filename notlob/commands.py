@@ -40,8 +40,8 @@ from notlob.bindings import (
 from notlob.bindings.python.runner import _resolve_python_interpreter
 from notlob.bindings import ClaimToRun
 from notlob.graph import (
-    KINDS, NameGraph, cited_by, cites_of, claims_to_run, content_tree,
-    module_address, node_summary, parse_level,
+    KINDS, NameGraph, Node, cited_by_edges, cites_edges, claims_to_run,
+    content_tree, module_address, node_summary, parse_level, sigil_of,
 )
 from notlob.model import BindingSection
 from notlob.project import (
@@ -164,12 +164,12 @@ def _check_address(
 
 # ── Formatting ────────────────────────────────────────────────
 
-#: Version of the ``notlob test --json`` document (see
+#: Version of the ``notlob test --format json`` document (see
 #: ``notlob/schema/test_result.json``). Bumped on a breaking change.
 _TEST_JSON_VERSION = 1
 
 
-#: Version of the ``notlob check --json`` document
+#: Version of the ``notlob check --format json`` document
 #: (``notlob/schema/check_result.json``). Bumped on a breaking change.
 _CHECK_JSON_VERSION = 1
 
@@ -199,16 +199,17 @@ def _collision_finding(exc: AddressCollisionError) -> dict:
 
 
 def _project_relative(file_path: str, root: Path | None) -> str:
-    """*file_path* relative to the project *root*, with forward slashes
-    (the form of a module address). Falls back to the bare file name when
-    there is no root or the file is outside it."""
+    """*file_path* as notlob prints a file: relative to the project *root*,
+    with forward slashes (the form of a module address). Outside a project
+    (no *root*, or the file is outside it) it is the path as the command
+    was given it, which is relative to the working directory when the file
+    is under it."""
     p = Path(file_path)
-    if root is not None:
-        try:
-            return p.resolve().relative_to(root.resolve()).as_posix()
-        except (ValueError, OSError):
-            pass
-    return p.name
+    base = root if root is not None else Path.cwd()
+    try:
+        return p.resolve().relative_to(base.resolve()).as_posix()
+    except (ValueError, OSError):
+        return p.as_posix()
 
 
 def _result_dict(r: ClaimResult, kind: str, root: Path | None) -> dict:
@@ -247,13 +248,18 @@ def _lint_dict(r: LintResult) -> dict:
     }
 
 
-def _print_result(r: ClaimResult) -> None:
+def _one_line(text: str) -> str:
+    """*text*, a claim written over several lines, on one: each line
+    stripped, joined by single spaces."""
+    return " ".join(line.strip() for line in text.splitlines())
+
+
+def _print_result(r: ClaimResult, root: Path | None) -> None:
     tag = r.status.name
     loc = ""
     if r.file_path and r.source_line:
-        rel = Path(r.file_path).name
-        loc = f"{rel}:{r.source_line}  "
-    print(f"{tag:5}  {loc}{r.address}  {r.line}")
+        loc = f"{_project_relative(r.file_path, root)}:{r.source_line}  "
+    print(f"{tag:5}  {loc}{r.address}  {_one_line(r.line)}")
     if r.status == Status.FAIL:
         if r.left is not None or r.right is not None:
             print(f"         left:  {r.left!r}")
@@ -670,7 +676,7 @@ def _test_module(
         json_out["lint"] += [_lint_dict(r) for r in lint_results]
     else:
         for r in results:
-            _print_result(r)
+            _print_result(r, root)
 
     n_fail = sum(1 for r in non_skip if r.status != Status.PASS)
     n_pass = len(non_skip) - n_fail
@@ -682,11 +688,14 @@ def cmd_test(
     path:               Path | None      = None,
     keep_generated_src: str | None       = None,
     only:               set[str] | None  = None,
-    json_mode:          bool             = False,
+    fmt:                str              = "text",
     graph:              NameGraph | None = None,
     collisions:         list | None      = None,
 ) -> int:
     """Run claims in *path* (or all project modules) and return an exit code.
+
+    *fmt* is ``"text"`` (the default) or ``"json"``, the document
+    described by ``schema/test_result.json``.
 
     When *path* is omitted, discovers the project from CWD and tests
     every module.  Pass a specific *.lob* path to test a single module.
@@ -704,6 +713,7 @@ def cmd_test(
     closing checks then report the collision instead of running on a
     graph that lacks that module's symbols.
     """
+    json_mode = fmt == "json"
     json_out: dict | None = (
         {"claims": [], "lint": []} if json_mode else None
     )
@@ -1414,8 +1424,11 @@ def _require_graph(
 
 # ── Query commands ────────────────────────────────────────────
 #
-# Each reads the package graph itself and prints nodes as ``notlob graph``
-# prints them at ``outline`` (see :func:`notlob.graph.node_summary`).
+# Each reads the package graph itself. A list answer is one entry for a
+# node: in ``text`` (the default) a line of three columns, the node's
+# sigil, its address and where it is; in ``json`` an array of node
+# summaries as ``notlob graph`` prints them at ``outline`` (see
+# :func:`notlob.graph.node_summary`).
 
 #: The edge kinds a graph holds, for ``query children``.
 QUERY_EDGE_KINDS = tuple(k.name for k in EdgeKind)
@@ -1424,34 +1437,95 @@ QUERY_EDGE_KINDS = tuple(k.name for k in EdgeKind)
 QUERY_NODE_KINDS = tuple(
     k.name for k in NodeKind if not KINDS[k].hidden_at_outline)
 
+#: The formats a query answers in.
+QUERY_FORMATS = ("text", "json")
 
-def _print_nodes(nodes) -> int:
-    print(json.dumps(
-        [node_summary(n) for n in nodes], indent=2, ensure_ascii=False))
+
+def _where(source: Node, line: int | None = None) -> str:
+    """``file:line`` for an entry of an answer: the file of *source* and
+    *line*, or where *source* starts if there is no line. Blank for a node
+    with no file (an external one)."""
+    if source.file is None:
+        return ""
+    line = source.start_line if line is None else line
+    return source.file if line is None else f"{source.file}:{line}"
+
+
+def _columns(rows: list[tuple[str, str, str]]) -> str:
+    """*rows*, each a (sigil, address, where), as lines: each column as
+    wide as its longest entry and two spaces from the next, trailing
+    spaces stripped. A column with nothing in it is left out."""
+    widths = [max(map(len, column)) for column in zip(*rows)]
+    return "".join(
+        "  ".join(cell.ljust(width) for cell, width in zip(row, widths)
+                  if width).rstrip() + "\n"
+        for row in rows)
+
+
+def _query_graph(fmt: str):
+    """The package graph for a query that answers in *fmt*, or ``None``
+    with the reason printed."""
+    if fmt not in QUERY_FORMATS:
+        print(f"ERROR  <query>  unknown format {fmt!r}: choose text or "
+              f"json", file=sys.stderr)
+        return None
+    return _require_graph()
+
+
+def _answer(
+    graph: NameGraph, address: str | None, entries: list[tuple[Node, str]],
+    fmt: str,
+) -> int:
+    """Print *entries*, each a node and where it is, as *fmt* says.
+
+    ``json`` is the array of the nodes, ``text`` a line a node (see
+    :func:`_columns`); an empty list is an empty answer. When *address*,
+    what the query was asked about, is not a node of the graph, the
+    answer is an error on stderr and exit 1, with ``null`` on stdout in
+    ``json``."""
+    if address is not None and graph.node(address) is None:
+        if fmt == "json":
+            print("null")
+        print(f"ERROR  <query>  no node at address {address!r}",
+              file=sys.stderr)
+        return 1
+    if fmt == "json":
+        print(json.dumps([node_summary(n) for n, _ in entries],
+                         indent=2, ensure_ascii=False))
+        return 0
+    print(_columns([(sigil_of(n), n.address, where)
+                    for n, where in entries]), end="")
     return 0
 
 
-def cmd_query_children(address: str, kind_str: str = "CONTAINS") -> int:
-    """Print the targets of the edges of kind *kind_str* from *address* as
-    a JSON array: what *address* contains (the default, a section's
-    paragraphs and code blocks included), or what it imports, uses or
-    refers to."""
+def cmd_query_children(
+    address: str, kind_str: str = "CONTAINS", fmt: str = "text",
+) -> int:
+    """Print the targets of the edges of kind *kind_str* from *address*:
+    what *address* contains (the default, a section's paragraphs and code
+    blocks included), or what it imports, uses or refers to. Each is
+    given where it starts."""
     if kind_str not in QUERY_EDGE_KINDS:
         print(f"ERROR  <query>  unknown edge kind {kind_str!r}: choose "
               f"{', '.join(QUERY_EDGE_KINDS)}", file=sys.stderr)
         return 1
-    graph = _require_graph()
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(graph.children(address, EdgeKind[kind_str]))
+    return _answer(graph, address, [
+        (n, _where(n)) for n in graph.children(address, EdgeKind[kind_str])
+    ], fmt)
 
 
 def cmd_query_resolve(label: str, context: str | None = None) -> int:
     """Resolve *label* (with optional *context* module address).
 
     Exits 0 and prints the node JSON when the reference resolves;
-    exits 1 and prints ``null`` when it does not.
+    exits 1 and prints ``null`` when it does not. Deprecated: it says so
+    on stderr, and will be removed in favour of ``query search``.
     """
+    print("DEPRECATED  <query>  query resolve will be removed; "
+          "use query search", file=sys.stderr)
     graph = _require_graph()
     if graph is None:
         return 1
@@ -1464,9 +1538,10 @@ def cmd_query_resolve(label: str, context: str | None = None) -> int:
 def cmd_query_search(
     pattern: str,
     kind_str: str | None = None,
+    fmt: str = "text",
 ) -> int:
     """Print the nodes ``outline`` shows whose label matches *pattern*
-    (fnmatch-style).
+    (fnmatch-style), each where it starts.
 
     Bare words (no ``*`` or ``?`` wildcards) are automatically wrapped
     as ``*pattern*`` for convenient substring matching.
@@ -1475,65 +1550,98 @@ def cmd_query_search(
         print(f"ERROR  <query>  unknown kind {kind_str!r}: choose "
               f"{', '.join(QUERY_NODE_KINDS)}", file=sys.stderr)
         return 1
-    graph = _require_graph()
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
     if "*" not in pattern and "?" not in pattern:
         pattern = f"*{pattern}*"
     kind = NodeKind[kind_str] if kind_str else None
-    return _print_nodes(
-        n for n in graph.search(pattern, kind)
-        if not KINDS[n.kind].hidden_at_outline)
+    return _answer(graph, None, [
+        (n, _where(n)) for n in graph.search(pattern, kind)
+        if not KINDS[n.kind].hidden_at_outline
+    ], fmt)
 
 
-def cmd_query_imports(address: str) -> int:
-    """Print modules imported by *address* as a JSON array."""
-    graph = _require_graph()
+# The queries that follow an edge give each node where the edge is written:
+# the file of the edge's source and the line of the edge, or where its
+# source starts if it has no line.
+
+def cmd_query_imports(address: str, fmt: str = "text") -> int:
+    """Print the modules the module at *address* imports, each at the
+    line of the listing that makes it."""
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(graph.imports_of(address))
+    return _answer(graph, address, [
+        (graph.node(e.target), _where(graph.node(e.source), e.start_line))
+        for e in graph.import_edges(address)
+    ], fmt)
 
 
-def cmd_query_imported_by(address: str) -> int:
-    """Print modules that import *address* as a JSON array."""
-    graph = _require_graph()
+def cmd_query_imported_by(address: str, fmt: str = "text") -> int:
+    """Print the modules that import the module at *address*, each at the
+    line of its listing of it."""
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(graph.imported_by(address))
+    return _answer(graph, address, [
+        (graph.node(graph.module_of(e.source)),
+         _where(graph.node(e.source), e.start_line))
+        for e in graph.importer_edges(address)
+    ], fmt)
 
 
-def cmd_query_callers(address: str) -> int:
-    """Print symbols with a USES edge pointing at *address*."""
-    graph = _require_graph()
+def cmd_query_callers(address: str, fmt: str = "text") -> int:
+    """Print the nodes with a USES edge pointing at *address*, each at the
+    line where it uses it."""
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(graph.parents(address, EdgeKind.USES))
+    return _answer(graph, address, [
+        (source, _where(source, e.start_line))
+        for e in graph.edges(EdgeKind.USES) if e.target == address
+        if (source := graph.node(e.source)) is not None
+    ], fmt)
 
 
-def cmd_query_callees(address: str) -> int:
-    """Print symbols that *address* has a USES edge to."""
-    graph = _require_graph()
+def cmd_query_callees(address: str, fmt: str = "text") -> int:
+    """Print the nodes that *address* has a USES edge to, each at the line
+    where *address* uses it."""
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(graph.children(address, EdgeKind.USES))
+    source = graph.node(address)
+    return _answer(graph, address, [
+        (target, _where(source, e.start_line))
+        for e in graph.edges(EdgeKind.USES) if e.source == address
+        if (target := graph.node(e.target)) is not None
+    ], fmt)
 
 
-def cmd_query_cites(address: str) -> int:
+def cmd_query_cites(address: str, fmt: str = "text") -> int:
     """Print the nodes that *address* cites with a prose ``#Label``: those
-    in its own paragraphs (a section's citations are its paragraphs')."""
-    graph = _require_graph()
+    in its own paragraphs (a section's citations are its paragraphs'),
+    each at the line of the citation."""
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(cites_of(graph, address))
+    return _answer(graph, address, [
+        (graph.node(e.target), _where(graph.node(e.source), e.start_line))
+        for e in cites_edges(graph, address)
+    ], fmt)
 
 
-def cmd_query_cited_by(address: str) -> int:
-    """Print the nodes whose prose cites *address*, each once: a paragraph
-    that does is given as the section that holds it."""
-    graph = _require_graph()
+def cmd_query_cited_by(address: str, fmt: str = "text") -> int:
+    """Print the nodes whose prose cites *address*, each once, at the line
+    of its first citation: a paragraph that does is given as the section
+    that holds it."""
+    graph = _query_graph(fmt)
     if graph is None:
         return 1
-    return _print_nodes(cited_by(graph, address))
+    return _answer(graph, address, [
+        (graph.node(e.source), _where(graph.node(e.source), e.start_line))
+        for e in cited_by_edges(graph, address)
+    ], fmt)
 
 
 # ── Check command ─────────────────────────────────────────────
@@ -1541,19 +1649,24 @@ def cmd_query_cited_by(address: str) -> int:
 def cmd_check(
     only: set[str] | None = None,
     verbose: bool = False,
-    json_mode: bool = False,
+    fmt: str = "text",
 ) -> int:
     """Run semantic consistency checks on the project name graph.
+
+    *fmt* is ``"text"`` (the default) or ``"json"``, the document
+    described by ``schema/check_result.json``.
 
     Returns 1 if any error-severity findings exist, 0 otherwise.
     """
     from notlob.check import coverage_summary, has_errors, run_checks
 
+    json_mode = fmt == "json"
     try:
         graph = _require_graph(raise_on_collision=json_mode)
     except AddressCollisionError as exc:
         # No graph, so no check ran: report the collision as the one
-        # finding (as `test --json` does) so stdout is still a document.
+        # finding (as `test --format json` does) so stdout is still a
+        # document.
         print(json.dumps({
             "version": _CHECK_JSON_VERSION,
             "findings": [_collision_finding(exc)],

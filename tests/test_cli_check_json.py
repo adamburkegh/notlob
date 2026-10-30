@@ -54,7 +54,7 @@ def project(tmp_path, monkeypatch):
 
 
 def _run(capsys, only=None):
-    rc = cmd_check(only=only, json_mode=True)
+    rc = cmd_check(only=only, fmt="json")
     return rc, json.loads(capsys.readouterr().out)
 
 
@@ -163,7 +163,7 @@ class TestNoProject:
         """With no project there is nothing to check: an error on
         stderr, nothing on stdout, exit 1. (Documented in the schema.)"""
         monkeypatch.chdir(tmp_path)
-        rc = cmd_check(json_mode=True)
+        rc = cmd_check(fmt="json")
         captured = capsys.readouterr()
         assert rc == 1
         assert captured.out == ""

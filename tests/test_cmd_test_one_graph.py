@@ -107,7 +107,7 @@ class TestOneGraphPerCommand:
     def test_json_mode_reads_the_same_graph_for_its_checks(
         self, root, counted, capsys,
     ):
-        assert cmd_test(None, json_mode=True) == 0
+        assert cmd_test(None, fmt="json") == 0
         assert counted["package"] == 1
         assert "checks" in json.loads(capsys.readouterr().out)
 
@@ -170,7 +170,7 @@ class TestACollision:
     ):
         """On a graph without that module's symbols, `client`'s import
         would look unused; the collision is the one finding."""
-        cmd_test(None, json_mode=True)
+        cmd_test(None, fmt="json")
         checks = json.loads(capsys.readouterr().out)["checks"]
         assert [(f["check"], f["severity"]) for f in checks] == [
             ("names", "error")]

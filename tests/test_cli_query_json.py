@@ -92,10 +92,19 @@ def _validate(doc, definition: str) -> None:
     })
 
 
+def _as_json(func) -> dict:
+    """The keyword that makes a query command answer in JSON: all but
+    ``resolve``, which always does, and ``content``, which takes its
+    format by position."""
+    if func in (cmd_query_resolve, cmd_query_content):
+        return {}
+    return {"fmt": "json"}
+
+
 def _run(capsys, func, *args):
     """Run a query command; return ``(exit_code, parsed_stdout)``.
     Parsing all of stdout as JSON is the 'only the document' check."""
-    rc = func(*args)
+    rc = func(*args, **_as_json(func))
     return rc, json.loads(capsys.readouterr().out)
 
 
@@ -413,7 +422,7 @@ class TestNothingReadsTheLayer:
             (cmd_query_content, ("alpha", 1, "json")),
         ]
         for func, args in calls:
-            assert func(*args) == 0
+            assert func(*args, **_as_json(func)) == 0
             json.loads(capsys.readouterr().out)
 
     def test_the_query_helper_that_wrapped_the_graph_is_gone(self):

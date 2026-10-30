@@ -169,7 +169,7 @@ class TestCmdQueryChildren:
         _write(root, "roman/numerals.lob",
                "#Roman Numerals\n##Decoding\n    code\n")
         monkeypatch.chdir(root)
-        assert cmd_query_children("roman/numerals") == 0
+        assert cmd_query_children("roman/numerals", fmt="json") == 0
         data   = json.loads(capsys.readouterr().out)
         labels = [n["label"] for n in data]
         assert "Decoding" in labels
@@ -180,7 +180,7 @@ class TestCmdQueryChildren:
         root = _project(tmp_path)
         _write(root, "t.lob", "#T\n    def f(): pass\n")
         monkeypatch.chdir(root)
-        cmd_query_children("t#code#1")
+        cmd_query_children("t#code#1", fmt="json")
         data   = json.loads(capsys.readouterr().out)
         labels = [n["label"] for n in data]
         assert "f" in labels
@@ -237,7 +237,7 @@ class TestCmdQuerySearch:
             "    def compute(): pass\n"
         ))
         monkeypatch.chdir(root)
-        cmd_query_search("apply_*")
+        cmd_query_search("apply_*", fmt="json")
         data   = json.loads(capsys.readouterr().out)
         labels = {n["label"] for n in data}
         assert labels == {"apply_discount", "apply_tax"}
@@ -247,7 +247,7 @@ class TestCmdQuerySearch:
         _write(root, "t.lob",
                "#T\n##Alpha\n    def alpha(): pass\n")
         monkeypatch.chdir(root)
-        cmd_query_search("*", "SYMBOL")
+        cmd_query_search("*", "SYMBOL", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert all(n["kind"] == "SYMBOL" for n in data)
 
@@ -257,7 +257,7 @@ class TestCmdQuerySearch:
         root = _project(tmp_path)
         _write(root, "t.lob", "#T\n")
         monkeypatch.chdir(root)
-        cmd_query_search("nonexistent_*")
+        cmd_query_search("nonexistent_*", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
@@ -272,7 +272,7 @@ class TestCmdQuerySearch:
             "    def apply_tax(): pass\n"
         ))
         monkeypatch.chdir(root)
-        cmd_query_search("discount")   # no wildcards
+        cmd_query_search("discount", fmt="json")   # no wildcards
         data   = json.loads(capsys.readouterr().out)
         labels = [n["label"] for n in data]
         assert "apply_discount" in labels
@@ -284,7 +284,7 @@ class TestCmdQuerySearch:
         root = _project(tmp_path)
         _write(root, "t.lob", "#T\n    def compute(): pass\n")
         monkeypatch.chdir(root)
-        cmd_query_search("missing")
+        cmd_query_search("missing", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
@@ -302,7 +302,7 @@ class TestCmdQueryImports:
             "    #Lib\n"
         ))
         monkeypatch.chdir(root)
-        cmd_query_imports("app")
+        cmd_query_imports("app", fmt="json")
         data   = json.loads(capsys.readouterr().out)
         labels = [n["label"] for n in data]
         assert "Lib" in labels
@@ -317,7 +317,7 @@ class TestCmdQueryImports:
             "    #Lib\n"
         ))
         monkeypatch.chdir(root)
-        cmd_query_imported_by("lib")
+        cmd_query_imported_by("lib", fmt="json")
         data   = json.loads(capsys.readouterr().out)
         labels = [n["label"] for n in data]
         assert "App" in labels
@@ -328,7 +328,7 @@ class TestCmdQueryImports:
         root = _project(tmp_path)
         _write(root, "standalone.lob", "#Standalone\n")
         monkeypatch.chdir(root)
-        cmd_query_imports("standalone")
+        cmd_query_imports("standalone", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
@@ -437,7 +437,7 @@ class TestCmdQueryCallers:
         root = _project(tmp_path)
         _write(root, "m.lob", _CALLER_LOB)
         monkeypatch.chdir(root)
-        rc = cmd_query_callers("m#callee")
+        rc = cmd_query_callers("m#callee", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
         labels = [n["label"] for n in data]
@@ -447,7 +447,7 @@ class TestCmdQueryCallers:
         root = _project(tmp_path)
         _write(root, "m.lob", _CALLER_LOB)
         monkeypatch.chdir(root)
-        cmd_query_callers("m#caller")
+        cmd_query_callers("m#caller", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
@@ -461,7 +461,7 @@ class TestCmdQueryCallees:
         root = _project(tmp_path)
         _write(root, "m.lob", _CALLER_LOB)
         monkeypatch.chdir(root)
-        rc = cmd_query_callees("m#caller")
+        rc = cmd_query_callees("m#caller", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
         labels = [n["label"] for n in data]
@@ -471,7 +471,7 @@ class TestCmdQueryCallees:
         root = _project(tmp_path)
         _write(root, "m.lob", _CALLER_LOB)
         monkeypatch.chdir(root)
-        cmd_query_callees("m#callee")
+        cmd_query_callees("m#callee", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
@@ -493,7 +493,7 @@ class TestCmdQueryCites:
         root = _project(tmp_path)
         _write(root, "refs.lob", _REFS_LOB)
         monkeypatch.chdir(root)
-        rc = cmd_query_cites("refs")
+        rc = cmd_query_cites("refs", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
         labels = [n["label"] for n in data]
@@ -503,7 +503,7 @@ class TestCmdQueryCites:
         root = _project(tmp_path)
         _write(root, "refs.lob", _REFS_LOB)
         monkeypatch.chdir(root)
-        cmd_query_cites("refs#Section")
+        cmd_query_cites("refs#Section", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 
@@ -517,7 +517,7 @@ class TestCmdQueryReferencedBy:
         root = _project(tmp_path)
         _write(root, "refs.lob", _REFS_LOB)
         monkeypatch.chdir(root)
-        rc = cmd_query_cited_by("refs#Section")
+        rc = cmd_query_cited_by("refs#Section", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert rc == 0
         addrs = [n["address"] for n in data]
@@ -529,7 +529,7 @@ class TestCmdQueryReferencedBy:
         root = _project(tmp_path)
         _write(root, "refs.lob", _REFS_LOB)
         monkeypatch.chdir(root)
-        cmd_query_cited_by("refs")
+        cmd_query_cited_by("refs", fmt="json")
         data = json.loads(capsys.readouterr().out)
         assert data == []
 

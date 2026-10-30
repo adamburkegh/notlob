@@ -160,28 +160,28 @@ hand from the real graph and file:
 
 ```
 pricing/discounts.lob
-#Pricing Discounts                          1
-  cites ##Stacking Discounts                9
+Pricing Discounts                           1
+  cites Stacking Discounts                  9
   apply_discount                           11
   ~example                                 14
     uses apply_discount                    15
-  ##Stacking Discounts                     17
+  Stacking Discounts                       17
     ~example                               26
       uses apply_discount                  27
     ~property                              31
       uses apply_discount                  43
-  #Tests                                   48
-    ##boundary conditions                  50
+  Tests                                    48
+    boundary conditions                    50
       uses apply_discount                  51
-    ##composition                          55
-      cites ##Stacking Discounts           58
+    composition                            55
+      cites Stacking Discounts             58
       ~test composition_is_commutative     61
         uses apply_discount                62
-  #References                              69
+  References                               69
 
 binding.lob
-#Pricing                                    1
-  #Binding                                  8
+Pricing                                     1
+  Binding                                   8
     ~language python                        9
 ```
 
@@ -196,13 +196,13 @@ About 600 bytes, against 2,363 for the file and 5,283 for today's JSON.
 
 * Every structural line and every reference, in file order, each with
   its own line number and the file's own words after it: a heading, a
-  sigil, a name, or `uses`/`cites` and the name as written.
+  sigil, a name, or `uses`/`cites` and the name. Headings lose their
+  hashes (decision 2); sigils stay.
 * References point outward, from where they are written. Who points at
   a thing is a question: `query callers`, `query cited-by`.
-* Names as the source writes them, not addresses: an address is a
-  program's handle.
-* A module's `#References` lists what it imports
-  (`70    #pricing`); retail lists none.
+* Names, not addresses: an address is a handle for the next query.
+* `References` lists what a module imports, as `imports Gutenberg
+  Corpus` under it; retail lists none.
 
 The levels then mean the same for a reader as for a program:
 
@@ -221,17 +221,17 @@ The outline is the skeleton without its `uses` and `cites` lines:
 
 ```
 pricing/discounts.lob
-#Pricing Discounts                          1
+Pricing Discounts                           1
   apply_discount                           11
   ~example                                 14
-  ##Stacking Discounts                     17
+  Stacking Discounts                       17
     ~example                               26
     ~property                              31
-  #Tests                                   48
-    ##boundary conditions                  50
-    ##composition                          55
+  Tests                                    48
+    boundary conditions                    50
+    composition                            55
       ~test composition_is_commutative     61
-  #References                              69
+  References                               69
 ```
 
 ### `query`, for a reader
@@ -311,6 +311,56 @@ Unchanged in shape (nodes and edges, D19). Its first level is not an
 outline in JSON; whether the levels keep one set of names for both
 forms is decision 6.
 
+## Slices
+
+Adam, 2026-10-30: go ahead. Each stands alone and is green at its end.
+
+1. **`--format` and paths** (decisions 5, 10): one flag, `--json` gone;
+   every `file:line` relative to the project root; a claim's line stays
+   one line. Brief: `slice-1-format-and-paths-brief.md`.
+2. **`query` for a reader** (decisions 2, 3, 12): text by default,
+   `--format json` on every query, the edge's line, `resolve`
+   deprecated.
+3. **`graph` for a reader** (decisions 4, 9): text by default; outline,
+   skeleton, source, for the whole project.
+4. **MCP** (decision 7): a thin layer: every command, the command's
+   defaults, the server's real version.
+5. **notlob-vids** moves to all of it, as the first outside user.
+
+Slice 3 also carries the cross-references' move to `index` and
+`end_line` leaving the JSON (decision 8).
+
+**Scope frozen for 0.6.0 (Adam, 2026-10-30).** These five slices, then
+Adam drives it, then the release. A new finding goes on the list below
+unless it would break a schema after the release.
+
+After 0.6.0:
+
+* Part of a project, by `graph <address>` or `query outline <address>`
+  (decision 9): only if driving it shows the need. Both give the same
+  text but not the same JSON.
+* `notlob graph <file>` in a project, which only finds the project.
+* `named` on symbols.
+* LF line endings on every platform.
+* The size bound on `query content --format json`.
+* Whether `query resolve` goes, or becomes what use shows it should be.
+* `NameGraph.search` uses `fnmatch.fnmatch`, which folds case on
+  Windows, where its docstring says case-sensitive: `search discount`
+  differs between platforms.
+* `query cites` on a section answers for its paragraphs; `query callees`
+  on a section answers nothing, as it has no `USES` edges of its own.
+
+## A level is the same content in either form
+
+Adam, 2026-10-30: "same content, different format ... better to have
+same content". **Decided:** the cross-references (`USES`, `CITES`,
+`IMPORTS`, `USES_EXTERNAL`) leave the JSON `outline` and arrive at
+`index`, as they do in the reader form. The JSON `outline` is nodes and
+`CONTAINS` edges: 547 of pn-chomper's 941 edges go. Cost: the lifted,
+section-level view of the edges is no longer in the document; a program
+that wants it walks `CONTAINS` itself, and anything reading edges at the
+default level asks for `--level index`.
+
 ## To decide
 
 Adam's rulings, 2026-10-30, are marked **Decided**.
@@ -321,7 +371,8 @@ Adam's rulings, 2026-10-30, are marked **Decided**.
 2. **Decided:** reader lines keep the sigils (`~example`) and drop the
    hashes on headings (`Stacking Discounts`, not `##Stacking
    Discounts`). The skeleton and outline above still show hashes; they
-   lose them.
+   lose them. A query line is three columns (Adam, 2026-10-30): the
+   sigil, blank for what has none; the address; `file:line`.
 3. **Decided:** a query that follows an edge (`callers`, `callees`,
    `cites`, `cited-by`, `imports`, `imported-by`) gives the line the
    edge is written on: the call, not the start of its caller. Adam:
@@ -341,12 +392,19 @@ Adam's rulings, 2026-10-30, are marked **Decided**.
    every command and query is offered, `notlob_graph` included, with the
    command's defaults (so text). "It would seem strange not to offer
    notlob graph through MCP."
-8. **Open, with a direction:** Adam is sceptical of `end_line`: either
-   a range as a book gives one (`11-32`), or no end line and readers
-   take local context from the file.
-9. **Decided:** text is `graph`'s default, as everywhere. Open: whether
-   the reader form for one node is `graph` at a level or
-   `query outline <address>`.
+8. **Decided (Adam, 2026-10-30):** no end line in what notlob prints:
+   readers take local context from the file. Reader forms carry one
+   line. `end_line` leaves the graph document and the query JSON too,
+   on the principle that a level is the same content in either format
+   (Adam: "same content, different format ... better to have same
+   content"). The model keeps it:
+   `query content` needs the span, and its header's `file:40-60` says
+   what it printed.
+9. **Decided in part:** text is `graph`'s default, as everywhere, and
+   `graph` with no argument is the whole project, wherever it is run
+   from. Open: the reader form for part of a project, by `graph
+   <address>` or `query outline <address>`; a file argument to `graph`
+   inside a project is ignored today.
 10. One path convention, relative to the project root, for every
     `file:line` notlob prints. Taken as agreed with 11; not ruled
     separately.
@@ -385,7 +443,8 @@ apart. A reader's "where is X": every node of that exact name, one line
 each, nothing if none. A program's "what would `#X` mean here": the
 rule, with the module required.
 
-**Decided (Adam, 2026-10-30):** one query, the flag picks the question:
-"those look a lot like two different flags to pass". `query resolve X`
-lists every node named X; `query resolve X --context <module>` applies
-the language's rule in that module.
+Adam first said the two questions "look a lot like two different flags
+to pass". **Decided, in the end (Adam, 2026-10-30):** deprecate `query
+resolve` "and see how use evolves from here". It is undocumented and
+unoffered over MCP; it stays as it is, with a line on stderr, and
+`query search` is the answer for now.

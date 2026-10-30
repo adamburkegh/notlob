@@ -6,7 +6,7 @@ A notlob literate programming project.
 
 Run `notlob docs` to write the language reference to `notlob-docs/LANGUAGE.md`.
 
-Read `notlob-docs/LANGUAGE.md` for syntax, claims, and project structure. `notlob-docs/` also holds `grammar.lark` (the formal syntax), `schema/` (JSON Schemas for the `--json` output) and `BINDING-<language>.md` (what each language binding does).
+Read `notlob-docs/LANGUAGE.md` for syntax, claims, and project structure. `notlob-docs/` also holds `grammar.lark` (the formal syntax), `schema/` (JSON Schemas for the `--format json` output) and `BINDING-<language>.md` (what each language binding does).
 
 ## Key commands
 

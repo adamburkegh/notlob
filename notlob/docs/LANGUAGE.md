@@ -520,14 +520,14 @@ the linter sees) is in each binding's doc, written beside this file as
 
 ```
 notlob init [--language LANG]    scaffold a new project in the current dir
-notlob test [file] [--json]     run all claims (project or one file)
-notlob check [--only ...] [-v] [--json]  run semantic checks on the name-graph
+notlob test [file] [--format text|json]  run all claims (project or one file)
+notlob check [--only ...] [-v] [--format text|json]  run semantic checks
 notlob build [file]             assemble to source artifacts in dist/
 notlob run <file>               execute a module
 notlob weave [file]             render as Markdown
 notlob new <name>               create a new module
 notlob docs [--output DIR]      write this reference to notlob-docs/
-notlob query search <pattern>   find nodes by label (bare word = substring)
+notlob query search <pattern> [--format text|json]  find nodes by label (bare word = substring)
 notlob query content <address> [--format json [--depth N]]  the source at an address
 notlob query children <address> list child nodes
 notlob query imports <address>  modules imported by an address
@@ -549,25 +549,49 @@ existing directory, or notlob exits with an error before running anything.
 `notlob build` (`--output DIR`) and `notlob docs` write relative to the
 current directory, not the project root.
 
-`--json` prints a machine-readable document to stdout (diagnostics go to
-stderr) and leaves the exit code unchanged. `notlob test --json` prints
+Every `file:line` notlob prints is written `path/to/file.lob:LINE`, with
+the path relative to the project root and `/` separators (outside a
+project, the path as it was given). `notlob test` prints a claim written
+over several lines on one, joined by single spaces.
+
+`--format json` prints a machine-readable document to stdout (diagnostics
+go to stderr) and leaves the exit code unchanged; `text` is the default.
+(`--json` was this flag's old spelling, and is gone.)
+`notlob test --format json` prints
 `{version, summary, claims, lint}`, plus `checks` for a whole-project run.
 Each claim has `address`, `kind` (`EXAMPLE`, `PROPERTY`, `TEST`),
 `status`, `source` (the assertion text), `file` (relative to the project
 root) and `line`, plus `left`/`right` on a failed equality; claims, lint
 findings and check findings are separate lists. The shape is specified by
 `schema/test_result.json`, written beside this file by `notlob docs`, and
-`version` changes on a breaking change. `notlob check --json` prints
+`version` changes on a breaking change. `notlob check --format json` prints
 `{version, findings, counts}` (`schema/check_result.json`); a finding has
 `check`, `message`, `addresses` and `severity` (`error` or `advisory`),
 and is the same shape as an entry in `checks` above. The `notlob query`
-commands print nodes as `notlob graph` does at `outline` (`address`,
-`label`, `kind`, and `named`, `mode`, `file`, `start_line`, `end_line`
-where they apply): an array, or for `resolve` a single node, or `null`
-with exit code 1 when it does not resolve. `children` follows any edge kind
-the graph holds (`CONTAINS` by default, and a section's paragraphs and code
-blocks are among its children); `search` finds the nodes `outline` shows;
-`cites` and `cited-by` give a section for a paragraph.
+commands that list nodes (`search`, `children`, `imports`, `imported-by`,
+`callers`, `callees`, `cites`, `cited-by`) answer a reader by default
+(`--format text`): a line a node, in three columns aligned within the
+answer. The first is the node's sigil (`~example`, `~property`, `~run`,
+`~test` for a test the document names), blank for what has none. The
+second is its address, as the next query takes it. The third is `file:line`
+relative to the project root, which for `callers`, `callees`, `cites`,
+`cited-by`, `imports` and `imported-by` is where the edge is written (the
+use, the citation, the listing) and for `search` and `children` is where
+the node starts. A node with no file (an external file) has none. An empty
+answer prints nothing, and an address that is not a node is an error on
+stderr with exit code 1.
+```
+~example   pricing/discounts#example#1   pricing/discounts.lob:15
+```
+`--format json` prints the nodes as `notlob graph` does at `outline`
+(`address`, `label`, `kind`, and `named`, `mode`, `file`, `start_line`,
+`end_line` where they apply) as an array (`[]` when there is nothing to list),
+and `resolve` a single node. An address or label that is not a node prints
+`null` with exit code 1, and the error on stderr, as in text. `resolve` is deprecated: it prints as it did and says so
+on stderr; use `search`. `children` follows any edge kind the graph holds
+(`CONTAINS` by default, and a section's paragraphs and code blocks are
+among its children); `search` finds the nodes `outline` shows; `cites` and
+`cited-by` give a section for a paragraph.
 `content` prints the source at an address, as written: a header line, the
 address and the span (`roman/numerals#Decoding  roman/numerals.lob:40-60`),
 then the node's own lines from its file, which the `.lob` syntax already

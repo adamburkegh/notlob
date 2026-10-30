@@ -27,7 +27,7 @@ from notlob.commands import (
     cmd_query_search, cmd_query_imports, cmd_query_imported_by,
     cmd_query_callers, cmd_query_callees,
     cmd_query_cites, cmd_query_cited_by,
-    QUERY_EDGE_KINDS, QUERY_NODE_KINDS, use_utf8_streams,
+    QUERY_EDGE_KINDS, QUERY_FORMATS, QUERY_NODE_KINDS, use_utf8_streams,
 )
 from notlob.project import find_project_root, resolve_module_path
 
@@ -161,8 +161,9 @@ def main() -> None:
         ),
     )
     test_p.add_argument(
-        "--json", dest="json_mode", action="store_true", default=False,
-        help="output results as JSON",
+        "--format", dest="fmt", default="text",
+        choices=["text", "json"],
+        help="output format (default: text)",
     )
 
     build_p = sub.add_parser(
@@ -233,8 +234,9 @@ def main() -> None:
         help="show which checks ran and their counts",
     )
     check_p.add_argument(
-        "--json", dest="json_mode", action="store_true", default=False,
-        help="output findings as JSON",
+        "--format", dest="fmt", default="text",
+        choices=["text", "json"],
+        help="output format (default: text)",
     )
 
     init_p = sub.add_parser(
@@ -278,14 +280,27 @@ def main() -> None:
 
     sub.add_parser("mcp", help="start the MCP tool server (stdin/stdout)")
 
+    def _add_query_format(p) -> None:
+        p.add_argument(
+            "--format", dest="fmt", choices=QUERY_FORMATS, default="text",
+            help=(
+                "text (the default): a line a node, its sigil, address and "
+                "file:line; json: an array of nodes"
+            ),
+        )
+
     qc = qsub.add_parser("children", help="list direct children of a node")
     qc.add_argument("address")
+    _add_query_format(qc)
     qc.add_argument(
         "--kind", default="CONTAINS", choices=QUERY_EDGE_KINDS,
         help="edge kind to follow (default: CONTAINS)",
     )
 
-    qr = qsub.add_parser("resolve", help="resolve a #label reference")
+    qr = qsub.add_parser(
+        "resolve",
+        help="resolve a #label reference (deprecated: use search)",
+    )
     qr.add_argument("label")
     qr.add_argument(
         "--context", metavar="ADDRESS",
@@ -298,34 +313,41 @@ def main() -> None:
         "--kind", default=None, choices=QUERY_NODE_KINDS,
         help="restrict to a node kind",
     )
+    _add_query_format(qs)
 
     qi = qsub.add_parser("imports", help="list modules imported by an address")
     qi.add_argument("address")
+    _add_query_format(qi)
 
     qib = qsub.add_parser(
         "imported-by", help="list modules that import an address"
     )
     qib.add_argument("address")
+    _add_query_format(qib)
 
     qcallers = qsub.add_parser(
         "callers", help="list symbols that call a given address"
     )
     qcallers.add_argument("address")
+    _add_query_format(qcallers)
 
     qcallees = qsub.add_parser(
         "callees", help="list symbols called by a given address"
     )
     qcallees.add_argument("address")
+    _add_query_format(qcallees)
 
     qcites = qsub.add_parser(
         "cites", help="list nodes cited in the prose of a given address"
     )
     qcites.add_argument("address")
+    _add_query_format(qcites)
 
     qcitedby = qsub.add_parser(
         "cited-by", help="list nodes whose prose cites a given address"
     )
     qcitedby.add_argument("address")
+    _add_query_format(qcitedby)
 
     qcont = qsub.add_parser(
         "content", help="show the source at an address, as written"
@@ -380,7 +402,7 @@ def main() -> None:
             _opt_path(args.file, args.module_mode),
             keep_generated_src=args.keep_generated_src,
             only=set(args.only) if args.only else None,
-            json_mode=args.json_mode,
+            fmt=args.fmt,
         ))
     elif args.command == "graph":
         sys.exit(cmd_graph(
@@ -392,7 +414,7 @@ def main() -> None:
         sys.exit(cmd_check(
             only=set(args.only) if args.only else None,
             verbose=args.verbose,
-            json_mode=args.json_mode,
+            fmt=args.fmt,
         ))
     elif args.command == "docs":
         sys.exit(cmd_docs(
@@ -413,23 +435,25 @@ def main() -> None:
     elif args.command == "query":
         op = getattr(args, "query_op", None)
         if op == "children":
-            sys.exit(cmd_query_children(args.address, args.kind))
+            sys.exit(cmd_query_children(
+                args.address, args.kind, fmt=args.fmt))
         elif op == "resolve":
             sys.exit(cmd_query_resolve(args.label, args.context))
         elif op == "search":
-            sys.exit(cmd_query_search(args.pattern, args.kind))
+            sys.exit(cmd_query_search(
+                args.pattern, args.kind, fmt=args.fmt))
         elif op == "imports":
-            sys.exit(cmd_query_imports(args.address))
+            sys.exit(cmd_query_imports(args.address, fmt=args.fmt))
         elif op == "imported-by":
-            sys.exit(cmd_query_imported_by(args.address))
+            sys.exit(cmd_query_imported_by(args.address, fmt=args.fmt))
         elif op == "callers":
-            sys.exit(cmd_query_callers(args.address))
+            sys.exit(cmd_query_callers(args.address, fmt=args.fmt))
         elif op == "callees":
-            sys.exit(cmd_query_callees(args.address))
+            sys.exit(cmd_query_callees(args.address, fmt=args.fmt))
         elif op == "cites":
-            sys.exit(cmd_query_cites(args.address))
+            sys.exit(cmd_query_cites(args.address, fmt=args.fmt))
         elif op == "cited-by":
-            sys.exit(cmd_query_cited_by(args.address))
+            sys.exit(cmd_query_cited_by(args.address, fmt=args.fmt))
         elif op == "content":
             sys.exit(cmd_query_content(
                 args.address, args.depth, args.format))

@@ -123,7 +123,7 @@ class TestCmdTestProjectJson:
         _write(root, "shapes.lob", _SHAPES_LOB)
         monkeypatch.chdir(root)
 
-        rc = cmd_test(None, json_mode=True)
+        rc = cmd_test(None, fmt="json")
 
         assert rc == 1
         import json

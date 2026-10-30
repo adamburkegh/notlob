@@ -75,7 +75,7 @@ def _run(capsys, path):
     """Run ``cmd_test`` in JSON mode; return ``(exit_code, document)``.
     Parsing all of stdout as JSON is itself the 'stdout is only the
     document' check."""
-    rc = cmd_test(path, json_mode=True)
+    rc = cmd_test(path, fmt="json")
     return rc, json.loads(capsys.readouterr().out)
 
 
