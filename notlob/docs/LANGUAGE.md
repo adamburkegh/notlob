@@ -539,6 +539,13 @@ notlob mcp                      start the MCP tool server (stdin/stdout)
 File arguments accept either a filesystem path or a module address via
 `-m` (e.g. `notlob test -m pricing/discounts`).
 
+`notlob -C DIR <command>` runs the command as if notlob had been started
+in `DIR`, as `git -C` does (`notlob -C examples/retail test`). Paths after
+it are relative to `DIR`, and `notlob -C DIR mcp` serves the project in
+`DIR`. `DIR` itself is relative to where notlob was started; it must be an
+existing directory, or notlob exits with an error before running anything.
+`-C` is given once only.
+
 `notlob build` (`--output DIR`) and `notlob docs` write relative to the
 current directory, not the project root.
 

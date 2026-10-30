@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `notlob -C DIR <command>`: runs the command as if notlob had been
+  started in `DIR`, as `git -C` does, so a project can be asked about
+  without a `cd` first (`notlob -C examples/retail query search discount`).
+  Paths after it are relative to `DIR`, and the MCP server serves the
+  project in `DIR`. A `DIR` that is missing or is not a directory is an
+  error on stderr, exit 1, before any command runs. It is given once only:
+  a second `-C` is an error.
 - `build.py`: builds the release `.pyz` (`dist/notlob-<version>.pyz`) with
   shiv from a git ref (`python build.py --ref v0.6.0`), so the same ref
   gives the same artifact whatever is in the working tree. It refuses a

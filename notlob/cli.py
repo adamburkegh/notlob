@@ -14,6 +14,7 @@ Command implementations live in :mod:`notlob.commands`.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -83,6 +84,26 @@ def _add_file_arg(p, required: bool = True) -> None:
     )
 
 
+def _enter_directory(directories: list[str] | None) -> None:
+    """Make the directory given with ``-C`` the working directory, as
+    ``git -C`` does: everything after runs as if notlob had been started
+    there, so a path argument is relative to it. The directory itself is
+    relative to where notlob was started. Exits with an error, before any
+    command runs, if there is not exactly one directory to enter."""
+    if not directories:
+        return
+    if len(directories) > 1:
+        print("ERROR  <cli>  -C may be given once only", file=sys.stderr)
+        sys.exit(1)
+    directory = directories[0]
+    try:
+        os.chdir(directory)
+    except OSError as error:
+        print(f"ERROR  <cli>  -C {directory}: {error.strerror}",
+              file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
     use_utf8_streams()
     parser = argparse.ArgumentParser(
@@ -92,6 +113,13 @@ def main() -> None:
     parser.add_argument(
         "--version", action="version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "-C", dest="directory", metavar="DIR", action="append",
+        help=(
+            "run as if notlob had been started in DIR, as git -C does: "
+            "paths after it are relative to DIR (given once only)"
+        ),
     )
     sub = parser.add_subparsers(dest="command", metavar="command")
 
@@ -322,6 +350,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    _enter_directory(args.directory)
 
     def _opt_path(file_arg, module_mode):
         """Resolve an optional file argument; return None when absent."""
