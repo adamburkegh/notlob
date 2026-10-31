@@ -29,6 +29,12 @@ and "Returns structured results". The server reports version `"0.3"`.
    `format` for JSON. `notlob_graph` says `outline` is the default and
    `level` `index` adds `uses`, `cites` and `imports`.
 5. **The server's version is notlob's,** `__version__`, not `"0.3"`.
+6. **A tool loses nothing its command says.** Added in review, on Adam's
+   ruling, 2026-10-31: most failures say why on stderr, and the server
+   took only stdout, so a client got `""` and `isError: true`. A result
+   is stdout, then stderr as a second text block when there is any, so
+   `format: json` still answers `null`, parseable, in the first block.
+   With nothing on stdout, stderr is the only block.
 
 ## Rules
 

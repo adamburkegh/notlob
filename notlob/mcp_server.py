@@ -1,7 +1,9 @@
 """notlob.mcp_server — zero-dependency MCP server (stdin/stdout).
 
 Exposes notlob commands as MCP tools over the JSON-RPC 2.0 protocol.
-No external dependencies beyond the Python stdlib and notlob itself.
+A tool is a command: it answers as the command does, by default in text,
+and with ``format`` in what the command offers. No external dependencies
+beyond the Python stdlib and notlob itself.
 
 Usage::
 
@@ -15,287 +17,312 @@ import io
 import json
 import sys
 from pathlib import Path
+from typing import Callable, NamedTuple
 
-from notlob.graph import KINDS, EdgeKind, NodeKind
-
-#: The edge kinds a graph holds, and the kinds of node ``outline`` shows:
-#: what a query can be asked for.
-_EDGE_KINDS = [k.name for k in EdgeKind]
-_NODE_KINDS = [
-    k.name for k in NodeKind if not KINDS[k].hidden_at_outline]
+from notlob import __version__
+from notlob.check import CHECK_NAMES
+from notlob.commands import (
+    GRAPH_FORMATS, QUERY_EDGE_KINDS, QUERY_FORMATS, QUERY_NODE_KINDS,
+    cmd_check, cmd_graph, cmd_test,
+    cmd_query_callees, cmd_query_callers, cmd_query_children,
+    cmd_query_cited_by, cmd_query_cites, cmd_query_content,
+    cmd_query_imported_by, cmd_query_imports, cmd_query_search,
+)
 
 
 # ── Tool definitions ─────────────────────────────────────────
 
+class _Tool(NamedTuple):
+    """A command offered as a tool. Its name is the command line:
+    ``query cited-by`` is ``notlob_query_cited_by``. Its *properties* are
+    the options and arguments of that command, under the name the command
+    gives them but for ``path``, its file."""
+    command:     tuple[str, ...]
+    run:         Callable[..., int]
+    description: str
+    properties:  dict[str, dict]
+    required:    tuple[str, ...] = ()
+
+    @property
+    def name(self) -> str:
+        return "notlob_" + "_".join(self.command).replace("-", "_")
+
+
+def _format(choices: tuple[str, ...], what: str) -> dict:
+    return {
+        "type": "string",
+        "enum": list(choices),
+        "description": f"text (the default): {what}; the rest are for a "
+                       "program",
+    }
+
+
+_ADDRESS = {
+    "type": "string",
+    "description": "Node address, e.g. roman/numerals#to_roman",
+}
+_MODULE = {
+    "type": "string",
+    "description": "Module address, e.g. roman/numerals",
+}
+
+#: A query that lists nodes answers a line a node: a sigil, the address,
+#: and ``file:line``; with ``format`` json, an array of nodes.
+_LISTS = "a line a node (sigil, address, file:line)"
+
+
+def _lists(**properties: dict) -> dict[str, dict]:
+    return {**properties, "format": _format(QUERY_FORMATS, _LISTS)}
+
+
+_TOOL_LIST = [
+    _Tool(
+        ("test",), cmd_test,
+        "Run all claims (examples, properties, #Tests) in a module or the "
+        "whole project. Answers in text, a line a claim: its status, file "
+        "and line, address and source, then the count; format json for "
+        "the claims as structured data.",
+        {
+            "path": {
+                "type": "string",
+                "description": (
+                    "Path to a .lob file; omit to test the whole project"),
+            },
+            "only": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["lint", "examples", "props", "tests"],
+                },
+                "description": "Run only these check types",
+            },
+            "format": _format(
+                ("text", "json"), "a line a claim and the count"),
+        },
+    ),
+    _Tool(
+        ("check",), cmd_check,
+        "Run semantic consistency checks on the project name-graph: "
+        "unused imports (error), typos, naming conventions, similar "
+        "titles, unreferenced symbols. Answers in text, a line a finding, "
+        "or one line when there are none; format json for the findings "
+        "as structured data.",
+        {
+            "only": {
+                "type": "array",
+                "items": {"type": "string", "enum": list(CHECK_NAMES)},
+                "description": "Run only these checks",
+            },
+            "format": _format(("text", "json"), "a line a finding"),
+        },
+    ),
+    _Tool(
+        ("graph",), cmd_graph,
+        "Show the package name-graph. Answers in text: each file, then "
+        "its headings, symbols and claims, indented by what is written in "
+        "what, with the line each is on. The level outline is the default; "
+        "index adds the uses, cites and imports and the declarations "
+        "under the node that holds them; full is each file's source. "
+        "With format json, the graph itself: nodes and edges, at the "
+        "same level; turtle gives it as RDF.",
+        {
+            "level": {
+                "type": ["string", "integer"],
+                "enum": ["outline", "index", "full", 1, 2, 3],
+                "description": (
+                    "How much to show: outline (1, the default) is the "
+                    "structure of each file; index (2) adds the uses, "
+                    "cites and imports, and the declarations; full (3) "
+                    "is each file's source (text), or adds the text, "
+                    "once (json, turtle)"
+                ),
+            },
+            "format": _format(
+                GRAPH_FORMATS, "each file's outline, a line a node"),
+        },
+    ),
+    _Tool(
+        ("query", "search"), cmd_query_search,
+        "Search nodes by label pattern (fnmatch); bare words auto-wrap "
+        "as *pattern* for substring matching. Answers in text, "
+        + _LISTS + "; format json for an array of nodes.",
+        _lists(
+            pattern={
+                "type": "string",
+                "description": "fnmatch pattern, e.g. '*discount*'",
+            },
+            kind={
+                "type": "string",
+                "enum": list(QUERY_NODE_KINDS),
+                "description": "Restrict to a node kind",
+            },
+        ),
+        ("pattern",),
+    ),
+    _Tool(
+        ("query", "content"), cmd_query_content,
+        "Show the source at a name-graph address, as written. Answers in "
+        "text: a header line (address, file and lines) and the node's own "
+        "lines; format json for the subtree instead, nested, with the "
+        "text of each node that holds text, once.",
+        {
+            "address": _ADDRESS,
+            "format": _format(
+                QUERY_FORMATS, "the header and the node's lines"),
+            "depth": {
+                "type": "integer",
+                "minimum": 0,
+                "description": (
+                    "With format json, stop this many containment steps "
+                    "below the node (0: the node alone; default: the "
+                    "whole subtree)"
+                ),
+            },
+        },
+        ("address",),
+    ),
+    _Tool(
+        ("query", "children"), cmd_query_children,
+        "List the targets of the edges of a kind from a node: its "
+        "children by default. Answers in text, " + _LISTS
+        + "; format json for an array of nodes.",
+        _lists(
+            address={"type": "string", "description": "Parent node address"},
+            kind={
+                "type": "string",
+                "enum": list(QUERY_EDGE_KINDS),
+                "description": "Edge kind (default: CONTAINS)",
+            },
+        ),
+        ("address",),
+    ),
+    _Tool(
+        ("query", "imports"), cmd_query_imports,
+        "List the modules a module imports. Answers in text, " + _LISTS
+        + ", the line being the listing that imports it; format json for "
+        "an array of nodes.",
+        _lists(address=_MODULE),
+        ("address",),
+    ),
+    _Tool(
+        ("query", "imported-by"), cmd_query_imported_by,
+        "List the modules that import a module. Answers in text, "
+        + _LISTS + ", the line being the listing that imports it; "
+        "format json for an array of nodes.",
+        _lists(address=_MODULE),
+        ("address",),
+    ),
+    _Tool(
+        ("query", "callers"), cmd_query_callers,
+        "List the nodes that use a symbol. Answers in text, " + _LISTS
+        + ", the line being where it is used; format json for an array "
+        "of nodes.",
+        _lists(address=_ADDRESS),
+        ("address",),
+    ),
+    _Tool(
+        ("query", "callees"), cmd_query_callees,
+        "List the nodes a node uses. Answers in text, " + _LISTS
+        + ", the line being where it is used; format json for an array "
+        "of nodes.",
+        _lists(address=_ADDRESS),
+        ("address",),
+    ),
+    _Tool(
+        ("query", "cites"), cmd_query_cites,
+        "List the nodes a node cites in its prose with #Label. Answers in "
+        "text, " + _LISTS + ", the line being the citation; format json "
+        "for an array of nodes.",
+        _lists(address=_ADDRESS),
+        ("address",),
+    ),
+    _Tool(
+        ("query", "cited-by"), cmd_query_cited_by,
+        "List the nodes whose prose cites a node. Answers in text, "
+        + _LISTS + ", the line being the first citation; format json "
+        "for an array of nodes.",
+        _lists(address=_ADDRESS),
+        ("address",),
+    ),
+]
+
+_BY_NAME = {tool.name: tool for tool in _TOOL_LIST}
+
 TOOLS = [
     {
-        "name": "notlob_test",
-        "description": (
-            "Run all claims (examples, properties, #Tests) in a "
-            "module or the whole project. Returns structured results "
-            "with addresses, source lines, and pass/fail status."
-        ),
+        "name": tool.name,
+        "description": tool.description,
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": (
-                        "Path to a .lob file; omit to test "
-                        "the whole project"
-                    ),
-                },
-                "only": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "enum": ["lint", "examples", "props", "tests"],
-                    },
-                    "description": "Run only these check types",
-                },
-            },
+            "properties": tool.properties,
+            **({"required": list(tool.required)} if tool.required else {}),
         },
-    },
-    {
-        "name": "notlob_check",
-        "description": (
-            "Run semantic consistency checks on the project "
-            "name-graph: unused imports (error), typos, naming "
-            "conventions, similar titles, unreferenced symbols."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "only": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "enum": [
-                            "imports", "typos", "conventions",
-                            "titles", "references",
-                        ],
-                    },
-                    "description": "Run only these checks",
-                },
-            },
-        },
-    },
-    {
-        "name": "notlob_graph",
-        "description": (
-            "Export the package name-graph as JSON: all modules, "
-            "subheadings, symbols, examples, tests, properties, "
-            "and their relationships, at a level of detail."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "level": {
-                    "type": ["string", "integer"],
-                    "enum": ["outline", "index", "full", 1, 2, 3],
-                    "description": (
-                        "How much to show: outline (1, the default) is "
-                        "every node but the paragraphs, code blocks and "
-                        "bullet lists; index (2) adds those, the "
-                        "references a paragraph holds and a size for each "
-                        "node; full (3) adds the text, once"
-                    ),
-                },
-            },
-        },
-    },
-    {
-        "name": "notlob_query_search",
-        "description": (
-            "Search nodes by label pattern (fnmatch). Bare words "
-            "auto-wrap as *pattern* for substring matching."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "fnmatch pattern, e.g. '*discount*'",
-                },
-                "kind": {
-                    "type": "string",
-                    "enum": _NODE_KINDS,
-                    "description": "Restrict to a node kind",
-                },
-            },
-            "required": ["pattern"],
-        },
-    },
-    {
-        "name": "notlob_query_content",
-        "description": (
-            "Show the source at a name-graph address, as written: a "
-            "header line (address, file and lines) and the node's own "
-            "lines. With format json, the subtree instead, nested, with "
-            "the text of each node that holds text, once."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string",
-                    "description": (
-                        "Node address, e.g. roman/numerals#to_roman"
-                    ),
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["text", "json"],
-                    "description": (
-                        "text (the default): the source as written; "
-                        "json: the subtree, nested"
-                    ),
-                },
-                "depth": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": (
-                        "With format json, stop this many containment "
-                        "steps below the node (0: the node alone; "
-                        "default: the whole subtree)"
-                    ),
-                },
-            },
-            "required": ["address"],
-        },
-    },
-    {
-        "name": "notlob_query_children",
-        "description": "List direct children of a node.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string",
-                    "description": "Parent node address",
-                },
-                "kind": {
-                    "type": "string",
-                    "enum": _EDGE_KINDS,
-                    "description": "Edge kind (default: CONTAINS)",
-                },
-            },
-            "required": ["address"],
-        },
-    },
-    {
-        "name": "notlob_query_imports",
-        "description": "List modules imported by an address.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string",
-                    "description": "Module address",
-                },
-            },
-            "required": ["address"],
-        },
-    },
-    {
-        "name": "notlob_query_imported_by",
-        "description": "List modules that import an address.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string",
-                    "description": "Module address",
-                },
-            },
-            "required": ["address"],
-        },
-    },
+    }
+    for tool in _TOOL_LIST
 ]
 
 
 # ── Dispatch ─────────────────────────────────────────────────
 
-def _capture(fn, *args, **kwargs) -> tuple[str, int]:
-    """Call *fn*, capture its stdout, return (output, exit_code)."""
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
+#: How a tool's argument reaches its command: the keyword the command
+#: has it as, and what the value is made into.
+_ARGUMENT: dict[str, tuple[str, Callable]] = {
+    "path":   ("path",     lambda p: Path(p).resolve()),
+    "only":   ("only",     set),
+    "kind":   ("kind_str", str),
+    "format": ("fmt",      str),
+}
+
+
+def _capture(fn, *args, **kwargs) -> tuple[str, str, int]:
+    """Call *fn*, capture its stdout and its stderr, return (output,
+    errors, exit_code). The stdout capture has a ``buffer`` as the real
+    one does, for a command that writes bytes (``graph`` as Turtle)."""
+    raw = io.BytesIO()
+    out = io.TextIOWrapper(raw, encoding="utf-8", newline="")
+    err = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         rc = fn(*args, **kwargs)
-    return buf.getvalue(), rc
+    out.flush()
+    return raw.getvalue().decode("utf-8"), err.getvalue(), rc
+
+
+def _error(text: str) -> dict:
+    return {"content": [{"type": "text", "text": text}], "isError": True}
 
 
 def _dispatch(name: str, arguments: dict) -> dict:
     """Execute an MCP tool call and return a result dict."""
-    from notlob.commands import (
-        cmd_check, cmd_graph, cmd_test,
-        cmd_query_children, cmd_query_content,
-        cmd_query_imports, cmd_query_imported_by,
-        cmd_query_search,
-    )
-
+    tool = _BY_NAME.get(name)
+    if tool is None:
+        return _error(f"Unknown tool: {name}")
+    missing = [a for a in tool.required if a not in arguments]
+    if missing:
+        return _error(f"Missing argument: {', '.join(missing)}")
+    kwargs = {}
+    for argument in tool.properties:
+        if argument in arguments:
+            keyword, make = _ARGUMENT.get(argument, (argument, None))
+            value = arguments[argument]
+            kwargs[keyword] = value if make is None else make(value)
     try:
-        if name == "notlob_test":
-            path = (Path(arguments["path"]).resolve()
-                    if "path" in arguments else None)
-            only = (set(arguments["only"])
-                    if "only" in arguments else None)
-            out, rc = _capture(
-                cmd_test, path, only=only, fmt="json",
-            )
-        elif name == "notlob_check":
-            only = (set(arguments["only"])
-                    if "only" in arguments else None)
-            out, rc = _capture(
-                cmd_check, only=only, fmt="json",
-            )
-        elif name == "notlob_graph":
-            out, rc = _capture(cmd_graph, level=arguments.get("level"))
-        elif name == "notlob_query_search":
-            out, rc = _capture(
-                cmd_query_search,
-                arguments["pattern"],
-                arguments.get("kind"),
-            )
-        elif name == "notlob_query_content":
-            out, rc = _capture(
-                cmd_query_content, arguments["address"],
-                arguments.get("depth"), arguments.get("format", "text"),
-            )
-        elif name == "notlob_query_children":
-            out, rc = _capture(
-                cmd_query_children,
-                arguments["address"],
-                arguments.get("kind", "CONTAINS"),
-            )
-        elif name == "notlob_query_imports":
-            out, rc = _capture(
-                cmd_query_imports, arguments["address"],
-            )
-        elif name == "notlob_query_imported_by":
-            out, rc = _capture(
-                cmd_query_imported_by, arguments["address"],
-            )
-        else:
-            return {
-                "content": [{"type": "text",
-                             "text": f"Unknown tool: {name}"}],
-                "isError": True,
-            }
+        out, err, rc = _capture(tool.run, **kwargs)
     except Exception as exc:
-        return {
-            "content": [{"type": "text", "text": str(exc)}],
-            "isError": True,
-        }
-
+        return _error(str(exc))
+    # What the command printed, then what it said on stderr: a client
+    # reads the answer (``null``, say) and the reason beside it. An empty
+    # answer is an answer, so there is always a block.
+    blocks = [text for text in (out.rstrip(), err.rstrip()) if text]
     return {
-        "content": [{"type": "text", "text": out.strip()}],
+        "content": [{"type": "text", "text": text}
+                    for text in blocks or [""]],
         "isError": rc != 0,
     }
 
 
 # ── JSON-RPC server ──────────────────────────────────────────
 
-_SERVER_INFO = {"name": "notlob", "version": "0.3"}
+_SERVER_INFO = {"name": "notlob", "version": __version__}
 _CAPABILITIES = {"tools": {}}
 
 

@@ -116,6 +116,24 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   you wrote `--json`; the JSON documents are unchanged. `notlob test
   --json` is now an argument error. The flag is spelled as on `notlob
   graph` and `notlob query content`.
+- **Breaking: the MCP tools are the commands, and answer as they do.**
+  `notlob_test` and `notlob_check` answered in JSON whatever was asked;
+  they answer in text now, as `notlob test` and `notlob check` do, and a
+  client that read the JSON asks for `format: json`. Every tool takes
+  `format`, with the choices its command has (`text`, `json`; `turtle`
+  too for `notlob_graph`), and `notlob_graph` keeps `level`. The four
+  queries that were not offered are: `notlob_query_callers`,
+  `notlob_query_callees`, `notlob_query_cites` and `notlob_query_cited_by`
+  (`query resolve` is deprecated and stays unoffered). A tool lists only
+  arguments its command takes, which a test holds against the parser in
+  `cli.py`, and the descriptions say what comes back. The server reports
+  notlob's version as its own, where it said `0.3`. `notlob_graph` can now
+  be asked for `turtle`, which it could not before. A result is what the
+  command printed and then, as a second text block, what it said on
+  stderr: a failure used to reach the client as `isError` and an empty
+  text, with the reason on the server's stderr, and now says why. With
+  `format: json` the first block is still the JSON (`null`, for an unknown
+  address).
 - **Every `file:line` notlob prints is relative to the project root**, with
   `/` separators: `notlob test` printed `discounts.lob:15` and now prints
   `pricing/discounts.lob:15`, a path that can be followed from the root.

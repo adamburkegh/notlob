@@ -546,6 +546,17 @@ it are relative to `DIR`, and `notlob -C DIR mcp` serves the project in
 existing directory, or notlob exits with an error before running anything.
 `-C` is given once only.
 
+`notlob mcp` offers the commands as tools, each named for its command
+(`notlob_test`, `notlob_check`, `notlob_graph`, and `notlob_query_search`,
+`_content`, `_children`, `_imports`, `_imported_by`, `_callers`,
+`_callees`, `_cites` and `_cited_by`; `query resolve` is not offered). A
+tool takes the options of its command, `format` among them, and answers as
+the command does: in text unless `format` says `json` (or, for
+`notlob_graph`, `turtle`). A result is what the command printed, then what
+it said on stderr as a second text block when it said anything, so the
+reason for a failure reaches the client and `format: json` still answers
+`null` in the first block; `isError` is whether the command failed.
+
 `notlob build` (`--output DIR`) and `notlob docs` write relative to the
 current directory, not the project root.
 
