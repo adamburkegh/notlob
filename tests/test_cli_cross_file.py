@@ -16,8 +16,6 @@ _BINDING = (
     "#Test Project\n\n---\n\n"
     "#Binding\n"
     "    ~language python\n"
-    "    ~property-testing hypothesis\n"
-    "    ~unit-testing pytest\n"
 )
 
 

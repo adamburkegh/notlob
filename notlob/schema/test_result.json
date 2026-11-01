@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/test-result",
   "title": "TestResult",
-  "description": "The document printed by `notlob test --format json`. Stdout holds only this document; diagnostics go to stderr. Exit codes are unchanged by --format. `version` is bumped on a breaking change.",
+  "description": "The document printed by `notlob test --format json`. Stdout holds only this document; diagnostics go to stderr. Exit codes are unchanged by --format. If a .lob file of the project does not parse, nothing is printed to stdout, each failure goes to stderr, and the exit code is 1. `version` is bumped on a breaking change.",
   "type": "object",
   "required": ["version", "summary", "claims", "lint"],
   "additionalProperties": false,

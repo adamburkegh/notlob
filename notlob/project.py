@@ -28,6 +28,56 @@ from .model import Module, ReferencesSection
 
 
 
+class ProjectParseError(Exception):
+    """One or more ``.lob`` files of a project do not parse. *failures* is
+    a line for each, ``file:line: reason`` with the file relative to the
+    project root (see :func:`parse_failure`)."""
+
+    def __init__(self, failures: list[str]):
+        self.failures = failures
+        super().__init__("\n".join(failures))
+
+
+def parse_failure(path: Path, root: Path, exc: Exception) -> str:
+    """The failure of the file at *path* under *root* to parse, as one
+    line, ``file:line: reason`` (``file: reason`` when the error knows no
+    line), the file relative to *root* with ``/`` separators. The reason is
+    the first line of the error's message: Lark's goes on to list what it
+    expected, from a set whose order changes between runs."""
+    from .parser import LobSyntaxError
+
+    try:
+        file = path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        file = path.as_posix()
+    if isinstance(exc, LobSyntaxError):
+        return f"{file}:{exc.line}: {exc.reason}"
+    reason = (str(exc).splitlines() or [type(exc).__name__])[0]
+    line = getattr(exc, "line", None)
+    return f"{file}:{line}: {reason}" if line else f"{file}: {reason}"
+
+
+def parse_project(root: Path) -> list[tuple[Path, Module]]:
+    """Every ``.lob`` file under *root*, ``binding.lob`` included, parsed
+    to its :class:`~notlob.model.Module`: ``(path, module)`` in sorted path
+    order. The one place a project's files are read. If any do not parse,
+    all of them have been read first, and :class:`ProjectParseError` lists
+    each failure."""
+    from .parser import parse_file
+    from .model import from_tree
+
+    parsed: list[tuple[Path, Module]] = []
+    unparsed: list[str] = []
+    for path in sorted(root.glob("**/*.lob")):
+        try:
+            parsed.append((path, from_tree(parse_file(path))))
+        except Exception as exc:
+            unparsed.append(parse_failure(path, root, exc))
+    if unparsed:
+        raise ProjectParseError(unparsed)
+    return parsed
+
+
 def find_project_root(path: Path) -> Path | None:
     """Walk up from *path* to find the nearest ``binding.lob``.
 
@@ -266,8 +316,10 @@ def build_package(
     edges from each module's listings in ``#References``, each starting
     at the line that makes it.
 
-    Files that fail to parse are silently skipped — a partial package
-    graph is better than an error that blocks all tooling.
+    A file that fails to parse is an error: after every file has been
+    read, :class:`ProjectParseError` says which failed and where, and no
+    graph is made. (A graph without a module would leave what is checked,
+    tested and queried quietly short of it.)
 
     Duplicate ``IMPORTS`` edges (the same ref declared twice) are
     suppressed.  An ``IMPORTS`` edge is only added when the referenced
@@ -306,19 +358,10 @@ def build_package(
         A merged graph containing all discoverable nodes and all
         declared ``IMPORTS`` edges.
     """
-    # Local import avoids a top-level circular dependency through
-    # __init__.py; parser and model are stable leaf modules.
-    from .parser import parse_file
-    from .model import from_tree
+    graph:   NameGraph    = NameGraph()
+    modules: list[Module] = []
 
-    graph:   NameGraph          = NameGraph()
-    modules: list[Module]       = []
-
-    for path in sorted(root.glob("**/*.lob")):
-        try:
-            module = from_tree(parse_file(path))
-        except Exception:
-            continue
+    for path, module in parse_project(root):
         mod_graph = _module_graph(
             module, path, root, extractor, collisions, split_imports)
         graph.merge(mod_graph)

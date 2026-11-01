@@ -346,7 +346,9 @@ def _turtle_iri(address: str) -> str:
     """*address* as a Turtle IRI reference.
 
     Addresses are free text (a subheading title can hold spaces, quotes,
-    ``#``, ``:``), so they are made safe as a relative IRI reference:
+    ``:``, and an anonymous node's segments hold ``#`` -- a name written
+    in a document holds none), so they are made safe as a relative IRI
+    reference:
 
     * characters not allowed in an IRI (and ``%``) are percent-encoded;
     * only the first ``#`` is the fragment separator, later ones are

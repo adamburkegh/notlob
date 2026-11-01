@@ -246,7 +246,7 @@ class TestEmittedTurtle:
         '#Plain\n\nText.\n',
         '#Quote\n\n##Say "hi" now\n\nText "ending in a quote"\n',
         '#Angle\n\n##A <b> tag\n\nBody.\n',
-        '#Hash\n\n##C# notes\n\nBody.\n',
+        '#Hash\n\n##Notes\n\nC# and #5 in prose.\n',
         '#Percent\n\n##100% done\n\nBody.\n',
         '#Foo: Bar\n\nBody.\n',
         '#Braces\n\n##Set {a|b}\n\nBody.\n',

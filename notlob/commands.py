@@ -47,10 +47,12 @@ from notlob.model import BindingSection
 from notlob.outline import project_outline
 from notlob.project import (
     LobRefCycleError,
+    ProjectParseError,
     address_from_path,
     build_package,
     find_project_root,
     load_dependencies,
+    parse_project,
 )
 
 
@@ -277,6 +279,15 @@ def _print_lint_result(r: LintResult) -> None:
 
 # ── The graph of a command ────────────────────────────────────
 
+def _report_unparsed(error: ProjectParseError) -> int:
+    """Print each file of a project that does not parse to stderr, as
+    ``ERROR  <parse>  file:line: reason``, and give the exit code of the
+    command that stops there: 1, with nothing on stdout."""
+    for failure in error.failures:
+        print(f"ERROR  <parse>  {failure}", file=sys.stderr)
+    return 1
+
+
 def _collision_of(path: Path, collisions: list | None):
     """The collision found for the module at *path* among *collisions*
     (``(path, error)`` as :func:`_package_graph` returns them), or
@@ -491,7 +502,10 @@ def cmd_run(
     language = binding.get("language")
     root     = find_project_root(path)
 
-    graph, collision = _graph_of_module(path, module, root, binding)
+    try:
+        graph, collision = _graph_of_module(path, module, root, binding)
+    except ProjectParseError as exc:
+        return _report_unparsed(exc)
     if collision is not None:
         print(f"ERROR  <names>  {collision}", file=sys.stderr)
         return 1
@@ -723,7 +737,10 @@ def cmd_test(
         root    = find_project_root(path)
         binding = _find_binding(path)
         if root is not None and graph is None:
-            graph, collisions = _package_graph(root, binding)
+            try:
+                graph, collisions = _package_graph(root, binding)
+            except ProjectParseError as exc:
+                return _report_unparsed(exc)
         n_pass, n_fail, n_lint = _test_module(
             path, root, binding, keep_generated_src, only,
             json_out=json_out, graph=graph, collisions=collisions,
@@ -733,7 +750,10 @@ def cmd_test(
         if root is None:
             return 1
         if graph is None:
-            graph, collisions = _package_graph(root, binding)
+            try:
+                graph, collisions = _package_graph(root, binding)
+            except ProjectParseError as exc:
+                return _report_unparsed(exc)
         n_pass = n_fail = n_lint = 0
         for lob_path in sorted(root.glob("**/*.lob")):
             if lob_path.name == "binding.lob":
@@ -813,6 +833,9 @@ def _run_check_advisory(
                 split_imports=kit.split_imports)
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
+            return True
+        except ProjectParseError as exc:
+            _report_unparsed(exc)
             return True
     findings, _ = run_checks(graph)
     for f in findings:
@@ -1229,7 +1252,10 @@ def cmd_build(
             return 1
         graph = collisions = None
         if root is not None:
-            graph, collisions = _package_graph(root, binding)
+            try:
+                graph, collisions = _package_graph(root, binding)
+            except ProjectParseError as exc:
+                return _report_unparsed(exc)
         if not skip_tests:
             print("TEST   (running claims before build)")
             rc = cmd_test(path, graph=graph, collisions=collisions)
@@ -1263,7 +1289,10 @@ def cmd_build(
 
     # The one graph of the build: the modules' references are validated
     # against it, the checks read it, and so do the entry points.
-    graph, collisions = _package_graph(root, binding)
+    try:
+        graph, collisions = _package_graph(root, binding)
+    except ProjectParseError as exc:
+        return _report_unparsed(exc)
 
     if not skip_tests:
         print("TEST   (running claims before build)")
@@ -1363,6 +1392,8 @@ def cmd_graph(
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
             return 1
+        except ProjectParseError as exc:
+            return _report_unparsed(exc)
     else:
         # standalone file — only reachable via an explicit path arg
         try:
@@ -1455,6 +1486,9 @@ def _require_graph(
         if raise_on_collision:
             raise
         print(f"ERROR  <names>  {exc}", file=sys.stderr)
+        return None
+    except ProjectParseError as exc:
+        _report_unparsed(exc)
         return None
 
 
@@ -1773,18 +1807,17 @@ def cmd_weave(
     if language is None:
         language = (binding or {}).get("language", "python")
 
-    first = True
-    for lob_path in sorted(root.glob("**/*.lob")):
-        if lob_path.name == "binding.lob":
-            continue
-        try:
-            module = from_tree(parse_file(lob_path))
-        except Exception:
-            continue
-        if not first:
+    try:
+        parsed = parse_project(root)
+    except ProjectParseError as exc:
+        return _report_unparsed(exc)
+
+    # binding.lob is read with the rest, and left out of what is printed.
+    modules = [m for path, m in parsed if path.name != "binding.lob"]
+    for i, module in enumerate(modules):
+        if i:
             print("\n---\n")
         print(weave_markdown(module, language), end="")
-        first = False
     return 0
 
 

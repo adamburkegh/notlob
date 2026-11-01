@@ -3,24 +3,30 @@
 Native grammar
 --------------
 ``grammar.lark`` is parsed with Lark's own contextual LALR lexer — every
-structural line-type (``MOD_HEAD``, ``SUBHEAD``, ``SIGIL``, ``INDENT``,
+structural line-type (the heading markers, ``SIGIL``, ``INDENT``,
 ``BLANK``, ``BULLET``, ``SEPARATOR``, the reserved post-text heads) is a
 native terminal in the grammar file itself, not a token produced by a
 hand-written Python line classifier. See ``grammar.lark``'s header comment
 for how heading/sigil/prose disambiguation is resolved via terminal
-priority and line-start anchoring.
+priority and line-start anchoring, and for what a name is: a ``NAME``
+terminal that holds no ``#``, beside a marker, so a ``NAME`` token is
+exactly the name.
 
-One thing the grammar can't fully own is handled here, in a thin layer
+Two things the grammar can't fully own are handled here, in a thin layer
 around the raw parse:
 
 **Token normalisation.** Every line-oriented terminal in the grammar
 consumes through its own trailing newline (so the lexer's cursor is
 always at true line-start for the next token). Downstream consumers
-(``model.py``, ``weave/markdown.py``) expect the *stripped* content —
-e.g. a ``SUBHEAD`` token's value is the title text alone, not
-``"##Title\\n"``. ``_normalize`` rewrites each raw token's value to
-match, once, right after parsing, so nothing downstream needs to know
-the grammar changed.
+(``model.py``, ``weave/markdown.py``) expect the *stripped* content.
+``_normalize`` rewrites each raw token's value to match, once, right
+after parsing, so nothing downstream needs to know the grammar changed.
+
+**The refusal of a ``#`` in a name.** The grammar refuses it, in Lark's
+words (``Unexpected token ... Expected one of: _EOL``), which tell an
+author little. ``parse`` words that one refusal, as
+``sharp.lob:5: a name may not hold '#': 'Calling C# from Python'``, and
+holds no rule of its own: it only reads what Lark's error says.
 
 Usage::
 
@@ -36,6 +42,7 @@ import json
 from pathlib import Path
 
 from lark import Lark, Token, Tree
+from lark.exceptions import UnexpectedInput
 
 _GRAMMAR = (Path(__file__).parent / "grammar.lark").read_text(
     encoding="utf-8"
@@ -51,28 +58,16 @@ _parser = Lark(
 # ── Token normalisation ─────────────────────────────────────
 #
 # Maps a raw terminal's matched text to the value downstream code
-# expects: trailing "\n" stripped from every line-token, and the leading
-# "#"/"##" marker stripped from MOD_HEAD/SUBHEAD (their title text is the
-# grammar-meaningful part; the marker itself is not).
-
-_STRIP_PREFIX: dict[str, int] = {
-    "MOD_HEAD": 1,
-    "SUBHEAD": 2,
-}
+# expects: the trailing "\n" stripped from every line-token.
 
 _LINE_TOKEN_TYPES = {
-    "MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL", "SEPARATOR",
-    "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD", "APPENDIX_HEAD",
+    "SIGIL", "SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
     "INDENTED_LINE", "LISTING_LINE", "BULLET", "BLANK",
 }
 
 
 def _normalize_token(tok: Token) -> Token:
-    text = str(tok).rstrip("\n")
-    prefix_len = _STRIP_PREFIX.get(tok.type)
-    if prefix_len is not None:
-        text = text[prefix_len:].strip()
-    return tok.update(value=text)
+    return tok.update(value=str(tok).rstrip("\n"))
 
 
 def _normalize(tree: Tree) -> Tree:
@@ -86,7 +81,7 @@ def _normalize(tree: Tree) -> Tree:
 
 
 # The closed vocabulary of recognised claim sigils (body-level; excludes
-# ~test, which is TEST_SIGIL, a separate terminal only reachable inside
+# ~test, which is _TEST_MARK, a separate terminal only reachable inside
 # a #Tests group). Mirrors grammar.lark's SIGIL terminal; kept here for
 # cross-checking against notlob.graph's dispatch (see
 # tests/test_graph_completeness.py), which fails loudly if the two drift
@@ -94,20 +89,68 @@ def _normalize(tree: Tree) -> Tree:
 _KNOWN_SIGILS = ("~example", "~run", "~property")
 
 
+# ── The refusal of a # in a name ─────────────────────────────
+
+class LobSyntaxError(ValueError):
+    """A ``#`` in a name, worded for an author: the grammar refused it, and
+    this says where and what the name was. ``str`` of it is
+    ``file:line: reason`` (``line N: reason`` when the source has no file).
+    Any other refusal stays Lark's own."""
+
+    def __init__(self, line: int, reason: str, file: str | None = None):
+        self.line, self.reason, self.file = line, reason, file
+        super().__init__(
+            f"{file}:{line}: {reason}" if file else f"line {line}: {reason}")
+
+
+def _named_with_hash(
+    source: str, exc: UnexpectedInput,
+) -> LobSyntaxError | None:
+    """Lark's refusal *exc* of *source* as a ``#`` in a name, or ``None``
+    if it is some other refusal. The grammar expects only the rest of a
+    name (a ``NAME``, or the end of its line) where it stopped, and what
+    stands there is a ``#``: the name is what is written from the ``NAME``
+    Lark had read (if any) to the end of the line."""
+    expected = getattr(exc, "expected", None)
+    if not expected or not set(expected) <= {"NAME", "_EOL"}:
+        return None
+    if source[exc.pos_in_stream:].lstrip(" \t")[:1] != "#":
+        return None
+    read = (getattr(exc, "token_history", None) or [None])[-1]
+    start = read.start_pos if getattr(read, "type", "") == "NAME" else (
+        exc.pos_in_stream)
+    end = source.find("\n", exc.pos_in_stream)
+    name = source[start:end if end >= 0 else None].strip()
+    return LobSyntaxError(exc.line, f"a name may not hold '#': {name!r}")
+
+
 # ── Public API ───────────────────────────────────────────────
 
 def parse(source: str) -> Tree:
-    """Parse a .lob source string and return a Lark Tree."""
+    """Parse a .lob source string and return a Lark Tree. Raises
+    :class:`LobSyntaxError` for a ``#`` in a name, and Lark's own
+    ``UnexpectedInput`` for any other refusal."""
     if not source.endswith("\n"):
         source += "\n"
-    tree = _parser.parse(source)
+    try:
+        tree = _parser.parse(source)
+    except UnexpectedInput as exc:
+        worded = _named_with_hash(source, exc)
+        if worded is None:
+            raise
+        raise worded from None
     _normalize(tree)
     return tree
 
 
 def parse_file(path: str | Path) -> Tree:
-    """Parse a .lob file and return a Lark Tree."""
-    return parse(Path(path).read_text(encoding="utf-8"))
+    """Parse a .lob file and return a Lark Tree. A ``#`` in a name raises
+    :class:`LobSyntaxError` with the file (as given, with ``/``)."""
+    try:
+        return parse(Path(path).read_text(encoding="utf-8"))
+    except LobSyntaxError as exc:
+        raise LobSyntaxError(
+            exc.line, exc.reason, Path(path).as_posix()) from None
 
 
 # ── Serialisation ────────────────────────────────────────────

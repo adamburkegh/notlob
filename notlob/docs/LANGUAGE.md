@@ -49,6 +49,41 @@ title-derived address does not match the file path.
 
 ---
 
+## Names
+
+A name is the text of a module's title line, of a `##heading` or `##group`,
+of a `~property` or a `~test` line, or of an `#Appendix` title. `#`, `##`
+and the `~` word are the marker, not the name, so `###Notes` is a name
+(`#Notes`) that holds a `#`.
+
+A name holds no `#`, because `#` is notlob's address separator and its
+reference sigil: a name that held one could not be cited, and would make
+an address that reads as two. It is an error, from parsing, with the file
+and line:
+
+```
+ERROR  <parse>  sharp.lob:5: a name may not hold '#': 'Calling C# from Python'
+```
+
+A name has at least one character that is not a space, so a bare `##` is
+an error too. The spaces between the marker and the name, and after it, are
+not part of it; the spaces inside it are kept. A `~property` may have no
+name, and an `#Appendix` no title.
+
+Only these are names. A `#` is fine in prose (`C# and issue #5`), in code,
+in an assertion, in a `~external` value (`index.html#top`, a URL with a
+fragment) and, as the address of an anonymous node, in `prose#1`.
+
+In a project, a `.lob` file that does not parse stops the command: nothing
+goes to stdout, the exit code is 1, and each such file is reported on stderr
+with its line, the file relative to the project root:
+
+```
+ERROR  <parse>  pricing/discounts.lob:17: a name may not hold '#': 'C#'
+```
+
+---
+
 ## Body
 
 The body contains prose paragraphs and indented code blocks, optionally

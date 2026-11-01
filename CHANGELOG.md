@@ -116,6 +116,38 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   you wrote `--json`; the JSON documents are unchanged. `notlob test
   --json` is now an argument error. The flag is spelled as on `notlob
   graph` and `notlob query content`.
+- **Breaking: a name may not hold `#`.** A module's title, a `##heading`
+  or `##group`, the name of a `~property` or a `~test`, and the title of an
+  `#Appendix` are each a `NAME` in the grammar (beside a marker terminal,
+  `_MOD_MARK`, `_SUB_MARK`, `_PROPERTY_MARK`, `_TEST_MARK` or
+  `_APPENDIX_MARK`), and `#` is the address separator and the reference
+  sigil, so a name that holds one is a parse error with its file and line:
+  `sharp.lob:5: a name may not hold '#': 'Calling C# from Python'`. The
+  grammar refuses it, so the line can never fall through to prose; `parse`
+  only words the refusal. `##` and `#` are the markers, not the name, so
+  `###Notes` is refused. A name now has at least one character that is not
+  a space: a bare `##`, or `##` and spaces, is an error for a heading and a
+  group (it was an untitled heading). A name is exactly its text: the
+  spaces around it are not part of it, those inside are kept. The terminals
+  `MOD_HEAD`, `SUBHEAD`, `TEST_SIGIL` and `APPENDIX_HEAD` are gone, and so
+  is the marker stripping in `parser.py`; the model's values are the same
+  (`Claim.sigil` is `~property <name>`, whatever spaces were between, and
+  an `#Appendix` title is `#Appendix` and its name after one space). No
+  `.lob` file in the repository held such a name. A name that took an
+  anonymous node's form (`~test test#1` landing on the first anonymous
+  test's address) can no longer be written. `~external` values, listings,
+  prose, code and assertions are not names, and may hold `#`.
+- **Breaking: a `.lob` file that does not parse stops a project command.**
+  `build_package` skipped such a file, so a file the grammar refused left
+  `notlob test` green with a module missing. Now `test`, `check`, `graph`,
+  `query`, `build`, `weave` and `run`, over a project, print nothing to
+  stdout and each failing file to stderr as
+  `ERROR  <parse>  <file>:<line>: <reason>` (the file relative to the
+  project root; one line, the first of Lark's message, whose list of what
+  it expected varies between runs), and exit 1, as an address collision
+  does. A `binding.lob` that does not parse stops them all, `weave`
+  included. Library callers
+  of `build_package` get `ProjectParseError`, which lists the failures.
 - **Breaking: the MCP tools are the commands, and answer as they do.**
   `notlob_test` and `notlob_check` answered in JSON whatever was asked;
   they answer in text now, as `notlob test` and `notlob check` do, and a

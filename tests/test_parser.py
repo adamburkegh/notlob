@@ -153,8 +153,8 @@ class TestCrossReferenceUnicode:
         assert ref_tokens(tree) == ["#Pricing Café"]
 
     def test_heading_definition_unrestricted_by_ref_rule(self):
-        # MOD_HEAD/SUBHEAD accept any character -- only the *reference*
-        # to a heading is Lu/Lt/Lo-gated, not the heading's own title.
+        # NAME accepts any character but # -- only the *reference* to a
+        # heading is Lu/Lt/Lo-gated, not the heading's own title.
         tree = parse("#日本語\n\n    x = 1\n")
         assert title(tree) == "日本語"
 
@@ -236,7 +236,7 @@ class TestClaim:
 
 class TestUnknownSigils:
     def test_test_sigil_illegal_in_body(self):
-        # ~test is TEST_SIGIL, a terminal only reachable from
+        # ~test is _TEST_MARK, a terminal only reachable from
         # named_test inside a #Tests group -- grammar-enforced, not a
         # semantic reservation check, so this is a generic lex/parse
         # failure like any other sigil that doesn't belong here.

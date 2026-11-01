@@ -39,8 +39,8 @@ What's still hand-maintained, and why
 --------------------------------------
 Terminals defined by a genuine regex (``REF``, ``LINE_START_TEXT``,
 ``PROSE_TEXT``, ``LINE_CHAR``, and the anonymous inline character
-classes ``[^#\n]`` and ``[ \t]`` used inside ``MOD_HEAD``/``INDENT``/
-``BULLET``) cannot be mechanically turned into EBNF -- translating a
+classes ``[ \t]`` used inside ``_MOD_MARK``/``INDENT``/``BULLET``, and
+``NAME``) cannot be mechanically turned into EBNF -- translating a
 regex like the lookahead-conditioned prose terminals into readable BNF
 is a judgement call, not a transcription (see notlob/docs/DESIGN.md,
 "The grammar is the specification"). These get a small hand-authored
@@ -239,17 +239,30 @@ def render_bnf_block(productions: list[tuple[str, Node]]) -> str:
 # ── Parsing grammar.lark via Lark's own meta-grammar ─────────────────
 #
 # Every "rule" (lowercase, e.g. `module`, `named_test`) becomes a
-# PRODUCTIONS entry; every "token" (uppercase, e.g. `MOD_HEAD`,
-# `TEST_SIGIL`) becomes a TERMINALS entry. Both are derived by walking
+# PRODUCTIONS entry; every "token" (uppercase, e.g. `NAME`,
+# `_TEST_MARK`) becomes a TERMINALS entry. Both are derived by walking
 # the real parse tree -- see the module docstring for what's still
 # hand-maintained and why.
 
 _REGEX_OVERRIDES: dict[str, Node] = {
     r"[^\n]": D("any character other than newline"),
-    r"[^#\n]": NT("NonHashLineChar"),
     r"[^#\s]": D("any character other than # or whitespace"),
     r"[ \t]": Or(NT("Space"), NT("Tab")),
     r"[ \t]+": RepPlus(Or(NT("Space"), NT("Tab"))),
+    # A name: no #, and a character that is neither # nor a space at each
+    # end, so the line-ending spaces belong to _EOL and the spaces before
+    # it to the marker.
+    r"[^#\s](?:[^#\n]*[^#\s])?": Seq(
+        NT("NameEdge"),
+        Opt(Seq(Rep(NT("NonHashLineChar")), NT("NameEdge"))),
+    ),
+    r"[ \t]*\n": Seq(Rep(Or(NT("Space"), NT("Tab"))), NT("NewLine")),
+    r"#[ \t]*": Seq(T("#"), Rep(Or(NT("Space"), NT("Tab")))),
+    r"##[ \t]*": Seq(T("##"), Rep(Or(NT("Space"), NT("Tab")))),
+    r"~property +": Seq(T("~property"), RepPlus(NT("Space"))),
+    r"~test +": Seq(T("~test"), RepPlus(NT("Space"))),
+    r"#Appendix[ \t]*": Seq(
+        T("#Appendix"), Rep(Or(NT("Space"), NT("Tab")))),
     # REF -- deliberately omits the "not preceded by a word char or /"
     # lookbehind from the formal grammar; that constraint is prose-only
     # (see _DISAMBIGUATION), not expressible with EBNF's own operators.
@@ -274,6 +287,7 @@ _REGEX_OVERRIDES: dict[str, Node] = {
 # the rendered table.
 _EXTRA_TERMINALS: list[tuple[str, Node]] = [
     ("NonHashLineChar", Except(NT("LINE_CHAR"), T("#"))),
+    ("NameEdge", D("any character other than # or whitespace")),
     ("RefInitial", D(
         "an uppercase or titlecase letter, or a letter from a script "
         "with no case distinction (Unicode categories Lu, Lt, Lo -- "
@@ -293,8 +307,8 @@ _EXTRA_TERMINALS: list[tuple[str, Node]] = [
 # silently describing a stale priority order.
 _PRIORITY_TIERS: dict[int, list[str]] = {
     20: ["SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
-         "APPENDIX_HEAD"],
-    10: ["MOD_HEAD", "SUBHEAD", "SIGIL", "TEST_SIGIL"],
+         "_APPENDIX_MARK"],
+    10: ["_MOD_MARK", "_SUB_MARK", "SIGIL", "_PROPERTY_MARK", "_TEST_MARK"],
     9: ["LISTING_LINE"],
     8: ["INDENTED_LINE", "BLANK", "BULLET"],
     5: ["REF"],
@@ -328,7 +342,7 @@ def _convert_string(value: str) -> Node:
     newline surviving into a \\bnfts{...} argument is invisible/broken
     in the typeset output (same reasoning as the Space/Tab handling
     below). grammar.lark writes some terminals' trailing newline as
-    its own separate literal (e.g. MOD_HEAD's `... REST_OF_LINE "\n"`)
+    its own separate literal (e.g. REST_OF_LINE's `LINE_CHAR* "\n"`)
     and others with the newline embedded in a longer literal (e.g.
     SIGIL's `"~example\n"`) -- this handles both uniformly."""
     if "\n" not in value:
@@ -528,8 +542,8 @@ The productions and terminal definitions above are a complete
 description of the \emph{language} -- what strings are valid .lob
 source. They are not, by themselves, sufficient to determine a
 \emph{unique parse}: several terminals are deliberately allowed to
-overlap in the strings they can match (e.g.\ \synt{SUBHEAD} and
-\synt{REF} can both match \term{\#\#Stacking Discounts}), because
+overlap in the strings they can match (e.g.\ \synt{\_SUB\_MARK} and
+\synt{REF} can both begin \term{\#\#Stacking Discounts}), because
 which one applies depends on where the text occurs, not what it looks
 like in isolation. A deterministic single-pass (LALR) parser resolves
 this the same way lexer generators conventionally do -- by an explicit
@@ -563,7 +577,7 @@ _DISAMBIGUATION_REST = r"""
       \item \synt{ProseInitial} is the same as \synt{ProseTail},
         additionally excluding \term{\textasciitilde} when
         immediately followed by a lowercase letter (that prefix
-        belongs to \synt{SIGIL}/\synt{TEST\_SIGIL} instead).
+        belongs to \synt{SIGIL}/\synt{\_TEST\_MARK} instead).
     \end{itemize}
 \end{itemize}
 """.strip()

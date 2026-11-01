@@ -441,10 +441,21 @@ No `.lob` file under `examples/` has a name with a `#` in it (searched
    in principle, but it changes every anonymous address, claims'
    included, which test results and tools already carry.
 
-Leaning to 1, for document names. It costs authors nothing: the
-reference terminal (`REF` in `grammar.lark`) already allows only
-letters, digits, `_` and single spaces in a label, so a heading or
-property with `#` in its name can never be cited.
+**Decided: 1, for document names** (Adam, 2026-11-01, for 0.6.0). It
+costs authors nothing: the reference terminal (`REF` in `grammar.lark`)
+already allows only letters, digits, `_` and single spaces in a label, so
+a heading or property with `#` in its name can never be cited.
+
+**By the grammar** (Adam, 2026-11-01). A name is a terminal, `NAME`, with
+its marker a terminal beside it: `_SUB_MARK NAME _EOL`. A check in the
+parser was rejected, as a grammar too thin. A narrower `SUBHEAD` with
+`REF` and the prose terminals closed at column zero left a later
+`#Appendix C#` as prose, and an error terminal for the mistake leaves the
+grammar accepting it. With the marker a terminal, `##` at column zero
+cannot be prose, and `_STRIP_PREFIX` goes. Also ruled: a heading must
+have a name, so a bare `##` is an error, and a `.lob` file that does not
+parse stops a project command, where it used to be skipped in silence.
+Brief: `slice-d15-no-hash-in-names-brief.md`.
 
 **D2, and how it was reached** (2026-10-23/24; the reasons matter more
 than the outcome).
@@ -540,8 +551,9 @@ first, a list of files it may touch, and a stop point. Order:
      the stale docstrings in `graph.py` and the ontology comments.
    * **2e, the assertion block:** an `assertion_block` grammar rule
      (D14), through the parser and the model to `build`, and the oracle
-     test reading the model's blocks instead of regrouping lines. With
-     it, the other grammar change: no `#` in a document name (D15).
+     test reading the model's blocks instead of regrouping lines. (No
+     `#` in a document name, D15, was planned with it, and went ahead
+     alone for 0.6.0.)
      **Moved after the release** (Adam, 2026-10-25): `build` already
      groups runs correctly (commentary ends one), so when slice 4 moves
      the runners onto the graph they read its runs and the line-drift

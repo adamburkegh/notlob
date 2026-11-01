@@ -392,8 +392,12 @@ def _code_block(node: Tree) -> CodeBlock:
 def _claim(node: Tree) -> Claim:
     sigil_tok = node.children[0]
     start = _line(sigil_tok)
+    # `~property <name>` is its marker (not in the tree) and a NAME; the
+    # sigil of it is the two, as the other claims' is their one token.
+    sigil = (f"~property {sigil_tok}" if sigil_tok.type == "NAME"
+             else str(sigil_tok))
     return Claim(
-        sigil=str(sigil_tok),
+        sigil=sigil,
         lines=[str(c) for c in node.children[1:]],
         start_line=start,
         end_line=_last_text_line(node.children[1:], start),
@@ -539,12 +543,9 @@ def _test_group(node: Tree) -> TestGroup:
 
 
 def _named_test(node: Tree) -> NamedTest:
-    sigil_tok = node.children[0]
-    # sigil_tok value is "~test <name>" -- parser.py's normalisation
-    # strips the trailing newline but not the "~test " prefix, the same
-    # convention as ~property's Claim.sigil (e.g. "~property commutativity").
-    name = str(sigil_tok).split(None, 1)[1].strip()
-    start = _line(sigil_tok)
+    name_tok = node.children[0]    # the NAME: the marker is not in the tree
+    name = str(name_tok)
+    start = _line(name_tok)
     return NamedTest(
         name=name,
         lines=[str(c) for c in node.children[1:]],
@@ -616,9 +617,14 @@ def _references_section(node: Tree) -> ReferencesSection:
 
 
 def _appendix_section(node: Tree) -> AppendixSection:
-    title = str(node.children[0])
-    body = _body_from_items(node.children[1:])
-    start = _line(node.children[0])
+    # An appendix may be untitled: its NAME is optional, and the marker is
+    # not in the tree, so its line is the node's own.
+    named = bool(node.children) and getattr(
+        node.children[0], "type", "") == "NAME"
+    name = str(node.children[0]) if named else ""
+    title = f"#Appendix {name}" if named else "#Appendix"
+    body = _body_from_items(node.children[1:] if named else node.children)
+    start = node.meta.line
     return AppendixSection(
         title=title,
         body=body,

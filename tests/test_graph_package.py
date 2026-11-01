@@ -20,6 +20,7 @@ from notlob import (
 )
 from notlob.bindings.python import extract_symbols
 from notlob.graph import cites_of
+from notlob.project import ProjectParseError
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -170,7 +171,7 @@ class TestBuildPackage:
         imported = g.imports_of("a")
         assert len(imported) == 1
 
-    def test_unparseable_file_is_skipped(self, tmp_path):
+    def test_unparseable_file_is_an_error(self, tmp_path):
         (tmp_path / "good.lob").write_text(
             "#Good\n", encoding="utf-8"
         )
@@ -178,8 +179,25 @@ class TestBuildPackage:
         (tmp_path / "bad.lob").write_text(
             "not a lob file at all\n", encoding="utf-8"
         )
-        g = build_package(tmp_path)
-        assert g.node("good") is not None
+        with pytest.raises(ProjectParseError) as raised:
+            build_package(tmp_path)
+        assert [f.split(":")[0] for f in raised.value.failures] == [
+            "bad.lob"]
+        assert raised.value.failures[0].startswith("bad.lob:1: ")
+
+    def test_every_unparseable_file_is_reported(self, tmp_path):
+        (tmp_path / "good.lob").write_text("#Good\n", encoding="utf-8")
+        (tmp_path / "a.lob").write_text("no title\n", encoding="utf-8")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "b.lob").write_text(
+            "#B\n\n##Calling C# from Python\n", encoding="utf-8")
+        with pytest.raises(ProjectParseError) as raised:
+            build_package(tmp_path)
+        assert [f.split(": ")[0] for f in raised.value.failures] == [
+            "a.lob:1", "sub/b.lob:3"]
+        assert raised.value.failures[1] == (
+            "sub/b.lob:3: a name may not hold '#': "
+            "'Calling C# from Python'")
 
     def test_empty_package(self, tmp_path):
         # No .lob files — returns an empty graph, not an error

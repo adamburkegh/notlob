@@ -48,17 +48,25 @@ class TestParseRealGrammar:
         assert "named_test" in names
         assert "test_group" in names
 
-    def test_test_sigil_is_its_own_terminal_not_in_sigil(self):
+    def test_test_marker_is_its_own_terminal_not_in_sigil(self):
         # Regression: the old hand-maintained model had a stale bare
         # "~test" alternative folded into SIGIL, left over from before
-        # TEST_SIGIL existed as its own terminal.
+        # `~test` existed as a terminal of its own.
         _, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         by_name = dict(terminals)
-        assert "TEST_SIGIL" in by_name
+        assert "_TEST_MARK" in by_name
         sigil = by_name["SIGIL"]
         assert isinstance(sigil, Or)
         rendered_alts = [render(alt) for alt in sigil.items]
         assert not any("test" in alt for alt in rendered_alts)
+
+    def test_a_name_is_a_terminal_of_the_printed_grammar(self):
+        productions, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
+        assert "NAME" in dict(terminals)
+        assert "NAME" in render_bnf_block(terminals)
+        assert "NAME" in render_bnf_block(productions)
+        for gone in ("MOD_HEAD", "SUBHEAD", "TEST_SIGIL", "APPENDIX_HEAD"):
+            assert gone not in dict(terminals)
 
     def test_full_render_produces_nonempty_latex(self):
         productions, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)

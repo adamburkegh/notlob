@@ -1,5 +1,5 @@
-"""Tests for notlob's structural line terminals (MOD_HEAD, SUBHEAD,
-SIGIL, INDENT, BLANK, SEPARATOR, and the reserved post-text heads).
+"""Tests for notlob's structural line terminals (the heading markers and
+NAME, SIGIL, INDENT, BLANK, SEPARATOR, and the reserved post-text heads).
 
 These used to exercise a hand-written Python line classifier
 (``_classify``) directly. That classifier is gone: every structural
@@ -51,27 +51,38 @@ def test_references_head():
 
 def test_appendix_head():
     tree = parse("#T\n---\n#Appendix Notes\nSome notes.\n")
-    _first_token_of_type(tree, "APPENDIX_HEAD")
+    names = [str(t) for t in tree.scan_values(
+        lambda v: isinstance(v, Token) and v.type == "NAME")]
+    assert names == ["T", "Notes"]
 
 
 # ── Headings ─────────────────────────────────────────────────
 
-def test_mod_head_strips_sigil():
+def test_mod_head_is_a_name():
     tree = parse("#Roman Numerals\n")
-    tok = _first_token_of_type(tree, "MOD_HEAD")
+    tok = _first_token_of_type(tree, "NAME")
     assert str(tok) == "Roman Numerals"
 
 
-def test_subhead_strips_sigil():
+def test_subhead_is_a_name():
     tree = parse("#T\n##Stacking Discounts\n    code\n")
-    tok = _first_token_of_type(tree, "SUBHEAD")
-    assert str(tok) == "Stacking Discounts"
+    names = [str(t) for t in tree.scan_values(
+        lambda v: isinstance(v, Token) and v.type == "NAME")]
+    assert names == ["T", "Stacking Discounts"]
 
 
 def test_subhead_trims_whitespace():
     tree = parse("#T\n##  Padded  \n    code\n")
-    tok = _first_token_of_type(tree, "SUBHEAD")
-    assert str(tok) == "Padded"
+    names = [str(t) for t in tree.scan_values(
+        lambda v: isinstance(v, Token) and v.type == "NAME")]
+    assert names == ["T", "Padded"]
+
+
+def test_markers_are_not_in_the_tree():
+    tree = parse("#T\n##Sub\n~property p\n    x > 0\n")
+    types = {t.type for t in tree.scan_values(
+        lambda v: isinstance(v, Token))}
+    assert not {t for t in types if t.endswith("_MARK") or t == "_EOL"}
 
 
 # ── Claims ───────────────────────────────────────────────────

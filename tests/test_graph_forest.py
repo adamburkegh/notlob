@@ -501,16 +501,11 @@ class TestTestKinds:
         "##g\n~test test#1\n    b == 2\n",
         "##g\n    a == 1\n\n~test test#2\n    b == 2\n",
     ], ids=["alone", "after a run"])
-    def test_a_test_named_like_an_ordinal_is_still_a_named_test(self, tests):
-        from notlob.graph import claims_to_run
-        graph = self._graph(tests)
-        name = "test#1" if "test#1" in tests else "test#2"
-        named = graph.node(f"m#Tests#g#{name}")
-        assert named.kind == NodeKind.TEST and named.name == name
-        reported = [(c.address, c.name) for c in claims_to_run(graph, "m")]
-        assert reported == (
-            [("m#Tests#g#test#1", "test#1")] if name == "test#1" else
-            [("m#Tests#g#test#1", None), ("m#Tests#g#test#2", "test#2")])
+    def test_a_test_cannot_be_named_like_an_ordinal(self, tests):
+        """A name holds no ``#``, so none can land on the address of an
+        anonymous test (``g#test#1``) and replace it."""
+        with pytest.raises(ValueError, match="a name may not hold '#'"):
+            self._graph(tests)
 
 
 # ── The forest ───────────────────────────────────────────────

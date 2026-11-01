@@ -334,12 +334,41 @@ Slice 3 also carries the cross-references' move to `index` and
 Adam drives it, then the release. A new finding goes on the list below
 unless it would break a schema after the release.
 
+**One addition (Adam, 2026-11-01):** no `#` in a name, D15, for 0.6.0,
+by the grammar. notlob-vids found that the address rule in
+`schema/name_graph.json`, and `_name` in `outline.py`, are wrong for
+`##Calling C# from Python`. With it, a `.lob` file that does not parse
+stops a project command, where it was skipped in silence.
+
 After 0.6.0:
 
+* A parse error other than `#` in a name prints the first line of Lark's
+  message: `Unexpected token Token('BLANK', '\n') at line 3, column 3.`
+  for a bare `##`. It says where but not what is wrong, and names a
+  terminal.
+* `check --format json` and `test --format json` print nothing to stdout
+  when a file does not parse, while an address collision gives a
+  document with a `names` finding. Kept for 0.6.0 (the graph could not be
+  built, as with no project; a `parse` finding would be a new value for a
+  check that never ran). Adding a document later breaks no reader.
 * Part of a project, by `graph <address>` or `query outline <address>`
   (decision 9): only if driving it shows the need. Both give the same
-  text but not the same JSON.
+  text but not the same JSON. notlob-vids, as an agent (2026-11-01),
+  named this first: it grepped 60 lines from 916 of `--level index`.
 * `notlob graph <file>` in a project, which only finds the project.
+* The reader form of `graph` gives no addresses, and an agent cannot
+  always derive one, so it cannot go from a line to a `query`. A `uses`
+  gives a bare name, with no module.
+* In that form a one-word heading and a one-word symbol look alike at
+  the same indent (`References`, `Phase`).
+* Names with their cross-references are no longer a level: `index`
+  brings the anonymous nodes with the edges. On pn-chomper, 672 nodes
+  and 1,206 edges, where the old `outline` had 408 and 941.
+* A node's parent changes with the level: a symbol is under its section
+  at `outline` and under its code block at `index`. Documented, but it
+  failed silently in notlob-vids.
+* The quantifier check reads a plural noun as a verb: "code blocks"
+  beside "each" or "only" is flagged.
 * `named` on symbols.
 * LF line endings on every platform.
 * The size bound on `query content --format json`.

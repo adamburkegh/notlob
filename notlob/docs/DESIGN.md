@@ -175,9 +175,9 @@ scope, so that address is the group's address and the test's name
 its module's. Unlike `~property`, `~test` has no bare (nameless) form;
 naming is the entire reason to reach for it over a plain assertion line.
 
-`~test` is its own grammar terminal (`TEST_SIGIL`), illegal outside a
+`~test` is its own grammar terminal (`_TEST_MARK`), illegal outside a
 `#Tests` `##group` by construction, not by a semantic check in
-`parser.py` — see `grammar.lark`'s own comments on `TEST_SIGIL` and
+`parser.py` — see `grammar.lark`'s own comments on `_TEST_MARK` and
 `tests_section` for the exact mechanism, including why prose commentary
 is allowed to interleave freely with assertions there (a
 literate-programming appendix that couldn't explain itself would be a
@@ -648,12 +648,12 @@ worth running before the claim runner is complete.
 
 `grammar.lark` is the canonical, declarative definition of `.lob` syntax —
 not a thin shell over hand-written Python. Every structural line-type
-(`MOD_HEAD`, `SUBHEAD`, `SIGIL`, `TEST_SIGIL`, `INDENT`, `BLANK`,
+(`_MOD_MARK`, `_SUB_MARK`, `SIGIL`, `_TEST_MARK`, `INDENT`, `BLANK`,
 `BULLET`, `SEPARATOR`, the reserved post-text heads) is a native Lark
 terminal, matched by Lark's own contextual lexer directly against
 source text. `notlob/parser.py` is a thin adapter around that parse —
-normalising raw token values (stripping the newline/marker each
-line-terminal consumes) — not a second parsing pass in disguise.
+normalising raw token values (stripping the newline each line-terminal
+consumes) — not a second parsing pass in disguise.
 
 The grammar file carries its own detailed comments, right beside the
 terminals they describe, covering: the disambiguation mechanism (why
@@ -661,9 +661,9 @@ column-zero structural lines like `##Title` and identical text
 occurring inline mid-prose need explicit terminal **priority** as a
 tie-break, not just contextual lexing — the same category of thing as
 "longest match, first rule wins" or a dangling-`else` convention); the
-closed sigil vocabulary (why `SIGIL` and `TEST_SIGIL` together make an
-unrecognised `~word` fail to lex entirely rather than silently
-misparsing as prose, and why `~test` is its own terminal rather than
+closed sigil vocabulary (why `SIGIL`, `_PROPERTY_MARK` and `_TEST_MARK`
+together make an unrecognised `~word` fail to lex entirely rather than
+silently misparsing as prose, and why `~test` is its own terminal rather than
 part of `SIGIL`); and why flat per-line `INDENT`/`BLANK` terminals are
 sufficient for notlob's binary indentation, with no nested indent-stack
 problem to solve. That's the authoritative account, kept current by
