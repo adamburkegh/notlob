@@ -301,6 +301,12 @@ class TestContainment:
                 above = parent[above]
             assert between and not shown.intersection(between), edge
 
+    def test_an_outline_has_indirect_edges(self, root):
+        # A symbol is written in a code block, which an outline hides:
+        # without this, the test above passes on a view that has none.
+        kinds = {e["kind"] for e in _document(root, "outline")["edges"]}
+        assert "CONTAINS_INDIRECTLY" in kinds
+
 
 # ── References are edges from what an outline shows ──────────
 

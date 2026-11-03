@@ -345,12 +345,12 @@ The two are mechanically related. A named node's address is its scope's
 address, `#`, and its name: `roman/numerals#from_roman`. The scope is the
 nearest enclosing node, along `CONTAINS`, whose kind opens one: `MODULE`,
 `PROPERTY`, `TESTS` or a `#Tests` group. Sections do not. An anonymous
-node (a prose paragraph, a code block, an unnamed claim, an unnamed Appendix) is
-addressed by position instead: its parent's address, its kind and its
-ordinal, as in `roman/numerals#Decoding#example#1` and
-`roman/numerals#appendix#1`. This mirrors the URI fragment convention and
-is isomorphic to an RDF URI, enabling the mechanical export to RDF/Turtle
-(`notlob graph --format turtle`).
+node (a prose paragraph, a code block, an unnamed claim) is addressed by
+position instead: its parent's address, its kind and its ordinal, as in
+`roman/numerals#Decoding#example#1` and `roman/numerals#Decoding#prose#1`.
+This mirrors the URI fragment convention and is isomorphic to an RDF URI,
+enabling the mechanical export to RDF/Turtle (`notlob graph --format
+turtle`).
 
 **Cross-references use heading sigil syntax and are scope-resolved.**
 A reference in prose reuses the heading sigils but in reference
