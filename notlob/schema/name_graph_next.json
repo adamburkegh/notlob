@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notlob/name-graph-next",
+  "title": "NameGraph",
+  "description": "What `notlob graph` gives a program: one tree of nodes for each .lob file, joined by CONTAINS and CONTAINS_INDIRECTLY edges, with the reference edges between them. Every edge's source and target are nodes of the document. The same project gives the same document, byte for byte. `level` names the view, and each level holds the nodes and edges of the one before, and more, but that a CONTAINS_INDIRECTLY edge may be, at the next, a chain of edges through nodes the next shows; what each level holds is defined once, in `notlob/graph.py`. If a .lob file of the project does not parse, no graph is made: nothing is printed to stdout, each failure goes to stderr, and the exit code is 1. This file is the target of a repair and replaces name_graph.json when it is done.",
+  "type": "object",
+  "required": ["version", "level", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "The version of this document format.",
+      "const": 2
+    },
+    "level": {
+      "description": "The view, from least to most: outline, index, block, full.",
+      "type": "string",
+      "enum": ["outline", "index", "block", "full"]
+    },
+    "nodes": {
+      "description": "The nodes of the view, in the order they are written in their files, depth first; each EXTERNAL comes last.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/GraphNode" }
+    },
+    "edges": {
+      "description": "The edges of the view, in no promised order. The CONTAINS and CONTAINS_INDIRECTLY edges make trees: one of them into each node but a MODULE and an EXTERNAL. An EXTERNAL may be the target of any number of edges.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/GraphEdge" }
+    }
+  },
+  "definitions": {
+    "GraphNode": {
+      "description": "One element of a document, as written, or derived from what is written: a SYMBOL or an EXTERNAL.",
+      "type": "object",
+      "required": ["address", "kind"],
+      "if": {
+        "properties": { "kind": { "const": "MODULE" } },
+        "required": ["kind"]
+      },
+      "then": { "required": ["name"] },
+      "else": { "not": { "required": ["file"] } },
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "description": "Globally unique machine identifier. Named, as in 'roman/numerals#to_roman', or positional, as in 'roman/numerals#Decoding#prose#1'.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The node's name, as the author wrote it: a module's title, a heading, a named claim or test, an appendix's title, or a symbol as written in the code. Present on every node that has one; a node with a positional address has none. The address is built from names, not the other way round.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What kind of element this node is.",
+          "type": "string",
+          "enum": [
+            "MODULE", "SUBHEADING", "SYMBOL", "PROPERTY", "EXAMPLE", "RUN",
+            "TEST", "TEST_LINES", "EXTERNAL", "PROSE", "CODE", "BULLETS",
+            "APPENDIX", "TESTS", "POST_TEXT", "TEST_GROUP", "REFERENCES",
+            "BINDING", "LISTING", "IMPORT", "DECLARATION"
+          ]
+        },
+        "mode": {
+          "description": "When a RUN runs; present on a RUN only. A bare `~run` is `on-invocation`.",
+          "type": "string",
+          "enum": ["on-load", "on-invocation"]
+        },
+        "declares": {
+          "description": "What a DECLARATION declares; present on a DECLARATION only.",
+          "type": "string",
+          "enum": ["language", "external", "on-build", "keep-generated-src"]
+        },
+        "value": {
+          "description": "The value a DECLARATION gives it, when it has one; present on a DECLARATION only.",
+          "type": "string"
+        },
+        "file": {
+          "description": "The .lob file a module is, relative to the project root, with '/' separators. Present on a MODULE only (and not on one built on its own).",
+          "type": "string"
+        },
+        "start_line": {
+          "description": "The line number where it begins in its file; a file's first line is 1.",
+          "type": "integer"
+        },
+        "body": {
+          "description": "The node's own written lines, verbatim, and not what is under it: a heading's body is its line, and a POST_TEXT's is `---`. A SYMBOL and an EXTERNAL have none. The bodies of a file, each placed at its `start_line`, are the file.",
+          "type": "string"
+        }
+      }
+    },
+    "GraphEdge": {
+      "description": "What one node does to another.",
+      "type": "object",
+      "required": ["source", "target", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "description": "Address of the source node. For a reference, the nearest node an `outline` shows to where it is written: a paragraph's citation is its section's, and a call in a symbol's code is the symbol's.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Address of the target node.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "CONTAINS: a node to what is written directly in it; CONTAINS_INDIRECTLY: a node to what is written in it, through nodes the view does not show, from the nearest it does; CITES: a node to what a `#Label` in it names; USES: a node to a symbol its code refers to by name; IMPORTS: a #References to a module it lists; USES_EXTERNAL: a #Binding to a file it declares.",
+          "type": "string",
+          "enum": [
+            "CONTAINS", "CONTAINS_INDIRECTLY", "CITES", "USES", "IMPORTS",
+            "USES_EXTERNAL"
+          ]
+        },
+        "lines": {
+          "description": "The line numbers where the reference is written, in order, in the file of the edge's source. Lines are numbered from one. There is one edge for each source, target and kind. Absent on CONTAINS and CONTAINS_INDIRECTLY, and where the lines are not known.",
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

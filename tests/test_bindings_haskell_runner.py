@@ -39,7 +39,7 @@ from notlob.model import (
 )
 
 run_examples = collecting(runner.run_examples, "EXAMPLE")
-run_tests = collecting(runner.run_tests, "TEST")
+run_tests = collecting(runner.run_tests, "TEST", "TEST_LINES")
 run_properties = collecting(runner.run_properties, "PROPERTY")
 
 

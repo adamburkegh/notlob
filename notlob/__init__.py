@@ -16,7 +16,7 @@ from .graph import (
     build, enrich, validate_refs,
     NameGraph, Node, NodeKind, Edge, EdgeKind,
     RefError, AddressCollisionError,
-    module_address, named_address, anonymous_address,
+    module_address, named_address, positional_address,
 )
 from .project import build_package
 
@@ -30,5 +30,5 @@ __all__ = [
     "build", "enrich", "validate_refs", "build_package",
     "NameGraph", "Node", "NodeKind", "Edge", "EdgeKind",
     "RefError", "AddressCollisionError",
-    "module_address", "named_address", "anonymous_address",
+    "module_address", "named_address", "positional_address",
 ]

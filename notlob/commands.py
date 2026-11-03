@@ -218,8 +218,9 @@ def _project_relative(file_path: str, root: Path | None) -> str:
 def _result_dict(r: ClaimResult, kind: str, root: Path | None) -> dict:
     """Convert a ClaimResult to a JSON-serialisable dict.
 
-    *kind* is ``EXAMPLE``, ``PROPERTY`` or ``TEST``; ``source`` is the
-    assertion text and ``line`` its 1-based line number in ``file``.
+    *kind* is ``EXAMPLE``, ``PROPERTY``, ``TEST`` or ``TEST_LINES``;
+    ``source`` is the assertion text and ``line`` its 1-based line number
+    in ``file``.
     """
     d: dict = {
         "address": r.address,
@@ -646,8 +647,8 @@ def _test_module(
     # kinds it runs.
     claims = claims_to_run(ref_graph, module_address(module.title))
 
-    def _of(kind: str) -> list[ClaimToRun]:
-        return [c for c in claims if c.kind == kind]
+    def _of(*kinds: str) -> list[ClaimToRun]:
+        return [c for c in claims if c.kind in kinds]
 
     # ── Lint ──────────────────────────────────────────────────
     lint_results: list[LintResult] = []
@@ -677,10 +678,13 @@ def _test_module(
             root=root, keep_dir=keep_dir, deps=deps,
         )]
     if run_tests_:
-        kinded += [("TEST", r) for r in kit.run_tests(
-            module, _of("TEST"), binding=binding, file_path=path,
+        tests = _of("TEST", "TEST_LINES")
+        ran = kit.run_tests(
+            module, tests, binding=binding, file_path=path,
             root=root, keep_dir=keep_dir, deps=deps,
-        )]
+        )
+        test_kind = {c.address: c.kind for c in tests}
+        kinded += [(test_kind[r.address], r) for r in ran]
     results = [r for _, r in kinded]
 
     non_skip = [r for r in results if r.status != Status.SKIP]
@@ -1643,7 +1647,7 @@ def cmd_query_imports(address: str, fmt: str = "text") -> int:
     if graph is None:
         return 1
     return _answer(graph, address, [
-        (graph.node(e.target), _where(graph.node(e.source), e.start_line))
+        (graph.node(e.target), _where(graph.node(e.source), e.first_line))
         for e in graph.import_edges(address)
     ], fmt)
 
@@ -1656,7 +1660,7 @@ def cmd_query_imported_by(address: str, fmt: str = "text") -> int:
         return 1
     return _answer(graph, address, [
         (graph.node(graph.module_of(e.source)),
-         _where(graph.node(e.source), e.start_line))
+         _where(graph.node(e.source), e.first_line))
         for e in graph.importer_edges(address)
     ], fmt)
 
@@ -1668,7 +1672,7 @@ def cmd_query_callers(address: str, fmt: str = "text") -> int:
     if graph is None:
         return 1
     return _answer(graph, address, [
-        (source, _where(source, e.start_line))
+        (source, _where(source, e.first_line))
         for e in graph.edges(EdgeKind.USES) if e.target == address
         if (source := graph.node(e.source)) is not None
     ], fmt)
@@ -1682,7 +1686,7 @@ def cmd_query_callees(address: str, fmt: str = "text") -> int:
         return 1
     source = graph.node(address)
     return _answer(graph, address, [
-        (target, _where(source, e.start_line))
+        (target, _where(source, e.first_line))
         for e in graph.edges(EdgeKind.USES) if e.source == address
         if (target := graph.node(e.target)) is not None
     ], fmt)
@@ -1696,7 +1700,7 @@ def cmd_query_cites(address: str, fmt: str = "text") -> int:
     if graph is None:
         return 1
     return _answer(graph, address, [
-        (graph.node(e.target), _where(graph.node(e.source), e.start_line))
+        (graph.node(e.target), _where(graph.node(e.source), e.first_line))
         for e in cites_edges(graph, address)
     ], fmt)
 
@@ -1709,7 +1713,7 @@ def cmd_query_cited_by(address: str, fmt: str = "text") -> int:
     if graph is None:
         return 1
     return _answer(graph, address, [
-        (graph.node(e.source), _where(graph.node(e.source), e.start_line))
+        (graph.node(e.source), _where(graph.node(e.source), e.first_line))
         for e in cited_by_edges(graph, address)
     ], fmt)
 

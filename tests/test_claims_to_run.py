@@ -105,15 +105,15 @@ class TestWhereClaimsAreWritten:
             ("m#run#2", "RUN", None, "on-load", 18, 17, ["boot()"]),
             ("m#S#example#1", "EXAMPLE", None, None, 23, 22,
              ["f() == 2"]),
-            ("m#Tests#test#1", "TEST", None, None, 29, None,
+            ("m#Tests#test#1", "TEST_LINES", None, None, 29, None,
              ["    f() == 3"]),
-            ("m#Tests#test#2", "TEST", None, None, 33, None,
+            ("m#Tests#test#2", "TEST_LINES", None, None, 33, None,
              ["    f() == 4"]),
-            ("m#Tests#g#test#1", "TEST", None, None, 36, None,
+            ("m#Tests#g#test#1", "TEST_LINES", None, None, 36, None,
              ["    f() == 5"]),
             ("m#Tests#g#nm", "TEST", "nm", None, 39, 38,
              ["    f() == 6"]),
-            ("m#appendix#1#example#1", "EXAMPLE", None, None, 44, 43,
+            ("m#Notes#example#1", "EXAMPLE", None, None, 44, 43,
              ["f() == 7"]),
             ("m#AppSub#property#1", "PROPERTY", None, None, 49, 48,
              ["def _(): pass"]),
@@ -121,11 +121,11 @@ class TestWhereClaimsAreWritten:
 
     def test_symbols_prose_and_code_are_not_claims(self):
         kinds = {c.kind for c in _claims(_EVERYWHERE)}
-        assert kinds == {"EXAMPLE", "PROPERTY", "RUN", "TEST"}
+        assert kinds == {"EXAMPLE", "PROPERTY", "RUN", "TEST", "TEST_LINES"}
 
     def test_a_run_of_assertions_reports_at_its_own_address(self):
         claims = _claims(_EVERYWHERE)
-        runs = [c for c in claims if c.kind == "TEST" and c.name is None]
+        runs = [c for c in claims if c.kind == "TEST_LINES"]
         assert [c.address for c in runs] == [
             "m#Tests#test#1", "m#Tests#test#2", "m#Tests#g#test#1"]
 
@@ -133,21 +133,21 @@ class TestWhereClaimsAreWritten:
         module = from_tree(parse(_EVERYWHERE))
         graph = build(module)
         runs = [c for c in claims_to_run(graph, "m")
-                if c.kind == "TEST" and c.name is None]
+                if c.kind == "TEST_LINES"]
         assert [graph.node(c.address).kind for c in runs] == (
-            [NodeKind.TEST] * 3)
+            [NodeKind.TEST_LINES] * 3)
         assert [graph.node(c.address).start_line for c in runs] == [
             c.first_line for c in runs]
 
     def test_a_run_has_no_sigil_line_and_its_own_first_line(self):
-        runs = [c for c in _claims(_EVERYWHERE)
-                if c.kind == "TEST" and c.name is None]
+        runs = [c for c in _claims(_EVERYWHERE) if c.kind == "TEST_LINES"]
         assert [(c.sigil_line, c.first_line) for c in runs] == [
             (None, 29), (None, 33), (None, 36)]
 
     def test_commentary_ends_a_run(self):
         runs = [c for c in _claims(_EVERYWHERE)
-                if c.kind == "TEST" and c.address.startswith("m#Tests#test#")]
+                if c.kind == "TEST_LINES"
+                and c.address.startswith("m#Tests#test#")]
         assert [(c.address, c.first_line, c.lines) for c in runs] == [
             ("m#Tests#test#1", 29, ["    f() == 3"]),
             ("m#Tests#test#2", 33, ["    f() == 4"])]
@@ -202,7 +202,8 @@ class TestWhatTheRunnerReports:
         return json.loads(capsys.readouterr().out)["claims"]
 
     def test_a_bare_assertion_carries_its_blocks_address(self, capsys):
-        tests = [c for c in self._claims(capsys) if c["kind"] == "TEST"]
+        tests = [c for c in self._claims(capsys)
+                 if c["kind"] in ("TEST", "TEST_LINES")]
         assert {c["address"] for c in tests} == {
             "roman/numerals#Tests#encoding#test#1",
             "roman/numerals#Tests#encoding#mcmxciv",
@@ -276,7 +277,7 @@ def _as_recorded(graph, claim) -> str:
     collected the claims: a run of bare assertions at the node it is
     written in, a named property in the scope of its section."""
     holder = graph.parent_of(claim.address).address
-    if claim.kind == "TEST" and claim.name is None:
+    if claim.kind == "TEST_LINES":
         return holder
     if claim.kind == "PROPERTY" and claim.name is not None:
         return named_address(holder, claim.name)
@@ -290,11 +291,11 @@ class TestAgainstWhatTheRunnersCollected:
     addresses have moved since, on purpose, and are compared through
     `_as_recorded`."""
 
-    def _expand(self, project, graph, claims, kind):
+    def _expand(self, project, graph, claims, *kinds):
         iterate = _KITS[project][2]._iter_assertions
         return [
             [_as_recorded(graph, c), expr, c.first_line + offset]
-            for c in claims if c.kind == kind
+            for c in claims if c.kind in kinds
             for expr, offset in iterate(c.lines)
         ]
 
@@ -307,7 +308,8 @@ class TestAgainstWhatTheRunnersCollected:
     def test_tests(self, project):
         for name, recorded in _recorded(project).items():
             graph, claims = _module_claims(EXAMPLES / project / name)
-            assert self._expand(project, graph, claims, "TEST") == (
+            assert self._expand(
+                project, graph, claims, "TEST", "TEST_LINES") == (
                 recorded["tests"]), name
 
     def test_properties(self, project):

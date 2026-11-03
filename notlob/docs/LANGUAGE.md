@@ -72,7 +72,7 @@ name, and an `#Appendix` no title.
 
 Only these are names. A `#` is fine in prose (`C# and issue #5`), in code,
 in an assertion, in a `~external` value (`index.html#top`, a URL with a
-fragment) and, as the address of an anonymous node, in `prose#1`.
+fragment) and, as the address of a positional node, in `prose#1`.
 
 In a project, a `.lob` file that does not parse stops the command: nothing
 goes to stdout, the exit code is 1, and each such file is reported on stderr
@@ -367,6 +367,14 @@ carries a title (`#Appendix Glossary`); its body is a regular body
 exactly like a body subheading, including being cross-referenceable by
 `##Name` from the main module body.
 
+An appendix is addressed by its title: `#Appendix Glossary` is
+`module#Glossary`, and a bare `#Appendix` is `module#Appendix`. What is
+written in it is addressed from there (`module#Glossary#prose#1`). A title
+is a name like a heading's, so writing one twice in a file, two bare
+`#Appendix` sections, or an `#Appendix Glossary` beside a `##Glossary` is an
+address collision. An `#Appendix Glossary` and a bare `#Appendix` together
+are not.
+
 Code blocks in `#Appendix` are assembled exactly like main-body code —
 in scope for `~example`/`#Tests`/`~property` claims, and included in
 `notlob build`/`notlob run` output. There's no test-only special case:
@@ -605,10 +613,11 @@ go to stderr) and leaves the exit code unchanged; `text` is the default.
 (`--json` was this flag's old spelling, and is gone.)
 `notlob test --format json` prints
 `{version, summary, claims, lint}`, plus `checks` for a whole-project run.
-Each claim has `address`, `kind` (`EXAMPLE`, `PROPERTY`, `TEST`),
-`status`, `source` (the assertion text), `file` (relative to the project
-root) and `line`, plus `left`/`right` on a failed equality; claims, lint
-findings and check findings are separate lists. The shape is specified by
+Each claim has `address`, `kind` (`EXAMPLE`, `PROPERTY`, `TEST` for a
+`~test`, `TEST_LINES` for a run of bare assertions), `status`, `source`
+(the assertion text), `file` (relative to the project root) and `line`,
+plus `left`/`right` on a failed equality; claims, lint findings and check
+findings are separate lists. The shape is specified by
 `schema/test_result.json`, written beside this file by `notlob docs`, and
 `version` changes on a breaking change. `notlob check --format json` prints
 `{version, findings, counts}` (`schema/check_result.json`); a finding has
@@ -618,7 +627,7 @@ commands that list nodes (`search`, `children`, `imports`, `imported-by`,
 `callers`, `callees`, `cites`, `cited-by`) answer a reader by default
 (`--format text`): a line a node, in three columns aligned within the
 answer. The first is the node's sigil (`~example`, `~property`, `~run`,
-`~test` for a test the document names), blank for what has none. The
+`~test`), blank for what has none. The
 second is its address, as the next query takes it. The third is `file:line`
 relative to the project root, which for `callers`, `callees`, `cites`,
 `cited-by`, `imports` and `imported-by` is where the edge is written (the
@@ -630,7 +639,7 @@ stderr with exit code 1.
 ~example   pricing/discounts#example#1   pricing/discounts.lob:15
 ```
 `--format json` prints the nodes as `notlob graph` does at `outline`
-(`address`, `label`, `kind`, and `named`, `mode`, `file`, `start_line`
+(`address`, `label`, `kind`, and `mode`, `file`, `start_line`
 where they apply) as an array (`[]` when there is nothing to list), and
 `resolve` a single node. An address or label that is not a node prints
 `null` with exit code 1, and the error on stderr, as in text. `resolve` is
@@ -645,7 +654,7 @@ then the node's own lines from its file, which the `.lob` syntax already
 labels (a heading, an indented code block, a sigil). An address with no
 lines (an external file) is an error. With `--format json` it prints the
 subtree instead, nested and narrow: each node has `address`, `kind`,
-`start_line`, and `named`, `mode`, `declares` and `value` where they apply,
+`start_line`, and `mode`, `declares` and `value` where they apply,
 its `text` if it holds text (each line of text once, on the leaf it is
 written in, except that a symbol whose code block is not in the answer
 carries its text) and its `children`; the root also has `file`. A node says

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from notlob import from_tree, parse
 from notlob.graph import (
-    NodeKind, build, enrich, anonymous_address,
+    NodeKind, build, enrich, positional_address,
     named_address,
 )
 from notlob.bindings.python.symbols import extract_symbols
@@ -123,7 +123,7 @@ class TestRunInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        addr = anonymous_address("comprehensive", NodeKind.RUN, 1)
+        addr = positional_address("comprehensive", NodeKind.RUN, 1)
         node = graph.node(addr)
         assert node is not None
         assert node.kind == NodeKind.RUN
@@ -132,7 +132,7 @@ class TestRunInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        addr = anonymous_address("comprehensive", NodeKind.RUN, 1)
+        addr = positional_address("comprehensive", NodeKind.RUN, 1)
         node = graph.node(addr)
         assert node.text is not None
         assert "print(helper())" in node.text
@@ -143,7 +143,7 @@ class TestExamplesInGraph:
         module = from_tree(parse(_COMPREHENSIVE))
         graph = build(module)
         enrich(graph, module, extract_symbols)
-        addr = anonymous_address("comprehensive", NodeKind.EXAMPLE, 1)
+        addr = positional_address("comprehensive", NodeKind.EXAMPLE, 1)
         node = graph.node(addr)
         assert node is not None
         assert node.kind == NodeKind.EXAMPLE
@@ -153,7 +153,7 @@ class TestExamplesInGraph:
         graph = build(module)
         enrich(graph, module, extract_symbols)
         sub_addr = named_address("comprehensive", "Sub Section")
-        addr = anonymous_address(sub_addr, NodeKind.EXAMPLE, 1)
+        addr = positional_address(sub_addr, NodeKind.EXAMPLE, 1)
         node = graph.node(addr)
         assert node is not None
         assert node.kind == NodeKind.EXAMPLE
@@ -175,7 +175,7 @@ class TestTestsInGraph:
         assert section.kind == NodeKind.TESTS
         run = graph.node("comprehensive#Tests#test#1")
         assert run is not None
-        assert run.kind == NodeKind.TEST
+        assert run.kind == NodeKind.TEST_LINES
         assert "helper() == 42" in run.text
 
     def test_named_group(self):
@@ -190,7 +190,7 @@ class TestTestsInGraph:
         graph = build(module)
         # the bare assertions in #Tests and the group's own assertions;
         # the group is a TEST_GROUP and the #Tests section a TESTS node
-        tests = list(graph.nodes(kind=NodeKind.TEST))
+        tests = list(graph.nodes(kind=NodeKind.TEST_LINES))
         assert len(tests) == 2
         assert len(list(graph.nodes(kind=NodeKind.TEST_GROUP))) == 1
         assert len(list(graph.nodes(kind=NodeKind.TESTS))) == 1

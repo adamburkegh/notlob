@@ -18,7 +18,7 @@ import notlob
 from notlob import NodeKind, build, build_package, enrich, from_tree, parse
 from notlob import graph as graph_module
 from notlob.bindings.python import extract_symbols
-from notlob.graph import KINDS, anonymous_address, named_address
+from notlob.graph import KINDS, positional_address, named_address
 
 K = NodeKind
 
@@ -37,7 +37,7 @@ class TestTheTable:
     @pytest.mark.parametrize("fact, kinds", [
         ("opens_scope", {K.MODULE, K.PROPERTY, K.TESTS, K.TEST_GROUP}),
         ("claim", {K.EXAMPLE, K.PROPERTY, K.RUN}),
-        ("runnable", {K.EXAMPLE, K.PROPERTY, K.RUN, K.TEST}),
+        ("runnable", {K.EXAMPLE, K.PROPERTY, K.RUN, K.TEST, K.TEST_LINES}),
         ("hidden_at_outline", {K.PROSE, K.CODE, K.BULLETS, K.LISTING,
                                K.IMPORT, K.DECLARATION, K.POST_TEXT}),
         ("section", {K.SUBHEADING, K.APPENDIX}),
@@ -47,12 +47,12 @@ class TestTheTable:
     def test_the_kinds_that_have_the_fact(self, fact, kinds):
         assert _with(fact) == kinds
 
-    def test_the_segment_of_each_anonymous_kind(self):
+    def test_the_segment_of_each_positional_kind(self):
         assert {kind: KINDS[kind].segment for kind in NodeKind
                 if KINDS[kind].segment is not None} == {
             K.PROSE: "prose", K.CODE: "code", K.BULLETS: "bullets",
             K.EXAMPLE: "example", K.RUN: "run", K.PROPERTY: "property",
-            K.TEST: "test", K.APPENDIX: "appendix",
+            K.TEST_LINES: "test",
             K.POST_TEXT: "post-text", K.LISTING: "listing",
             K.IMPORT: "import", K.DECLARATION: "declaration",
         }
@@ -158,7 +158,7 @@ class TestScopeOf:
         # a subheading in an Appendix: the module's
         (f"{MOD}#Extras", MOD),
         (f"{MOD}#helper", MOD),
-        (f"{MOD}#appendix#1", MOD),
+        (f"{MOD}#Notes", MOD),
         # a named test in a group: the group's. The scope of the group's
         # own name is that of what holds it, #Tests, and of #Tests' own,
         # the module's, through the post-text
@@ -215,20 +215,20 @@ class TestTheTwoAddressFunctions:
     def test_a_scope_may_be_a_property_or_a_group(self):
         assert named_address("m#Tests#group", "t") == "m#Tests#group#t"
 
-    def test_an_anonymous_address_is_its_kinds_segment_and_ordinal(self):
-        assert anonymous_address("m#Sub", K.EXAMPLE, 2) == "m#Sub#example#2"
-        assert anonymous_address("m", K.PROSE, 1) == "m#prose#1"
-        assert anonymous_address("m", K.BULLETS, 3) == "m#bullets#3"
-        assert anonymous_address("m", K.APPENDIX, 2) == "m#appendix#2"
+    def test_a_positional_address_is_its_kinds_segment_and_ordinal(self):
+        assert positional_address("m#Sub", K.EXAMPLE, 2) == "m#Sub#example#2"
+        assert positional_address("m", K.PROSE, 1) == "m#prose#1"
+        assert positional_address("m", K.BULLETS, 3) == "m#bullets#3"
+        assert positional_address("m", K.TEST_LINES, 2) == "m#test#2"
 
     def test_the_post_text_has_no_ordinal(self):
-        assert anonymous_address("m", K.POST_TEXT, 1) == "m#post-text"
+        assert positional_address("m", K.POST_TEXT, 1) == "m#post-text"
 
-    def test_a_kind_with_no_segment_is_never_anonymous(self):
+    def test_a_kind_with_no_segment_is_never_positional(self):
         for kind in NodeKind:
             if KINDS[kind].segment is None:
                 with pytest.raises(ValueError):
-                    anonymous_address("m", kind, 1)
+                    positional_address("m", kind, 1)
 
 
 class TestAddressesAsWritten:
@@ -259,10 +259,10 @@ class TestAddressesAsWritten:
             f"{MOD}#Tests": "TESTS",
             f"{MOD}#Tests#prose#1": "PROSE",
             f"{MOD}#Tests#encoding": "TEST_GROUP",
-            f"{MOD}#Tests#encoding#test#1": "TEST",
+            f"{MOD}#Tests#encoding#test#1": "TEST_LINES",
             f"{MOD}#Tests#encoding#named_one": "TEST",
-            f"{MOD}#appendix#1": "APPENDIX",
-            f"{MOD}#appendix#1#prose#1": "PROSE",
+            f"{MOD}#Notes": "APPENDIX",
+            f"{MOD}#Notes#prose#1": "PROSE",
             f"{MOD}#Extras": "SUBHEADING",
             f"{MOD}#Extras#code#1": "CODE",
             f"{MOD}#helper": "SYMBOL",

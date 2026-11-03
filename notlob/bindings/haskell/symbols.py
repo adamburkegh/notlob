@@ -233,7 +233,8 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
     Scans for all lowercase Haskell identifiers, subtracts names defined
     at the top level of the block and Haskell keywords.  Qualified names
     (e.g. ``Data.List.sort``) contribute only the leaf (``sort``).
-    *line* is 1-indexed within *source*; first occurrence is returned.
+    *line* is 1-indexed within *source*; a name has a pair for every line
+    it is on, once for each line.
     Local variables and type variables are included in the output; the
     graph resolution step filters to only addresses that exist.
 
@@ -244,14 +245,12 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
     """
     defined = {info.name for info in extract_symbols(source.splitlines())}
     exclude = defined | _HASKELL_KEYWORDS
-    first_line: dict[str, int] = {}
+    found: set[tuple[str, int]] = set()
     for m in re.finditer(r'\b([a-z_][A-Za-z0-9_\']*)\b', source):
         name = m.group(1)
         if name not in exclude:
-            line = source.count('\n', 0, m.start()) + 1
-            if name not in first_line:
-                first_line[name] = line
-    return sorted(first_line.items())
+            found.add((name, source.count('\n', 0, m.start()) + 1))
+    return sorted(found)
 
 
 def split_imports(

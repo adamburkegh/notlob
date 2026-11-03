@@ -420,10 +420,14 @@ class TestExtractCalls:
         assert pairs["g"] == 1
         assert pairs["h"] == 2
 
-    def test_first_occurrence_wins(self):
+    def test_every_line_a_name_is_on_is_given(self):
         src = "f x = g x\nf2 x = g x"
-        pairs = dict(extract_calls(src))
-        assert pairs["g"] == 1
+        assert [p for p in extract_calls(src) if p[0] == "g"] == [
+            ("g", 1), ("g", 2)]
+
+    def test_a_name_twice_on_one_line_is_that_line_once(self):
+        src = "f x = g (g x)"
+        assert [p for p in extract_calls(src) if p[0] == "g"] == [("g", 1)]
 
 
 def _span(info):

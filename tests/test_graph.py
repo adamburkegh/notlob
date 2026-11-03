@@ -383,49 +383,49 @@ class TestUsesLines:
     """A USES edge is at the line of the use in the file, whatever holds
     the code. Read here from the graph, as it is before printing."""
 
-    def _uses(self, source: str) -> dict[tuple[str, str], int]:
+    def _uses(self, source: str) -> dict[tuple[str, str], tuple[int, ...]]:
         g = _enriched(source)
         add_uses_edges(g, extract_calls)
-        return {(e.source, e.target): e.start_line
+        return {(e.source, e.target): e.lines
                 for e in g.edges(EdgeKind.USES)}
 
     def test_a_call_on_the_second_line_of_a_symbol(self):
         src = ("#M\n\n    def g():\n        return 1\n\n"
                "    def f():\n        x = 1\n        return g()\n")
-        assert self._uses(src) == {("m#f", "m#g"): 8}
+        assert self._uses(src) == {("m#f", "m#g"): (8,)}
 
     def test_a_claim_with_blank_lines_before_its_first_assertion(self):
         src = ("#M\n\n    def f():\n        return 1\n\n"
                "~example\n\n\n    f() == 1\n")
-        assert self._uses(src) == {("m#example#1", "m#f"): 9}
+        assert self._uses(src) == {("m#example#1", "m#f"): (9,)}
 
     def test_a_claim_on_the_line_after_its_sigil(self):
         src = "#M\n\n    def f():\n        return 1\n\n~example\n    f() == 1\n"
-        assert self._uses(src) == {("m#example#1", "m#f"): 7}
+        assert self._uses(src) == {("m#example#1", "m#f"): (7,)}
 
     def test_a_property(self):
         src = ("#M\n\n    def f():\n        return 1\n\n~property\n"
                "    @given()\n    def _(n):\n        assert f() == n\n")
-        assert self._uses(src) == {("m#property#1", "m#f"): 9}
+        assert self._uses(src) == {("m#property#1", "m#f"): (9,)}
 
     _TESTS = ("#M\n\n    def f():\n        return 1\n\n---\n\n#Tests\n")
 
     def test_a_named_test_of_several_indented_lines(self):
         src = self._TESTS + "\n##g\n~test nm\n    x = 1\n    f() == x\n"
-        assert self._uses(src) == {("m#Tests#g#nm", "m#f"): 13}
+        assert self._uses(src) == {("m#Tests#g#nm", "m#f"): (13,)}
 
     def test_a_run_of_assertions_in_a_group(self):
         src = self._TESTS + "\n##g\n    1 == 1\n    f() == 1\n"
-        assert self._uses(src) == {("m#Tests#g#test#1", "m#f"): 12}
+        assert self._uses(src) == {("m#Tests#g#test#1", "m#f"): (12,)}
 
     def test_a_run_after_commentary(self):
         src = self._TESTS + "\nCommentary.\n\n    f() == 1\n"
-        assert self._uses(src) == {("m#Tests#test#1", "m#f"): 12}
+        assert self._uses(src) == {("m#Tests#test#1", "m#f"): (12,)}
 
     def test_every_run_is_scanned_on_its_own(self):
         src = (self._TESTS
                + "\n##g\n    1 == 1\n\nCommentary.\n\n    f() == 1\n")
-        assert self._uses(src) == {("m#Tests#g#test#2", "m#f"): 15}
+        assert self._uses(src) == {("m#Tests#g#test#2", "m#f"): (15,)}
 
     def test_a_group_and_the_tests_section_are_not_scanned(self):
         src = self._TESTS + "\n    f() == 1\n\n##g\n    f() == 2\n"
@@ -468,9 +468,9 @@ class TestAddCitesEdges:
         g, _module = _module_graph(
             "#M\nSee #Section here.\n##Section\n    code\n")
         add_cites_edges(g)
-        edges = [(e.source, e.target, e.start_line)
+        edges = [(e.source, e.target, e.lines)
                  for e in g.edges(EdgeKind.CITES)]
-        assert edges == [("m#prose#1", "m#Section", 2)]
+        assert edges == [("m#prose#1", "m#Section", (2,))]
 
     def test_subheading_prose_ref_to_other_subheading(self):
         src = (

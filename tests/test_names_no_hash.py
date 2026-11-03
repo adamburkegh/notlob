@@ -265,7 +265,9 @@ _PROJECTS = [
 
 #: The model of each example file, and the graph document of each project
 #: at ``full``, as they were before a name was a terminal: a short digest of
-#: the dataclasses as JSON, and of the document.
+#: the dataclasses as JSON, and of the document. The documents' have changed
+#: since by a kind (``TEST_LINES`` for a run of test lines) and by ``named``
+#: going; nothing else.
 MODELS = {
     "gutenberg/binding.lob": "2ac74075a445920f",
     "gutenberg/gutenberg/corpus.lob": "29246d50af7939f5",
@@ -282,11 +284,11 @@ MODELS = {
     "ts-media/media-attributes/render.lob": "ff1b3053118e3f30",
 }
 GRAPHS = {
-    "roman": "198545e96505027f",
-    "retail": "9a04bb447ac9720e",
-    "gutenberg": "928ff0505a07ede0",
-    "haskell-roman": "177786d25d453d35",
-    "ts-media": "ca41422848c61d50",
+    "roman": "62e98bf0f08204b3",
+    "retail": "cbf72991a8f9a7e1",
+    "gutenberg": "4ed91a8c48a97419",
+    "haskell-roman": "18adb481ed1e1b01",
+    "ts-media": "29d592e743c2631c",
 }
 
 
@@ -303,7 +305,9 @@ class TestNothingDownstreamChanges:
     @pytest.mark.parametrize("name", MODELS)
     def test_the_model_of_a_file(self, name):
         module = from_tree(parse_file(EXAMPLES / name))
-        text = json.dumps(dataclasses.asdict(module), sort_keys=True,
+        parsed = dataclasses.asdict(module)
+        assert parsed.pop("source") is None      # the file's text, not parsed
+        text = json.dumps(parsed, sort_keys=True,
                           default=str, ensure_ascii=False)
         assert _digest(text) == MODELS[name]
 
@@ -339,6 +343,8 @@ class TestOverTheExamples:
         """A named node's label is what follows the last ``#`` of its
         address (name_graph.json)."""
         for node in example_graph.nodes():
+            if node.kind == NodeKind.MODULE:
+                continue
             if node.kind in _NAMED or node.name is not None:
                 assert node.address.rsplit("#", 1)[-1] == node.label, (
                     node.address)

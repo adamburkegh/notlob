@@ -74,7 +74,8 @@ def _assertions(items: list, offsets: dict) -> list:
                 j += 1
             lit = [k for k in range(i, j) if items[k].strip()]
             if lit:
-                out.append(("TEST", offsets[lit[0]], offsets[lit[-1]], []))
+                out.append(
+                    ("TEST_LINES", offsets[lit[0]], offsets[lit[-1]], []))
             i = j
             continue
         if isinstance(item, ProseBlock):
@@ -223,13 +224,13 @@ class TestTheGraphIsTheModel:
             "m#prose#1", "m#code#1", "m#prose#2", "m#bullets#1",
             "m#code#2", "m#S#prose#1"]
 
-    def test_appendices_are_numbered_in_order(self):
+    def test_appendices_are_named_by_their_titles_in_order(self):
         graph = build(from_tree(parse(
             "#M\n\n---\n\n#Appendix One\n\nA.\n\n#Appendix Two\n\nB.\n")))
         apps = list(graph.nodes(kind=NodeKind.APPENDIX))
         assert [(a.address, a.label) for a in apps] == [
-            ("m#appendix#1", "Appendix One"),
-            ("m#appendix#2", "Appendix Two")]
+            ("m#One", "Appendix One"),
+            ("m#Two", "Appendix Two")]
 
     def test_the_tests_section_and_what_it_holds(self):
         graph = build(from_tree(parse(_SOURCES["tests"])))
@@ -426,20 +427,20 @@ class TestPostText:
             5, 25, "m.lob")
         assert [(c.address, c.kind) for c in graph.children("m#post-text")] == [
             ("m#Tests", NodeKind.TESTS),
-            ("m#appendix#1", NodeKind.APPENDIX),
-            ("m#appendix#2", NodeKind.APPENDIX),
+            ("m#Notes", NodeKind.APPENDIX),
+            ("m#Second", NodeKind.APPENDIX),
         ]
         assert graph.parent_of("m#post-text").address == "m"
 
     def test_what_hangs_from_it_keeps_its_address(self):
         graph = self._graph()
         for address in ("m#Tests", "m#Tests#g", "m#Tests#g#test#1",
-                        "m#Tests#g#nm", "m#appendix#1",
-                        "m#appendix#1#prose#1", "m#AppSub",
-                        "m#AppSub#prose#1", "m#appendix#2#prose#1"):
+                        "m#Tests#g#nm", "m#Notes",
+                        "m#Notes#prose#1", "m#AppSub",
+                        "m#AppSub#prose#1", "m#Second#prose#1"):
             assert graph.node(address) is not None, address
         assert graph.parent_of("m#Tests").address == "m#post-text"
-        assert graph.parent_of("m#appendix#1").address == "m#post-text"
+        assert graph.parent_of("m#Notes").address == "m#post-text"
         assert graph.module_of("m#Tests#g#nm") == "m"
 
     def test_the_module_holds_the_post_text_after_its_body(self):
@@ -470,7 +471,7 @@ class TestPostText:
         graph = self._graph(
             "#M\n\n##S\n\nx\n\n---\n\n#Appendix\n\n##AppSub\n\ny\n")
         assert [s.address for s in graph.sections("m")] == [
-            "m#S", "m#appendix#1", "m#AppSub"]
+            "m#S", "m#Appendix", "m#AppSub"]
 
 
 # ── The kinds in #Tests ──────────────────────────────────────
@@ -479,16 +480,16 @@ class TestTestKinds:
     def _graph(self, tests):
         return build(from_tree(parse("#M\n\n---\n\n#Tests\n" + tests)))
 
-    def test_a_group_a_named_test_and_an_anonymous_one(self):
+    def test_a_group_a_named_test_and_a_run_of_lines(self):
         graph = self._graph(
             "    top == 1\n\n##g\n    a == 1\n\n~test nm\n    b == 2\n")
         kinds = {n.address: n.kind for n in graph.children("m#Tests")}
         assert kinds == {
-            "m#Tests#test#1": NodeKind.TEST,
+            "m#Tests#test#1": NodeKind.TEST_LINES,
             "m#Tests#g": NodeKind.TEST_GROUP,
         }
         assert {n.address: n.kind for n in graph.children("m#Tests#g")} == {
-            "m#Tests#g#test#1": NodeKind.TEST,
+            "m#Tests#g#test#1": NodeKind.TEST_LINES,
             "m#Tests#g#nm": NodeKind.TEST,
         }
 
@@ -575,9 +576,6 @@ class TestForest:
 
 # ── What a node is, is its kind ──────────────────────────────
 
-#: The one helper that says how an anonymous test is told from a named
-#: one.
-_MAY_TELL_BY_SHAPE = {"_is_anonymous_test"}
 _STRING_TESTS = {"fullmatch", "match", "search", "endswith", "startswith",
                  "split", "rsplit", "partition", "rpartition"}
 
@@ -585,7 +583,7 @@ _STRING_TESTS = {"fullmatch", "match", "search", "endswith", "startswith",
 class TestNothingTellsKindsApartByAddressOrLabel:
     """A node's kind says what it is. Code that matches a pattern against
     an address or a label to find out breaks when a name happens to look
-    like the pattern, so none outside the one helper may."""
+    like the pattern, so none may."""
 
     def _functions(self):
         import ast
@@ -606,8 +604,6 @@ class TestNothingTellsKindsApartByAddressOrLabel:
         import ast
         found = []
         for function in self._functions():
-            if function.name in _MAY_TELL_BY_SHAPE:
-                continue
             for call in ast.walk(function):
                 if (isinstance(call, ast.Call)
                         and isinstance(call.func, ast.Attribute)
@@ -620,8 +616,8 @@ class TestNothingTellsKindsApartByAddressOrLabel:
         assert self._offences() == []
 
     def test_the_guard_sees_what_it_guards_against(self):
-        """The guard finds the 2c helper's pattern match, so it would have
-        caught it."""
+        """The guard finds the pattern match that once told a run of test
+        lines from a test, so it would have caught it."""
         import ast
         source = (
             "def is_run(node):\n"

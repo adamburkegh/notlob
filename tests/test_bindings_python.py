@@ -221,10 +221,12 @@ class TestExtractCalls:
         assert pairs["g"] == 2
         assert pairs["h"] == 4
 
-    def test_first_occurrence_wins(self):
+    def test_every_line_a_name_is_on_is_given(self):
         src = "def f():\n    g()\ndef f2():\n    g()"
-        pairs = dict(extract_calls(src))
-        assert pairs["g"] == 2
+        assert extract_calls(src) == [("g", 2), ("g", 4)]
+
+    def test_a_name_twice_on_one_line_is_that_line_once(self):
+        assert extract_calls("def f():\n    return g() + g()") == [("g", 2)]
 
 
 def test_syntax_error_source_is_not_present():

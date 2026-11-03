@@ -317,7 +317,7 @@ def _agreement(graph, level: str) -> None:
         for field, prop in (
                 ("file", "file"), ("start_line", "startLine"),
                 ("size", "size"),
-                ("mode", "mode"), ("text", "text"), ("named", "named")):
+                ("mode", "mode"), ("text", "text")):
             value = parsed.value(subject, _term(prop))
             if field in node:
                 assert value is not None, (node["address"], field)
@@ -389,12 +389,10 @@ class TestWhatIsWritten:
         assert list(_parse(graph.to_turtle(level="full")).triples(
             (None, _term("text"), None)))
 
-    def test_named_and_mode(self):
+    def test_mode_and_no_named(self):
         graph = _graph("#T\n\n##S\n\n~run on-load\n    boot()\n")
         parsed = _parse(graph.to_turtle())
-        named = {str(parsed.value(s, _term("address")))
-                 for s in parsed.subjects(_term("named"), None)}
-        assert named == {"t#S"}
+        assert not list(parsed.subjects(_term("named"), None))
         (run,) = parsed.subjects(_term("mode"), None)
         assert str(parsed.value(run, _term("mode"))) == "on-load"
 
@@ -437,7 +435,7 @@ class TestGraphFidelity:
 
 _DATATYPES = {
     "address": XSD.string, "file": XSD.string, "startLine": XSD.integer,
-    "named": XSD.boolean, "mode": XSD.string,
+    "mode": XSD.string,
     "size": XSD.integer, "text": XSD.string, "sub": XSD.boolean,
     "declares": XSD.string, "value": XSD.string,
 }

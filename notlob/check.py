@@ -90,13 +90,15 @@ def coverage_summary(graph: NameGraph) -> str:
     n_symbols = sum(1 for _ in graph.nodes(kind=NodeKind.SYMBOL))
     n_props = sum(1 for _ in graph.nodes(kind=NodeKind.PROPERTY))
     n_examples = sum(1 for _ in graph.nodes(kind=NodeKind.EXAMPLE))
-    n_tests = sum(1 for _ in graph.nodes(kind=NodeKind.TEST))
+    tests = [n for n in graph.nodes()
+             if n.kind in (NodeKind.TEST, NodeKind.TEST_LINES)]
+    n_tests = len(tests)
 
     mods_with_examples: set[str] = set()
     mods_with_tests: set[str] = set()
     for node in graph.nodes(kind=NodeKind.EXAMPLE):
         mods_with_examples.add(graph.module_of(node.address))
-    for node in graph.nodes(kind=NodeKind.TEST):
+    for node in tests:
         mods_with_tests.add(graph.module_of(node.address))
 
     parts = [

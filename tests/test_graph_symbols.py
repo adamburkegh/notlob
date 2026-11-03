@@ -243,7 +243,7 @@ class TestSymbolsInAnAppendix:
     def test_symbols_written_in_an_appendix_are_in_the_graph(self):
         g = enriched(self.SRC)
         assert g.node("t#helper").kind == NodeKind.SYMBOL
-        assert g.parent_of("t#helper").address == "t#appendix#1#code#1"
+        assert g.parent_of("t#helper").address == "t#Notes#code#1"
         assert g.module_of("t#helper") == "t"
 
     def test_and_in_an_appendix_subheading(self):

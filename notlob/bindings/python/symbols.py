@@ -85,13 +85,15 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
     """Return (name, line) pairs for names statically referenced in *source*.
 
     Walks the AST for all Name loads and subtracts Python builtins.
-    *line* is 1-indexed within *source*.  When a name appears on multiple
-    lines the first occurrence is returned.  Dynamic calls (eval, getattr,
+    *line* is 1-indexed within *source*.  A name has a pair for every line
+    it is used on, once for each line.  Dynamic calls (eval, getattr,
     __getattr__) are invisible by design.  Returns an empty list on syntax
     errors.
 
     >>> sorted(extract_calls("def f(x):\\n    return g(x) + h(x)"))
     [('g', 2), ('h', 2), ('x', 2)]
+    >>> sorted(extract_calls("def f():\\n    g()\\n    return g() + g()"))
+    [('g', 2), ('g', 3)]
     >>> extract_calls("def f():\\n    return len([1, 2, 3])")
     []
     """
@@ -99,14 +101,10 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
         tree = ast.parse(source)
     except SyntaxError:
         return []
-    first_line: dict[str, int] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-            name = node.id
-            if name not in _PYTHON_BUILTINS:
-                if name not in first_line or node.lineno < first_line[name]:
-                    first_line[name] = node.lineno
-    return sorted(first_line.items())
+    return sorted({
+        (node.id, node.lineno) for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        and node.id not in _PYTHON_BUILTINS})
 
 
 def split_imports(

@@ -69,7 +69,12 @@ notlob:Run a owl:Class ;
 notlob:Test a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Test" ;
-    rdfs:comment "A test in #Tests: a ~test <name> block, or a run of bare assertions." .
+    rdfs:comment "A ~test <name> block in #Tests, which always has a name." .
+
+notlob:TestLines a owl:Class ;
+    rdfs:subClassOf notlob:Node ;
+    rdfs:label "Test lines" ;
+    rdfs:comment "A run of bare assertions in #Tests or a test group. It has no name." .
 
 notlob:External a owl:Class ;
     rdfs:subClassOf notlob:Node ;
@@ -94,7 +99,7 @@ notlob:Bullets a owl:Class ;
 notlob:Appendix a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Appendix" ;
-    rdfs:comment "An #Appendix section: one of the sections after the --- separator, with an optional title and a body of its own." .
+    rdfs:comment "An #Appendix section: one of the sections after the --- separator, with a body of its own. Its address is its title, or Appendix if it has none." .
 
 notlob:Tests a owl:Class ;
     rdfs:subClassOf notlob:Node ;
@@ -155,12 +160,6 @@ notlob:startLine a owl:DatatypeProperty ;
     rdfs:label "startLine" ;
     rdfs:comment "The 1-based line of its file where a node begins, or where a reference is written. Absent when unknown." ;
     rdfs:range xsd:integer .
-
-notlob:named a owl:DatatypeProperty ;
-    rdfs:label "named" ;
-    rdfs:comment "True where the document gives the node a name (a heading, a ##group, a ~property or a ~test); its address ends in the name. Absent for an anonymous node." ;
-    rdfs:domain notlob:Node ;
-    rdfs:range xsd:boolean .
 
 notlob:mode a owl:DatatypeProperty ;
     rdfs:label "mode" ;

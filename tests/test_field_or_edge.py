@@ -38,7 +38,7 @@ _LEVELS = ("outline", "index", "full")
 #: restated from ``graph._turtle_node``, which keeps the mapping inline.
 _NODE_FIELDS = {
     "address": NS + "address", "label": str(RDFS.label),
-    "kind": str(RDF.type), "named": NS + "named", "mode": NS + "mode",
+    "kind": str(RDF.type), "mode": NS + "mode",
     "declares": NS + "declares", "value": NS + "value",
     "file": NS + "file", "start_line": NS + "startLine",
     "size": NS + "size", "refs": NS + "ref", "text": NS + "text",

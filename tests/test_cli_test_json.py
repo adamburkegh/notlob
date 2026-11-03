@@ -89,7 +89,7 @@ class TestSingleFile:
         assert doc["version"] == 1
         assert "results" not in doc
         assert {c["kind"] for c in doc["claims"]} == {
-            "EXAMPLE", "PROPERTY", "TEST",
+            "EXAMPLE", "PROPERTY", "TEST_LINES",
         }
         assert all("code" not in c for c in doc["claims"])
 

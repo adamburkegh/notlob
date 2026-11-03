@@ -448,8 +448,8 @@ class TestEdgesStartAtTheirLines:
     def test_imports_starts_at_the_listing(self, tmp_path):
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})
         (edge,) = list(graph.edges(EdgeKind.IMPORTS))
-        assert (edge.source, edge.target, edge.start_line) == (
-            "user#References#listing#1", "lib", 9)
+        assert (edge.source, edge.target, edge.lines) == (
+            "user#References#listing#1", "lib", (9,))
 
     def test_a_listing_of_a_module_not_in_the_graph_makes_no_edge(
         self, tmp_path,
@@ -461,9 +461,9 @@ class TestEdgesStartAtTheirLines:
     def test_uses_external_starts_at_the_declaration(self, tmp_path):
         graph = _project(tmp_path, {"user.lob": _USER})
         edges = list(graph.edges(EdgeKind.USES_EXTERNAL))
-        assert [(e.source, e.target, e.start_line) for e in edges] == [
-            ("proj#Binding#declaration#2", "data/x.txt", 7),
-            ("proj#Binding#declaration#3", "build.py", 8)]
+        assert [(e.source, e.target, e.lines) for e in edges] == [
+            ("proj#Binding#declaration#2", "data/x.txt", (7,)),
+            ("proj#Binding#declaration#3", "build.py", (8,))]
 
     def test_the_outline_holds_none_of_them(self, tmp_path):
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})

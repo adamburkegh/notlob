@@ -8,7 +8,7 @@ from pathlib import Path
 
 from kitcalls import collecting
 from notlob import (
-    NodeKind, parse, parse_file, from_tree, anonymous_address,
+    NodeKind, parse, parse_file, from_tree, positional_address,
 )
 from notlob.bindings.python.harness import build_examples_harness
 from notlob.bindings.python.runner import (
@@ -17,7 +17,7 @@ from notlob.bindings.python.runner import (
 )
 
 run_examples = collecting(_run_examples, "EXAMPLE")
-run_tests = collecting(_run_tests, "TEST")
+run_tests = collecting(_run_tests, "TEST", "TEST_LINES")
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -31,20 +31,20 @@ def ran(source: str) -> list[ClaimResult]:
 class TestClaimAddress:
     def test_module_level(self):
         assert (
-            anonymous_address("roman/numerals", NodeKind.EXAMPLE, 1)
+            positional_address("roman/numerals", NodeKind.EXAMPLE, 1)
             == "roman/numerals#example#1"
         )
 
     def test_subheading(self):
         assert (
-            anonymous_address(
+            positional_address(
                 "roman/numerals#Decoding", NodeKind.EXAMPLE, 2)
             == "roman/numerals#Decoding#example#2"
         )
 
     def test_property_kind(self):
         assert (
-            anonymous_address("pricing/discounts", NodeKind.PROPERTY, 1)
+            positional_address("pricing/discounts", NodeKind.PROPERTY, 1)
             == "pricing/discounts#property#1"
         )
 
@@ -487,6 +487,6 @@ class TestClaimsInAnAppendix:
     def test_an_example_written_there_runs_at_its_own_address(self):
         results = ran(self.SRC)
         assert [(r.address, r.status, r.source_line) for r in results] == [
-            ("t#appendix#1#example#1", Status.PASS, 11),
-            ("t#appendix#1#example#1", Status.FAIL, 12),
+            ("t#Notes#example#1", Status.PASS, 11),
+            ("t#Notes#example#1", Status.FAIL, 12),
         ]

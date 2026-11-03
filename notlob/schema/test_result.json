@@ -51,7 +51,7 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["EXAMPLE", "PROPERTY", "TEST"]
+          "enum": ["EXAMPLE", "PROPERTY", "TEST", "TEST_LINES"]
         },
         "status": {
           "type": "string",

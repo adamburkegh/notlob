@@ -86,7 +86,7 @@
           "type": "string"
         },
         "label": {
-          "description": "A module's title, as written. Present on a MODULE only: any other node's label follows from its address (what follows the last `#` for a named node; for an anonymous one its kind's segment and ordinal, as in `example#1`, or the segment alone for a kind that is not numbered, as in `post-text`; an EXTERNAL's address is its name).",
+          "description": "A module's title, as written. Present on a MODULE only: any other node's label follows from its address (what follows the last `#` for a named node; for a positional one its kind's segment and ordinal, as in `example#1`, or the segment alone for a kind that is not numbered, as in `post-text`; an EXTERNAL's address is its name).",
           "type": "string"
         },
         "kind": {
@@ -100,6 +100,7 @@
             "EXAMPLE",
             "RUN",
             "TEST",
+            "TEST_LINES",
             "EXTERNAL",
             "PROSE",
             "CODE",
@@ -114,10 +115,6 @@
             "IMPORT",
             "DECLARATION"
           ]
-        },
-        "named": {
-          "description": "True where the document gives the node a name (a heading, a `##group`, a `~property` or a `~test`); its address ends in the name. Absent for an anonymous node and for what a document does not name.",
-          "const": true
         },
         "mode": {
           "description": "When a RUN runs; present on a RUN only. A bare `~run` is `on-invocation`.",

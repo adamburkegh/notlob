@@ -13,7 +13,7 @@ from notlob.bindings.python.runner import (
     ClaimResult, Status, run_tests as _run_tests,
 )
 
-run_tests = collecting(_run_tests, "TEST")
+run_tests = collecting(_run_tests, "TEST", "TEST_LINES")
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 

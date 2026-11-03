@@ -275,11 +275,10 @@ class TestSingleNode:
 
 
 class TestNamed:
-    def test_named_is_printed_on_named_nodes_only(self, roman, capsys):
+    def test_a_query_prints_no_named(self, roman, capsys):
         _rc, doc = _run(capsys, cmd_query_children, "roman/numerals")
-        named = {n["address"]: n.get("named") for n in doc}
-        assert named["roman/numerals#Decoding"] is True
-        assert named["roman/numerals#example#1"] is None
+        assert doc
+        assert all("named" not in n for n in doc)
         assert all("name" not in n for n in doc)
 
     def test_the_name_is_never_printed_by_a_query(self, roman, capsys):
@@ -474,10 +473,8 @@ class TestSchema:
         assert (set(mine["Node"]["properties"])
                 == set(graph["GraphNode"]["properties"]))
         for name, definition in graph["GraphNode"]["properties"].items():
-            if name not in ("label", "file", "named"):
+            if name not in ("label", "file"):
                 assert mine["Node"]["properties"][name] == definition, name
-        assert (mine["Node"]["properties"]["named"]["const"]
-                == graph["GraphNode"]["properties"]["named"]["const"])
         assert mine["GraphRef"] == graph["GraphRef"]
         assert mine["Edge"] == graph["GraphEdge"]
 

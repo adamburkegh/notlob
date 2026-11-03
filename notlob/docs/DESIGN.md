@@ -7,6 +7,37 @@
 
 ---
 
+## The organising abstraction
+
+* A document is a tree of nodes. A written node has a name and may have
+  a body; a derived node is inferred from a body.
+* Edges are verbs: what a node does to another.
+* Every node, edge and body has a rank, on one scale.
+* A view is a start, a depth and a rank over that tree.
+* A named level is a view with a name.
+* A formatter writes a view, and decides nothing.
+
+```
+rank : Node ∪ Edge ∪ Body → ℕ
+view(r) = { x ∈ Node ∪ Edge ∪ Body | rank(x) ≤ r }
+```
+
+A view also takes a start and a depth, and an edge needs both its ends
+in the view. Rank is not the tree's: a block of low rank may hold a
+symbol of high. A `CONTAINS` edge is always one of the tree's; where a
+view hides what holds a node, it writes a `CONTAINS_INDIRECTLY` edge
+from the nearest node above that it shows. This is clear, though it may
+not be final.
+
+Any change is tested against these lines. One that does not fit them
+is a design question, not a trade-off for its author to settle: a
+field that holds written things is a missing node, a flag on a kind is a
+missing rank, and a level checked in a formatter is a broken rule. The
+code does not yet match them (see
+`meta/features/2026-10-29-external-outputs/design.md`).
+
+---
+
 ## Philosophy
 
 The intellectual lineage is Knuth's literate programming, Naur's
@@ -314,7 +345,7 @@ The two are mechanically related. A named node's address is its scope's
 address, `#`, and its name: `roman/numerals#from_roman`. The scope is the
 nearest enclosing node, along `CONTAINS`, whose kind opens one: `MODULE`,
 `PROPERTY`, `TESTS` or a `#Tests` group. Sections do not. An anonymous
-node (a prose paragraph, a code block, an unnamed claim, an Appendix) is
+node (a prose paragraph, a code block, an unnamed claim, an unnamed Appendix) is
 addressed by position instead: its parent's address, its kind and its
 ordinal, as in `roman/numerals#Decoding#example#1` and
 `roman/numerals#appendix#1`. This mirrors the URI fragment convention and

@@ -25,10 +25,10 @@ Every node has a globally unique address, computed from where it is
 written.  The ``#`` character separates a module address from anything
 within it.  A named node is addressed by the scope its name belongs to
 (:func:`named_address`; a module, and a ``~property``, ``#Tests`` and
-``##group`` in it, are scopes) and its name, and an anonymous one by its
+``##group`` in it, are scopes) and its name, and a positional one by its
 kind and position among its siblings of that kind
-(:func:`anonymous_address`).  What each kind is, such as whether it opens
-a scope, is stated once in :data:`KINDS`:
+(:func:`positional_address`).  What each kind is, such as whether it
+opens a scope, is stated once in :data:`KINDS`:
 
   Module:     title → lowercase, spaces → slashes
               "Pricing Discounts" → "pricing/discounts"
@@ -39,7 +39,10 @@ a scope, is stated once in :data:`KINDS`:
   Symbol:     module_address + "#" + name, wherever in the module it is
               written: "pricing/discounts#apply_discount"
 
-  Anonymous:  parent_address + "#" + kind + "#" + n, counted from 1
+  Appendix:   module_address + "#" + its title, or "Appendix" if bare
+              "pricing/discounts#Glossary"
+
+  Positional: parent_address + "#" + kind + "#" + n, counted from 1
               "pricing/discounts#prose#2", "pricing/discounts#example#1"
 
 Addresses are machine identifiers; labels are the human-readable names as
@@ -121,7 +124,7 @@ def named_address(scope: str, name: str) -> str:
     return f"{scope}#{name}"
 
 
-def anonymous_address(parent: str, kind: NodeKind, n: int) -> str:
+def positional_address(parent: str, kind: NodeKind, n: int) -> str:
     """The address of a node the document does not name, from the address
     of the nearest container it is written in that is not a region of
     the tree, its *kind*'s segment and its ordinal *n* among the nodes
@@ -137,7 +140,7 @@ def anonymous_address(parent: str, kind: NodeKind, n: int) -> str:
     """
     facts = KINDS[kind]
     if facts.segment is None:
-        raise ValueError(f"{kind.name} nodes are named, not anonymous")
+        raise ValueError(f"{kind.name} nodes are named, not positional")
     address = f"{parent}#{facts.segment}"
     return f"{address}#{n}" if facts.numbered else address
 
@@ -146,14 +149,15 @@ def anonymous_address(parent: str, kind: NodeKind, n: int) -> str:
 
 class NodeKind(Enum):
     """What a node is. A kind says what the node is, not whether it is
-    named: ``PROPERTY`` and ``TEST`` cover the named and the anonymous."""
+    named: ``PROPERTY`` covers the named and the anonymous."""
     MODULE     = auto()    # a .lob file: the root of its tree
     SUBHEADING = auto()    # a ##Subheading
     SYMBOL     = auto()    # a name defined in code: function, class, constant
     PROPERTY   = auto()    # a ~property claim, named or not
     EXAMPLE    = auto()    # an ~example claim
     RUN        = auto()    # a ~run claim, of any mode
-    TEST       = auto()    # a test: a ~test, or a run of bare assertions
+    TEST       = auto()    # a ~test <name>
+    TEST_LINES = auto()    # a run of bare assertions in a test group
     EXTERNAL   = auto()    # a file declared with ~external, outside the trees
     PROSE      = auto()    # a paragraph (leaf)
     CODE       = auto()    # an indented code block (leaf)
@@ -169,11 +173,24 @@ class NodeKind(Enum):
     DECLARATION = auto()   # a ~language, ~external, ... in #Binding
 
 
+class Rank:
+    """The scale a view is cut on: one scale of natural numbers, with names
+    for the common ranks. Every node, edge and body has a rank, and a view
+    shows what is at or below its own. It is defined here and nowhere else:
+    a ``rank`` in :data:`KINDS`, the same for the edge kinds in
+    :data:`EDGE_RANKS`, and the bodies at :attr:`BODY`."""
+    STRUCTURE  = 1     # the nodes an outline shows, and the tree
+    REFERENCES = 2     # the references, with the declarations they start at
+    BLOCK      = 3     # the blocks of a file: paragraphs, code, listings
+    BODY       = 4     # each node's own written lines
+
+
 @dataclass(frozen=True)
 class KindFacts:
     """What is true of every node of a kind. A kind is an adjective, and
     each of these is one the code asks in more than one place.
 
+    rank             where a view starts to show it: see :class:`Rank`
     opens_scope      a name written in a node of this kind belongs to it
     claim            an ``~example``, ``~property`` or ``~run``
     runnable         a binding runs it: a claim, or a test
@@ -185,15 +202,13 @@ class KindFacts:
     section          a section of the document
     region           a region of the tree, no part of an address
     text_in_holder   its text is lines of the node that holds it
-    segment          its part of an address when it is anonymous; ``None``
+    segment          its part of an address when it is positional; ``None``
                      for a kind that is always named
-    numbered         an anonymous address has an ordinal after the segment
+    numbered         a positional address has an ordinal after the segment
     sigil            the sigil that begins it in its file, ``None`` for a kind
                      with none
-    sigil_needs_name it has its sigil only if the document names it: a
-                     test is written ``~test name``, but a run of bare
-                     assertions has no sigil
     """
+    rank:           int
     opens_scope:    bool = False
     claim:          bool = False
     runnable:       bool = False
@@ -204,47 +219,56 @@ class KindFacts:
     segment:        str | None = None
     numbered:       bool = False
     sigil:          str | None = None
-    sigil_needs_name: bool = False
 
 
 #: The facts of each kind, one row for every :class:`NodeKind`.
 KINDS: dict[NodeKind, KindFacts] = {
-    NodeKind.MODULE: KindFacts(opens_scope=True),
-    NodeKind.SUBHEADING: KindFacts(section=True),
-    NodeKind.SYMBOL: KindFacts(text_in_holder=True),
+    NodeKind.MODULE: KindFacts(Rank.STRUCTURE, opens_scope=True),
+    NodeKind.SUBHEADING: KindFacts(Rank.STRUCTURE, section=True),
+    NodeKind.SYMBOL: KindFacts(Rank.STRUCTURE, text_in_holder=True),
     NodeKind.PROPERTY: KindFacts(
-        opens_scope=True, claim=True, runnable=True,
+        Rank.STRUCTURE, opens_scope=True, claim=True, runnable=True,
         segment="property", numbered=True, sigil="~property"),
     NodeKind.EXAMPLE: KindFacts(
-        claim=True, runnable=True, segment="example", numbered=True,
-        sigil="~example"),
+        Rank.STRUCTURE, claim=True, runnable=True, segment="example",
+        numbered=True, sigil="~example"),
     NodeKind.RUN: KindFacts(
-        claim=True, runnable=True, segment="run", numbered=True,
-        sigil="~run"),
-    NodeKind.TEST: KindFacts(
-        runnable=True, segment="test", numbered=True,
-        sigil="~test", sigil_needs_name=True),
-    NodeKind.EXTERNAL: KindFacts(),
+        Rank.STRUCTURE, claim=True, runnable=True, segment="run",
+        numbered=True, sigil="~run"),
+    NodeKind.TEST: KindFacts(Rank.STRUCTURE, runnable=True, sigil="~test"),
+    NodeKind.TEST_LINES: KindFacts(
+        Rank.BLOCK, runnable=True, segment="test", numbered=True),
+    NodeKind.EXTERNAL: KindFacts(Rank.REFERENCES),
     NodeKind.PROSE: KindFacts(
-        hidden_at_outline=True, segment="prose", numbered=True),
+        Rank.BLOCK, hidden_at_outline=True, segment="prose", numbered=True),
     NodeKind.CODE: KindFacts(
-        hidden_at_outline=True, segment="code", numbered=True),
+        Rank.BLOCK, hidden_at_outline=True, segment="code", numbered=True),
     NodeKind.BULLETS: KindFacts(
-        hidden_at_outline=True, segment="bullets", numbered=True),
-    NodeKind.APPENDIX: KindFacts(
-        section=True, segment="appendix", numbered=True),
-    NodeKind.TESTS: KindFacts(opens_scope=True),
+        Rank.BLOCK, hidden_at_outline=True, segment="bullets", numbered=True),
+    NodeKind.APPENDIX: KindFacts(Rank.STRUCTURE, section=True),
+    NodeKind.TESTS: KindFacts(Rank.STRUCTURE, opens_scope=True),
     NodeKind.POST_TEXT: KindFacts(
-        hidden_at_outline=True, region=True, segment="post-text"),
-    NodeKind.TEST_GROUP: KindFacts(opens_scope=True),
-    NodeKind.REFERENCES: KindFacts(),
-    NodeKind.BINDING: KindFacts(),
+        Rank.BLOCK, hidden_at_outline=True, region=True,
+        segment="post-text"),
+    NodeKind.TEST_GROUP: KindFacts(Rank.STRUCTURE, opens_scope=True),
+    NodeKind.REFERENCES: KindFacts(Rank.STRUCTURE),
+    NodeKind.BINDING: KindFacts(Rank.STRUCTURE),
     NodeKind.LISTING: KindFacts(
-        hidden_at_outline=True, segment="listing", numbered=True),
+        Rank.BLOCK, hidden_at_outline=True, segment="listing", numbered=True),
     NodeKind.IMPORT: KindFacts(
-        hidden_at_outline=True, segment="import", numbered=True),
+        Rank.BLOCK, hidden_at_outline=True, segment="import", numbered=True),
     NodeKind.DECLARATION: KindFacts(
-        hidden_at_outline=True, segment="declaration", numbered=True),
+        Rank.REFERENCES, hidden_at_outline=True, segment="declaration",
+        numbered=True),
+}
+
+#: The named levels, each a rank: a view made from one carries its name,
+#: and nothing else reads it. Each shows the whole tree.
+PRESETS: dict[str, int] = {
+    "outline": Rank.STRUCTURE,
+    "index":   Rank.REFERENCES,
+    "block":   Rank.BLOCK,
+    "full":    Rank.BODY,
 }
 
 
@@ -272,10 +296,20 @@ class Node:
                 ``"external"``, ``"on-build"`` or ``"keep-generated-src"``);
                 ``None`` on every other node
     value       the value a ``DECLARATION`` gives it, when it has one
-    name        the name written in the document for a heading, a
-                ``##group``, a ``~property`` or a ``~test``; ``None`` for
-                an anonymous node (an unnamed ``~property``, a run of
-                bare assertions) and for what a document does not name
+    name        the name the node's address is built from: a module's
+                title, a heading, a symbol, an ``EXTERNAL``'s file, an
+                appendix's title (``Appendix`` if bare), a ``##group``, a
+                ``~property <name>`` or a ``~test <name>``; ``None`` for a
+                node with a positional address (a paragraph, an unnamed
+                ``~property``, a run of test lines) and for ``#Tests``,
+                ``#References`` and ``#Binding``, which are keywords
+    body        the node's own lines, as they are in the file, indent and
+                all: the lines of its span that no node under it holds,
+                less blank lines at either end. A heading's is its line, a
+                claim's its sigil line and the lines under it. ``None`` for
+                a derived node (a ``SYMBOL``, whose lines are its code
+                block's, and an ``EXTERNAL``) and wherever the module was
+                built with no source: see :func:`add_bodies`
 
     The fields after ``kind`` are excluded from equality and hash, so two
     nodes with the same address, label and kind are the same node.
@@ -310,6 +344,9 @@ class Node:
     value: str | None = field(
         default=None, hash=False, compare=False,
     )
+    body: str | None = field(
+        default=None, hash=False, compare=False,
+    )
 
     def __repr__(self) -> str:
         return f"<{self.kind.name} {self.address!r}>"
@@ -326,12 +363,36 @@ class EdgeKind(Enum):
     CITES         = auto()   # a paragraph to the node a #Label in it names
 
 
+#: The rank of each edge kind, by name: one for every :class:`EdgeKind`,
+#: and for ``CONTAINS_INDIRECTLY``, which a view makes and a graph does not
+#: hold, so it is no member of the enum.
+EDGE_RANKS: dict[str, int] = {
+    "CONTAINS":            Rank.STRUCTURE,
+    "CONTAINS_INDIRECTLY": Rank.STRUCTURE,
+    "IMPORTS":             Rank.REFERENCES,
+    "USES_EXTERNAL":       Rank.REFERENCES,
+    "USES":                Rank.REFERENCES,
+    "CITES":               Rank.REFERENCES,
+}
+
+
 @dataclass(frozen=True)
 class Edge:
+    """An edge from *source* to *target*. *lines* are every line of the
+    ``.lob`` file a reference is written on, each once and in order; empty
+    when none is known, and for a ``CONTAINS`` edge. There is one edge for
+    each source, target and kind."""
     source:     str             # address of the source node
     target:     str             # address of the target node
     kind:       EdgeKind
-    start_line: int | None = field(default=None, hash=False, compare=False)
+    lines:      tuple[int, ...] = field(
+        default=(), hash=False, compare=False)
+
+    @property
+    def first_line(self) -> int | None:
+        """The first of the *lines*, or ``None`` where there are none: the
+        one line the old documents give a reference."""
+        return self.lines[0] if self.lines else None
 
 
 # ── Turtle serialisation helpers ─────────────────────────────
@@ -346,7 +407,7 @@ def _turtle_iri(address: str) -> str:
     """*address* as a Turtle IRI reference.
 
     Addresses are free text (a subheading title can hold spaces, quotes,
-    ``:``, and an anonymous node's segments hold ``#`` -- a name written
+    ``:``, and a positional node's segments hold ``#`` -- a name written
     in a document holds none), so they are made safe as a relative IRI
     reference:
 
@@ -409,8 +470,6 @@ def _turtle_node(node: dict) -> list[str]:
     parts = [f"notlob:address {_turtle_lit(node['address'])}"]
     if "label" in node:
         parts.insert(0, f"rdfs:label {_turtle_lit(node['label'])}")
-    if node.get("named"):
-        parts.append("notlob:named true")
     for key in ("mode", "declares", "value"):
         if key in node:
             parts.append(f"notlob:{key} {_turtle_lit(node[key])}")
@@ -438,13 +497,14 @@ def _turtle_node(node: dict) -> list[str]:
 
 class AddressCollisionError(ValueError):
     """Two nodes claim the same address: two differently-kinded ones, or
-    two of a name written in the document (a heading, a ``~property`` or
-    a ``~test`` name) in one scope.
+    two of a name written in the document (a heading, an appendix's
+    title, a ``~property`` or a ``~test`` name) in one scope.
 
     Raised by :meth:`NameGraph.add_node` for kinds, and by :func:`build`
     for a restated document name -- e.g. a ``##Layout`` subheading and a
     ``class Layout`` symbol in the same module both resolve to
-    ``mod#Layout``, as do two ``##Layout`` subheadings. A symbol written
+    ``mod#Layout``, as do two ``##Layout`` subheadings, and a
+    ``##Glossary`` and an ``#Appendix Glossary``. A symbol written
     twice is not an error: the last definition wins. All named things
     share one namespace per module, so this is a real document error,
     not a crash: a
@@ -808,7 +868,7 @@ class NameGraph:
         *level* is how much it shows, by name or by number (see
         :data:`LEVELS`):
 
-        * ``outline`` (1): every node but the anonymous leaves
+        * ``outline`` (1): every node but the positional leaves
           (paragraphs, code blocks, bullet lists) and the region after
           the ``---``, with an edge to or from one of those moved to the
           section that holds it.
@@ -856,7 +916,7 @@ class NameGraph:
         same *level* (see there for what each level shows), with the
         edges lifted the same way, the tree among them as
         ``notlob:contains`` triples. Only a module has an
-        ``rdfs:label`` and a ``notlob:file``. A node's ``named``, ``mode`` and
+        ``rdfs:label`` and a ``notlob:file``. A node's ``mode`` and
         ``size``, a paragraph's references (``notlob:ref``) and a node's
         ``text`` are written as the level gives them; an edge is a triple
         without its line, which RDF has no place for (the JSON carries
@@ -918,7 +978,8 @@ def _prose_leaf_text(block: ProseBlock) -> str:
 # ── Structure ────────────────────────────────────────────────
 
 class _Ordinals:
-    """Counts the anonymous nodes of one parent, per kind, from 1."""
+    """Counts the nodes of one parent that have positional addresses, per
+    kind, from 1."""
 
     def __init__(self) -> None:
         self._n: dict[NodeKind, int] = {}
@@ -928,32 +989,23 @@ class _Ordinals:
         return self._n[kind]
 
 
-def _anonymous_identity(
+def _positional_identity(
     parent: str, kind: NodeKind, n: int,
 ) -> tuple[str, str]:
-    """``(address, label)`` of the *n*th anonymous node of *kind* written
-    in the node at *parent*."""
-    return anonymous_address(parent, kind, n), f"{KINDS[kind].segment}#{n}"
-
-
-def _container(graph: NameGraph, address: str) -> str:
-    """The address of the nearest node at or above *address* that is not a
-    region of the tree: the one an anonymous node written in a region is
-    addressed from."""
-    node = graph.node(address)
-    while KINDS[node.kind].region:
-        node = graph.parent_of(node.address)
-    return node.address
+    """``(address, label)`` of the *n*th node of *kind* written in the
+    node at *parent* that the document does not name."""
+    return positional_address(parent, kind, n), f"{KINDS[kind].segment}#{n}"
 
 
 def _claim_identity(
     graph: NameGraph, claim: Claim, parent: str, ordinals: _Ordinals,
-) -> tuple[str, str, NodeKind]:
-    """``(address, label, kind)`` of *claim* written in the node at
+) -> tuple[str, str, NodeKind, str | None]:
+    """``(address, label, kind, name)`` of *claim* written in the node at
     *parent*. The kind follows the sigil: every ``~run`` (bare, ``on-load``
     or ``on-invocation``) is a ``RUN``, ``~example`` an ``EXAMPLE`` and
     anything else a ``PROPERTY``. A named property is named in the scope
-    of *parent* but still counts among its properties."""
+    of *parent* but still counts among its properties; any other claim,
+    and an unnamed property, has no name."""
     parts = claim.sigil.split(None, 1)
     if parts[0] == "~example":
         kind = NodeKind.EXAMPLE
@@ -964,8 +1016,8 @@ def _claim_identity(
     n = ordinals.next(kind)
     if kind == NodeKind.PROPERTY and len(parts) > 1:
         name = parts[1].strip()
-        return named_address(graph.scope_of(parent), name), name, kind
-    return (*_anonymous_identity(parent, kind, n), kind)
+        return named_address(graph.scope_of(parent), name), name, kind, name
+    return (*_positional_identity(parent, kind, n), kind, None)
 
 
 def _run_mode(claim: Claim) -> str:
@@ -983,12 +1035,10 @@ def _add_child(
 
     A node already at its address is replaced, and is contained only by
     *parent*: a symbol defined twice in a scope keeps its last definition.
-    A *document_name* (a heading, a ``~property`` or ``~test`` name) is
-    written once in its scope, so a second is a collision: raised, or
-    collected when :func:`build` was given a list to collect them in, in
-    which case it replaces the first."""
-    if document_name:
-        node = replace(node, name=node.label)
+    A *document_name* (a heading, an appendix's title, a ``~property`` or
+    ``~test`` name) is written once in its scope, so a second is a
+    collision: raised, or collected when :func:`build` was given a list
+    to collect them in, in which case it replaces the first."""
     existing = graph.node(node.address)
     if document_name and existing is not None:
         error = AddressCollisionError(
@@ -1007,7 +1057,7 @@ def _add_prose(
     graph: NameGraph, parent: str, block: ProseBlock, n: int,
     file: str | None,
 ) -> None:
-    address, label = _anonymous_identity(parent, NodeKind.PROSE, n)
+    address, label = _positional_identity(parent, NodeKind.PROSE, n)
     _add_child(graph, parent, Node(
         address=address, label=label,
         kind=NodeKind.PROSE, text=_prose_leaf_text(block),
@@ -1038,7 +1088,7 @@ def build(
     separators; ``None`` for a module built on its own.
 
     A name written in the document twice in one scope (two headings, two
-    ``~property`` or two ``~test`` names) raises
+    appendix titles, two ``~property`` or two ``~test`` names) raises
     :class:`AddressCollisionError`.  Given a list as *collisions*, each is
     appended to it instead, and the later node replaces the earlier, so
     the structure is built whole.
@@ -1059,31 +1109,30 @@ def _build_tree(graph: NameGraph, module: Module, file: str | None) -> None:
     graph.add_node(Node(
         address=addr, label=module.title, kind=NodeKind.MODULE,
         start_line=module.start_line, end_line=module.end_line, file=file,
+        name=module.title,
     ))
     _add_items(graph, module.body, addr, file)
 
     post_text = module.post_text
     if post_text is None:
         return
-    post_addr = anonymous_address(addr, NodeKind.POST_TEXT, 1)
+    post_addr = positional_address(addr, NodeKind.POST_TEXT, 1)
     _add_child(graph, addr, Node(
         address=post_addr, label="post-text", kind=NodeKind.POST_TEXT,
         start_line=post_text.start_line, end_line=post_text.end_line,
         file=file,
     ))
-    ordinals = _Ordinals()
     for section in post_text.sections:
         if isinstance(section, AppendixSection):
-            app_addr = anonymous_address(
-                _container(graph, post_addr), NodeKind.APPENDIX,
-                ordinals.next(NodeKind.APPENDIX))
+            name = section.name or "Appendix"
+            app_addr = named_address(graph.scope_of(post_addr), name)
             _add_child(graph, post_addr, Node(
                 address=app_addr,
                 label=section.title.lstrip("#").strip(),
                 kind=NodeKind.APPENDIX,
                 start_line=section.start_line, end_line=section.end_line,
-                file=file,
-            ))
+                file=file, name=name,
+            ), document_name=True)
             _add_items(graph, section.body, app_addr, file)
         elif isinstance(section, TestsSection):
             _add_tests(graph, section, post_addr, file)
@@ -1111,7 +1160,7 @@ def _add_references(
     ))
     ordinals = _Ordinals()
     for listing in section.listings:
-        listing_address, label = _anonymous_identity(
+        listing_address, label = _positional_identity(
             address, NodeKind.LISTING, ordinals.next(NodeKind.LISTING))
         _add_child(graph, address, Node(
             address=listing_address, label=label, kind=NodeKind.LISTING,
@@ -1137,7 +1186,7 @@ def _add_binding(
     ))
     ordinals = _Ordinals()
     for declaration in section.declarations:
-        decl_address, label = _anonymous_identity(
+        decl_address, label = _positional_identity(
             address, NodeKind.DECLARATION,
             ordinals.next(NodeKind.DECLARATION))
         _add_child(graph, address, Node(
@@ -1165,14 +1214,14 @@ def _add_items(
                 address=sub_addr, label=item.title,
                 kind=NodeKind.SUBHEADING,
                 start_line=item.start_line, end_line=item.end_line,
-                file=file,
+                file=file, name=item.title,
             ), document_name=True)
             _add_items(graph, item.body, sub_addr, file)
         elif isinstance(item, ProseBlock):
             _add_prose(
                 graph, parent, item, ordinals.next(NodeKind.PROSE), file)
         elif isinstance(item, CodeBlock):
-            address, label = _anonymous_identity(
+            address, label = _positional_identity(
                 parent, NodeKind.CODE, ordinals.next(NodeKind.CODE))
             _add_child(graph, parent, Node(
                 address=address, label=label,
@@ -1182,7 +1231,7 @@ def _add_items(
                 file=file,
             ))
         elif isinstance(item, BulletBlock):
-            address, label = _anonymous_identity(
+            address, label = _positional_identity(
                 parent, NodeKind.BULLETS, ordinals.next(NodeKind.BULLETS))
             _add_child(graph, parent, Node(
                 address=address, label=label,
@@ -1191,16 +1240,15 @@ def _add_items(
                 file=file,
             ))
         elif isinstance(item, Claim):
-            address, label, kind = _claim_identity(
+            address, label, kind, name = _claim_identity(
                 graph, item, parent, ordinals)
             _add_child(graph, parent, Node(
                 address=address, label=label, kind=kind,
                 text=textwrap.dedent("\n".join(item.lines)),
                 start_line=item.start_line, end_line=item.end_line,
                 file=file, mode=_run_mode(item) if kind == NodeKind.RUN
-                else None,
-            ), document_name=(kind == NodeKind.PROPERTY
-                              and len(item.sigil.split()) > 1))
+                else None, name=name,
+            ), document_name=name is not None)
 
 
 def _add_tests(
@@ -1231,11 +1279,11 @@ def _add_assertions(
     """Add the items of ``#Tests`` or of a group as children of *parent*.
 
     A run of bare assertion lines is consecutive bare lines (blank ones
-    included). It is one anonymous ``TEST`` node, from its first to its
+    included). It is one ``TEST_LINES`` node, from its first to its
     last non-blank line and holding those lines as written; a run of only
     blank lines is nothing. A ``##group`` is a ``TEST_GROUP`` and a
-    ``~test`` a named ``TEST``. *offsets* maps an item's index to its
-    line.
+    ``~test`` a ``TEST``, which has its name. *offsets* maps an item's
+    index to its line.
     """
     ordinals = _Ordinals()
     i = 0
@@ -1248,11 +1296,12 @@ def _add_assertions(
             lit = [k for k in range(i, j) if items[k].strip()]
             if lit:
                 first, last = lit[0], lit[-1]
-                address, label = _anonymous_identity(
-                    parent, NodeKind.TEST, ordinals.next(NodeKind.TEST))
+                address, label = _positional_identity(
+                    parent, NodeKind.TEST_LINES,
+                    ordinals.next(NodeKind.TEST_LINES))
                 _add_child(graph, parent, Node(
                     address=address, label=label,
-                    kind=NodeKind.TEST,
+                    kind=NodeKind.TEST_LINES,
                     text="\n".join(items[first:last + 1]),
                     start_line=offsets.get(first),
                     end_line=offsets.get(last), file=file,
@@ -1268,7 +1317,7 @@ def _add_assertions(
                 address=group_addr, label=item.title,
                 kind=NodeKind.TEST_GROUP,
                 start_line=item.start_line, end_line=item.end_line,
-                file=file,
+                file=file, name=item.title,
             ), document_name=True)
             _add_assertions(
                 graph, item.items, item.line_offsets or {}, group_addr,
@@ -1281,7 +1330,7 @@ def _add_assertions(
                 label=item.name, kind=NodeKind.TEST,
                 text="\n".join(item.lines).rstrip(),
                 start_line=item.start_line, end_line=item.end_line,
-                file=file,
+                file=file, name=item.name,
             ), document_name=True)
         i += 1
 
@@ -1353,7 +1402,7 @@ def _add_imports(
         return
     ordinals = _Ordinals()
     for text, first_line in split_imports(section.imports):
-        address, label = _anonymous_identity(
+        address, label = _positional_identity(
             node.address, NodeKind.IMPORT, ordinals.next(NodeKind.IMPORT))
         _add_child(graph, node.address, Node(
             address=address, label=label, kind=NodeKind.IMPORT, text=text,
@@ -1387,12 +1436,12 @@ def _symbol_node(
             address=address, label=info.name, kind=NodeKind.SYMBOL,
             text=info.source,
             start_line=holder.start_line, end_line=holder.end_line,
-            file=file)
+            file=file, name=info.name)
     last = info.first_line if info.last_line is None else info.last_line
     return Node(
         address=address, label=info.name, kind=NodeKind.SYMBOL,
         start_line=first + info.first_line - 1, end_line=first + last - 1,
-        file=file)
+        file=file, name=info.name)
 
 
 def _descendants(graph: NameGraph, address: str) -> list[Node]:
@@ -1406,6 +1455,49 @@ def _descendants(graph: NameGraph, address: str) -> list[Node]:
     return found
 
 
+def add_bodies(graph: NameGraph, module: Module) -> None:
+    """Give each node written in *module* its ``body``: the lines of its
+    span that no node under it holds, as they are in the file (the
+    module's ``source``), less blank lines at either end. A blank line
+    inside a body stays in it, and one between two nodes is in neither.
+
+    A ``SYMBOL`` and an ``EXTERNAL`` are derived and have none, and a
+    symbol's lines are not counted as held by the code block it is in: they
+    are that block's. A module with no ``source`` has no bodies.
+
+    Call it last, after :func:`enrich`: the ``IMPORT`` nodes it adds hold
+    lines of ``#References``.
+    """
+    if module.source is None:
+        return
+    lines = module.source.split("\n")
+    root = graph.node(module_address(module.title))
+    if root is None:
+        return
+
+    def walk(node: Node) -> set[int]:
+        """Give *node* and the written nodes under it their bodies; the
+        lines of the file at or under *node*."""
+        span = set(range(node.start_line, node.end_line + 1))
+        below: set[int] = set()
+        for child in graph.children(node.address):
+            if (child.kind in (NodeKind.SYMBOL, NodeKind.EXTERNAL)
+                    or child.start_line is None or child.end_line is None):
+                continue
+            below |= walk(child)
+        own = sorted(n for n in span - below if n <= len(lines))
+        while own and not lines[own[0] - 1].strip():
+            own.pop(0)
+        while own and not lines[own[-1] - 1].strip():
+            own.pop()
+        if own:
+            graph.add_node(replace(
+                node, body="\n".join(lines[n - 1] for n in own)))
+        return span | below
+
+    walk(root)
+
+
 def claims_to_run(graph: NameGraph, module_address_: str) -> list[ClaimToRun]:
     """The claims and tests of the module at *module_address_*, for a
     binding to run, in document order.
@@ -1414,7 +1506,8 @@ def claims_to_run(graph: NameGraph, module_address_: str) -> list[ClaimToRun]:
     wherever a claim is written: the body, subheadings, each ``#Appendix``
     and its subheadings, and ``#Tests`` and its groups. An ``~example``,
     a ``~property``, a ``~run``, a ``~test`` and a run of bare assertions
-    are reported at their own address, and commentary ends a run. Lines are
+    (``TEST_LINES``) are reported at their own address, and commentary
+    ends a run. Lines are
     the node's text, one for each file line, and ``first_line`` is the line
     of the first (the one after the ``~sigil``, or a run's own first line,
     which has no sigil).
@@ -1426,7 +1519,7 @@ def claims_to_run(graph: NameGraph, module_address_: str) -> list[ClaimToRun]:
         address, sigil_line = node.address, node.start_line
         first_line = (None if node.start_line is None
                       else node.start_line + 1)
-        if _is_anonymous_test(node):
+        if node.kind == NodeKind.TEST_LINES:
             sigil_line, first_line = None, node.start_line
         text = graph.text(node.address) or ""
         lines = text.split("\n")
@@ -1447,12 +1540,12 @@ def add_cites_edges(graph: NameGraph) -> None:
     resolves each against the graph in the module the leaf is written
     in.  A resolved reference becomes an ``EdgeKind.CITES`` edge
     from the leaf that holds it to the node it names: one edge for each
-    leaf and target, carrying the line of the first reference to it.
+    leaf and target, carrying every line a reference to it is written on.
 
     Must be called after all ``enrich()`` and IMPORTS passes so that
     ``graph.resolve()`` has the full import context available.
     """
-    seen: set[tuple[str, str]] = set()
+    cited: dict[tuple[str, str], set[int]] = {}
     for leaf in list(graph.nodes(kind=NodeKind.PROSE)):
         context = graph.module_of(leaf.address)
         if context is None:
@@ -1461,27 +1554,13 @@ def add_cites_edges(graph: NameGraph) -> None:
             target = graph.resolve(ref.label, context=context)
             if target is None:
                 continue
-            key = (leaf.address, target.address)
-            if key not in seen:
-                graph.add_edge(Edge(
-                    source=leaf.address,
-                    target=target.address,
-                    kind=EdgeKind.CITES,
-                    start_line=ref.start_line,
-                ))
-                seen.add(key)
-
-
-def _is_anonymous_test(node: Node) -> bool:
-    """Whether *node* is an anonymous test, a run of bare assertion lines,
-    and not a named one (``~test <name>``).
-
-    Told apart by whether the document names it: a named test records
-    its name (``Node.name``). What the node is called cannot tell them
-    apart, as a name is free text (``~test test#1``), and neither can its
-    lines, which a module built by hand may lack.
-    """
-    return node.kind == NodeKind.TEST and node.name is None
+            lines = cited.setdefault((leaf.address, target.address), set())
+            if ref.start_line is not None:
+                lines.add(ref.start_line)
+    for (source, target), lines in cited.items():
+        graph.add_edge(Edge(
+            source=source, target=target, kind=EdgeKind.CITES,
+            lines=tuple(sorted(lines))))
 
 
 def _scanned_text(
@@ -1493,12 +1572,12 @@ def _scanned_text(
     A symbol's text, from the line the symbol starts on. A claim's or a
     named test's lines, without the blank ones before the first, from the
     first that has text: they begin on the line after the sigil. A run of
-    bare assertions (an anonymous test), from its own first line. A group
+    bare assertions (``TEST_LINES``), from its own first line. A group
     and ``#Tests`` hold tests, which are read on their own.
     """
     if node.kind == NodeKind.SYMBOL:
         return graph.text(node.address), node.start_line
-    if node.kind == NodeKind.TEST and _is_anonymous_test(node):
+    if node.kind == NodeKind.TEST_LINES:
         return textwrap.dedent(node.text or ""), node.start_line
     if KINDS[node.kind].runnable:
         lines = (node.text or "").split("\n")
@@ -1522,10 +1601,10 @@ def add_uses_edges(
     *call_extractor* on its text and adds a ``EdgeKind.USES`` edge for
     every returned name that resolves to a known symbol address.
 
-    Each edge carries ``start_line`` — the line of the first call site in
-    the .lob file: the line the scanned text starts on, plus the line in
-    that text, less one.  When that line is not known the field is
-    omitted.
+    Each edge carries ``lines``, every line a name is used on in the .lob
+    file, each once and in order: the line the scanned text starts on,
+    plus the line in that text, less one.  When no line is known there are
+    none.
 
     Both intra-module and cross-module references are handled identically:
     the lookup is name-based across the whole graph.  Unresolved names
@@ -1539,9 +1618,9 @@ def add_uses_edges(
     for node in graph.nodes(kind=NodeKind.SYMBOL):
         name_index.setdefault(node.label, []).append(node.address)
 
-    # first_call: (source_addr, target_addr) → the earliest line it is
-    # called on, or None when the line is not known
-    first_call: dict[tuple[str, str], int | None] = {}
+    # used: (source_addr, target_addr) → the lines it is used on, none when
+    # they are not known
+    used: dict[tuple[str, str], set[int]] = {}
     for node in (
         *graph.nodes(kind=NodeKind.SYMBOL),
         *(n for n in graph.nodes() if KINDS[n.kind].runnable),
@@ -1550,21 +1629,17 @@ def add_uses_edges(
         if not source:
             continue
         for ref_name, src_line in call_extractor(source):
-            line = None if base is None else base + (src_line - 1)
             for target_addr in name_index.get(ref_name, []):
-                key = (node.address, target_addr)
-                if key not in first_call or (
-                        line is not None and (
-                            first_call[key] is None
-                            or line < first_call[key])):
-                    first_call[key] = line
+                lines = used.setdefault((node.address, target_addr), set())
+                if base is not None:
+                    lines.add(base + (src_line - 1))
 
-    for (src_addr, tgt_addr), line in first_call.items():
+    for (src_addr, tgt_addr), lines in used.items():
         graph.add_edge(Edge(
             source=src_addr,
             target=tgt_addr,
             kind=EdgeKind.USES,
-            start_line=line,
+            lines=tuple(sorted(lines)),
         ))
 
 
@@ -1624,8 +1699,6 @@ def _what_it_is(node: Node) -> dict:
     """What a node is, apart from where it is: the facts both a query's
     answer and the document write for it."""
     d: dict = {}
-    if node.name is not None:
-        d["named"] = True
     for field_name in ("mode", "declares", "value"):
         value = getattr(node, field_name)
         if value is not None:
@@ -1776,15 +1849,15 @@ def _cross_references(graph: NameGraph, level: str) -> list[dict]:
         if source is None or target is None:
             continue
         key = (source, target, edge.kind.name)
+        line = edge.first_line
         if key not in merged:
             merged[key] = {"source": source, "target": target,
                            "kind": edge.kind.name}
-            if edge.start_line is not None:
-                merged[key]["start_line"] = edge.start_line
-        elif edge.start_line is not None and (
-                merged[key].get("start_line", edge.start_line + 1)
-                > edge.start_line):
-            merged[key]["start_line"] = edge.start_line
+            if line is not None:
+                merged[key]["start_line"] = line
+        elif line is not None and (
+                merged[key].get("start_line", line + 1) > line):
+            merged[key]["start_line"] = line
     return list(merged.values())
 
 
@@ -1813,12 +1886,9 @@ def node_summary(node: Node) -> dict:
 
 def sigil_of(node: Node) -> str:
     """The sigil that begins the node in its file (``~example``,
-    ``~property``, ``~run``, or ``~test`` for a test the document names),
-    or ``""`` for a node with none."""
-    facts = KINDS[node.kind]
-    if facts.sigil is None or (facts.sigil_needs_name and node.name is None):
-        return ""
-    return facts.sigil
+    ``~property``, ``~run`` or ``~test``), or ``""`` for a node with
+    none."""
+    return KINDS[node.kind].sigil or ""
 
 
 def content_tree(
@@ -1827,12 +1897,11 @@ def content_tree(
     """The subtree at *address*, nested and narrow, or ``None`` if there
     is no such node.
 
-    Each node has its ``address``, ``kind`` and ``start_line``,
-    ``"named": true`` when the document names it, its ``mode``,
-    ``declares`` and ``value`` when set, its ``text`` when it holds text,
-    and its ``children`` (what it contains, in document order) when it has
-    any, down *depth* ``CONTAINS`` steps (``0`` the node alone, ``None``
-    all of them). The root also has its ``file``. There
+    Each node has its ``address``, ``kind`` and ``start_line``, its
+    ``mode``, ``declares`` and ``value`` when set, its ``text`` when it
+    holds text, and its ``children`` (what it contains, in document order)
+    when it has any, down *depth* ``CONTAINS`` steps (``0`` the node alone,
+    ``None`` all of them). The root also has its ``file``. There
     are no edges, labels, sizes or references: nesting is the containment,
     the address carries the label, and the references are written in the
     text.
@@ -1849,8 +1918,6 @@ def content_tree(
 
     def entry(node: Node, remaining: int | None, holder_in: bool) -> dict:
         d: dict = {"address": node.address, "kind": node.kind.name}
-        if node.name is not None:
-            d["named"] = True
         for field_name in ("mode", "declares", "value"):
             value = getattr(node, field_name)
             if value is not None:
@@ -1883,7 +1950,7 @@ def _citations(graph: NameGraph) -> list[Edge]:
     merged)."""
     return [
         Edge(source=e["source"], target=e["target"], kind=EdgeKind.CITES,
-             start_line=e.get("start_line"))
+             lines=(e["start_line"],) if "start_line" in e else ())
         for e in _lifted_citations(graph)]
 
 

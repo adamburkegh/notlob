@@ -46,6 +46,7 @@
             "EXAMPLE",
             "RUN",
             "TEST",
+            "TEST_LINES",
             "EXTERNAL",
             "PROSE",
             "CODE",
@@ -60,10 +61,6 @@
             "IMPORT",
             "DECLARATION"
           ]
-        },
-        "named": {
-          "description": "True where the document gives the node a name; absent otherwise.",
-          "const": true
         },
         "mode": {
           "description": "When a RUN runs; present on a RUN only.",
@@ -142,6 +139,7 @@
             "EXAMPLE",
             "RUN",
             "TEST",
+            "TEST_LINES",
             "EXTERNAL",
             "PROSE",
             "CODE",
@@ -156,10 +154,6 @@
             "IMPORT",
             "DECLARATION"
           ]
-        },
-        "named": {
-          "description": "True where the document gives the node a name (a heading, a `##group`, a `~property` or a `~test`); its `label` is the name. Absent for an anonymous node and for what a document does not name.",
-          "const": true
         },
         "mode": {
           "description": "When a RUN runs; present on a RUN only. A bare `~run` is `on-invocation`.",

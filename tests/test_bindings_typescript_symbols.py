@@ -179,10 +179,12 @@ class TestExtractCalls:
         assert pairs["g"] == 2
         assert pairs["h"] == 5
 
-    def test_first_occurrence_wins(self):
+    def test_every_line_a_name_is_on_is_given(self):
         src = "function f() { g(); }\nfunction f2() { g(); }"
-        pairs = dict(extract_calls(src))
-        assert pairs["g"] == 1
+        assert extract_calls(src) == [("g", 1), ("g", 2)]
+
+    def test_a_name_twice_on_one_line_is_that_line_once(self):
+        assert extract_calls("const x = g() + g();") == [("g", 1)]
 
 
 def _span(info):

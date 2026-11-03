@@ -29,7 +29,7 @@ class TestTitles:
             "---\n\n#Appendix Notes\n\nMore text.\n")
         findings = check_titles(graph)
         assert [f.addresses for f in findings] == [
-            ("main#Notes Appendix", "main#appendix#1")]
+            ("main#Notes Appendix", "main#Notes")]
         assert "similar" in findings[0].message
 
     def test_an_unlike_appendix_title_is_not_flagged(self, tmp_path):
@@ -47,7 +47,7 @@ class TestStyle:
             "#Main\n\n    x = 1\n\n---\n\n#Appendix Notes\n\n"
             "* a\n\n* b\n")
         findings = check_style(graph)
-        assert [f.addresses for f in findings] == [("main#appendix#1",)]
+        assert [f.addresses for f in findings] == [("main#Notes",)]
         assert findings[0].severity == "advisory"
         assert "2" in findings[0].message
 
@@ -67,7 +67,7 @@ class TestQuantifier:
             "On the turn, each token fires a randomly chosen "
             "transition.\n")
         findings = check_quantifier(graph)
-        assert [f.addresses for f in findings] == [("main#appendix#1",)]
+        assert [f.addresses for f in findings] == [("main#Notes",)]
         assert "each token fires" in findings[0].message
 
     def test_a_claim_in_the_appendix_silences_it(self, tmp_path):

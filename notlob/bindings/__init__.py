@@ -40,13 +40,14 @@ class ClaimToRun:
     """A claim or test of a module, as notlob found it, for a binding to
     run.
 
-    address     The address its results are reported at: its own for an
-                ``~example``, a ``~property``, a ``~run`` and a ``~test``,
-                and for a run of bare assertions the address of the
-                ``##group`` or ``#Tests`` it is written in.
-    kind        ``"EXAMPLE"``, ``"PROPERTY"``, ``"RUN"`` or ``"TEST"``
-                (a ``NodeKind`` name, as ``notlob.graph`` imports this
-                module).
+    address     The address its results are reported at: its own, for
+                every kind, a run of bare assertions included (its address
+                is positional, in the ``##group`` or ``#Tests`` it is
+                written in).
+    kind        ``"EXAMPLE"``, ``"PROPERTY"``, ``"RUN"``, ``"TEST"`` (a
+                ``~test <name>``) or ``"TEST_LINES"`` (a run of bare
+                assertions): a ``NodeKind`` name, as ``notlob.graph``
+                imports this module.
     lines       Its lines, one for each line of the file; blank ones are
                 kept. A claim's are dedented.
     first_line  The line of the file that ``lines[0]`` is on, or ``None``
@@ -189,7 +190,8 @@ class BindingKit:
     Fields
     ------
     extract_symbols  Symbol extraction: code lines → names.
-    extract_calls    Call extraction: source text → referenced names.
+    extract_calls    Call extraction: source text → (name, line) pairs,
+                     one for every line a name is used on.
                      Returns statically visible references only; dynamic
                      calls (eval, getattr, method dispatch) are invisible
                      by design.  ``None`` when the binding does not
@@ -232,10 +234,10 @@ class BindingKit:
     them from the module's graph, wherever they are written (the body,
     subheadings, an ``#Appendix``, ``#Tests``), and gives each callable
     only the kinds it runs: ``"EXAMPLE"`` claims to ``run_examples``,
-    ``"PROPERTY"`` to ``run_properties``, ``"TEST"`` to ``run_tests``,
-    ``"RUN"`` to ``build``, and all of them to ``lint``. *module* stays
-    for assembly. A binding keeps everything about its language:
-    assembling code, splitting a claim into assertions, running,
+    ``"PROPERTY"`` to ``run_properties``, ``"TEST"`` and ``"TEST_LINES"``
+    to ``run_tests``, ``"RUN"`` to ``build``, and all of them to ``lint``.
+    *module* stays for assembly. A binding keeps everything about its
+    language: assembling code, splitting a claim into assertions, running,
     reporting.
 
     ``root`` is the project root (a ``Path``), or ``None`` without a

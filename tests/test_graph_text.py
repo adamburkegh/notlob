@@ -255,15 +255,15 @@ class TestWhatIndexAdds:
 
     def test_every_reference_the_graph_holds_is_a_line(self, project):
         """A use, a citation, a listing: each at the line it is written
-        on, once for a node (the first)."""
+        on, once for a node (the first of its lines)."""
         graph = _graph(project)
         index = _files(_text(project, "index"))
         numbers = {n for entries in index.values() for _, _, n in entries}
         for edge in graph.edges():
             if edge.kind in (EdgeKind.USES, EdgeKind.CITES,
                              EdgeKind.IMPORTS):
-                assert edge.start_line is not None, edge
-                assert edge.start_line in numbers, edge
+                assert edge.lines, edge
+                assert edge.first_line in numbers, edge
 
 
 @projects

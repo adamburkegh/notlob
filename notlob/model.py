@@ -239,11 +239,14 @@ class ReferencesSection:
 
 @dataclass
 class AppendixSection:
-    """A #Appendix … post-text section."""
+    """A #Appendix … post-text section. Its *name* is the grammar's
+    ``NAME`` after the marker (``Notes`` of ``#Appendix Notes``), ``None``
+    for a bare ``#Appendix``."""
     title:      str  # full token value, e.g. "#Appendix Notes"
     body:       list[BodyItem]
     start_line: int | None = None
     end_line:   int | None = None
+    name:       str | None = None
 
 
 PostSection = Union[
@@ -267,19 +270,27 @@ class PostText:
 
 @dataclass
 class Module:
-    """The semantic model of a single .lob file."""
+    """The semantic model of a single .lob file. *source* is the text of
+    the file when it was read from one, and ``None`` when it was not (the
+    graph's ``body`` of a node is the file's own lines, so a module with
+    no source has none)."""
     title:      str
     body:       list[BodyItem]
     post_text:  PostText | None = None
     start_line: int | None      = None
     end_line:   int | None      = None
+    source:     str | None      = field(
+        default=None, repr=False, compare=False)
 
 
 # ── Tree → model ─────────────────────────────────────────────
 
-def from_tree(tree: Tree) -> Module:
-    """Build a Module from a Lark start Tree."""
-    return _module(tree.children[0])
+def from_tree(tree: Tree, source: str | None = None) -> Module:
+    """Build a Module from a Lark start Tree. *source* is the text that was
+    parsed to it, kept as the module's :attr:`~Module.source`."""
+    module = _module(tree.children[0])
+    module.source = source
+    return module
 
 
 def _line(tok) -> int | None:
@@ -621,12 +632,13 @@ def _appendix_section(node: Tree) -> AppendixSection:
     # not in the tree, so its line is the node's own.
     named = bool(node.children) and getattr(
         node.children[0], "type", "") == "NAME"
-    name = str(node.children[0]) if named else ""
+    name = str(node.children[0]).strip() if named else None
     title = f"#Appendix {name}" if named else "#Appendix"
     body = _body_from_items(node.children[1:] if named else node.children)
     start = node.meta.line
     return AppendixSection(
         title=title,
+        name=name,
         body=body,
         start_line=start,
         end_line=body[-1].end_line if body else start,

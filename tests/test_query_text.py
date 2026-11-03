@@ -278,16 +278,17 @@ class TestSigils:
         assert have == {"EXAMPLE": "~example", "PROPERTY": "~property",
                         "RUN": "~run", "TEST": "~test"}
 
-    def test_only_a_named_test_has_its_sigil(self):
-        assert KINDS[NodeKind.TEST].sigil_needs_name
-        assert not any(KINDS[k].sigil_needs_name for k in NodeKind
-                       if k != NodeKind.TEST)
+    def test_a_test_has_its_sigil_and_its_lines_have_none(self):
+        assert KINDS[NodeKind.TEST].sigil == "~test"
+        assert KINDS[NodeKind.TEST_LINES].sigil is None
 
     def test_a_run_of_bare_assertions_has_none_and_a_named_test_has(
         self, monkeypatch,
     ):
         monkeypatch.chdir(RETAIL)
-        _, out, _ = _query(cmd_query_search, "*", "TEST")
+        _, tests, _ = _query(cmd_query_search, "*", "TEST")
+        _, lines, _ = _query(cmd_query_search, "*", "TEST_LINES")
+        out = tests + lines
         by_address = {a: line for (a, _), line in
                       zip(_parse(out), out.splitlines())}
         named = f"{DISCOUNTS}#Tests#composition#composition_is_commutative"

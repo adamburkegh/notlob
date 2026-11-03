@@ -82,7 +82,7 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   `--format text|json`.** `search`, `children`, `imports`, `imported-by`,
   `callers`, `callees`, `cites` and `cited-by` print text, a line a node,
   in three columns aligned within the answer: its sigil (`~example`,
-  `~property`, `~run`, or `~test` for a named test; blank for what has
+  `~property`, `~run`, or `~test`; blank for what has
   none), its address, and `file:line` from the project root. For a query
   that follows an edge that line is where the edge is written (the use, the
   citation, the listing), which the graph held and the answer dropped; for
@@ -148,6 +148,36 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   does. A `binding.lob` that does not parse stops them all, `weave`
   included. Library callers
   of `build_package` get `ProjectParseError`, which lists the failures.
+- **Breaking: a run of test lines is `TEST_LINES`, and an appendix is
+  addressed by its title.** `TEST` held both a `~test <name>` and a run of
+  bare assertions; now `TEST` is the `~test` alone and always has a name,
+  and a run of bare assertions is `TEST_LINES`, with the address it had
+  (`roman/numerals#Tests#encoding#test#1`). The new kind is in the `kind`
+  lists of `name_graph.json`, `query_result.json` and `test_result.json`,
+  and is the class `notlob:TestLines`; `notlob test --format json` reports it
+  for the lines it ran, and `notlob query search * TEST` no longer lists
+  them. An appendix has no ordinal: `#Appendix Glossary` is
+  `module#Glossary` (kind `APPENDIX`, as before), and a bare `#Appendix` is
+  `module#Appendix`, where both were `module#appendix#1`, `#2`, and what is
+  written in one is addressed from there. A title written twice, two bare
+  `#Appendix` sections, or an `#Appendix Glossary` beside a `##Glossary` is
+  an address collision. Library callers: `anonymous_address` is now
+  `positional_address`, and `KindFacts.sigil_needs_name` is gone.
+- **Breaking: `named` is gone from the graph document, the query answers
+  and the Turtle.** It marked a node whose address ends in a name the
+  document gives it; every module, symbol and appendix now has a name
+  (`Node.name`), so it would have been true of nearly everything. The
+  `named` property is out of `name_graph.json`, `query_result.json` and
+  `notlob.ttl`.
+- **Breaking, for library callers and binding authors: a reference keeps
+  every line it is written on.** `Edge.start_line` is now `Edge.lines`, a
+  tuple of the lines in order, each once (`Edge.first_line` gives the
+  first), and there is one edge for each source, target and kind. A
+  binding's `extract_calls` gives a `(name, line)` pair for every line a
+  name is used on, not only the first. What the commands print is
+  unchanged. Also new: `Node.body`, a written node's own lines as they are
+  in its file; `Module.source`, the text a module was parsed from; and
+  `AppendixSection.name`.
 - **Breaking: the MCP tools are the commands, and answer as they do.**
   `notlob_test` and `notlob_check` answered in JSON whatever was asked;
   they answer in text now, as `notlob test` and `notlob check` do, and a

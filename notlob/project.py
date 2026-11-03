@@ -21,7 +21,7 @@ from typing import Callable
 
 from .graph import (
     module_address,
-    add_cites_edges, add_uses_edges, build, enrich,
+    add_bodies, add_cites_edges, add_uses_edges, build, enrich,
     AddressCollisionError, Edge, EdgeKind, Node, NodeKind, NameGraph,
 )
 from .model import Module, ReferencesSection
@@ -60,17 +60,20 @@ def parse_failure(path: Path, root: Path, exc: Exception) -> str:
 def parse_project(root: Path) -> list[tuple[Path, Module]]:
     """Every ``.lob`` file under *root*, ``binding.lob`` included, parsed
     to its :class:`~notlob.model.Module`: ``(path, module)`` in sorted path
-    order. The one place a project's files are read. If any do not parse,
+    order, each module holding the text of its file (its ``source``, which
+    is where the graph's bodies come from). The one place a project's
+    files are read. If any do not parse,
     all of them have been read first, and :class:`ProjectParseError` lists
     each failure."""
-    from .parser import parse_file
+    from .parser import parse
     from .model import from_tree
 
     parsed: list[tuple[Path, Module]] = []
     unparsed: list[str] = []
     for path in sorted(root.glob("**/*.lob")):
         try:
-            parsed.append((path, from_tree(parse_file(path))))
+            source = path.read_text(encoding="utf-8")
+            parsed.append((path, from_tree(parse(source), source)))
         except Exception as exc:
             unparsed.append(parse_failure(path, root, exc))
     if unparsed:
@@ -277,7 +280,8 @@ def _module_graph(
     split_imports: Callable | None = None,
 ) -> NameGraph:
     """The graph of the module at *path* in a package, its tree and, when
-    there is an *extractor*, its symbols and import statements.
+    there is an *extractor*, its symbols and import statements, and the
+    ``body`` of each node written in it (see :func:`add_bodies`).
 
     A name that collides raises, unless a list of *collisions* is given.
     Then the module keeps its tree without symbols and ``(path, error)``
@@ -287,6 +291,7 @@ def _module_graph(
         graph = build(module, file)
         if extractor is not None:
             enrich(graph, module, extractor, split_imports)
+        add_bodies(graph, module)
         return graph
     found: list[AddressCollisionError] = []
     graph = build(module, file, collisions=found)
@@ -296,6 +301,7 @@ def _module_graph(
         except AddressCollisionError as exc:
             found.append(exc)
             graph = build(module, file, collisions=[])
+    add_bodies(graph, module)
     if found:
         collisions.append((path, found[0]))
     return graph
@@ -386,7 +392,8 @@ def build_package(
                     source=listing.address,
                     target=dep,
                     kind=EdgeKind.IMPORTS,
-                    start_line=listing.start_line,
+                    lines=(() if listing.start_line is None
+                           else (listing.start_line,)),
                 ))
                 seen.add(key)
 
@@ -424,10 +431,12 @@ def _add_external_nodes(graph: NameGraph) -> None:
                 address=addr,
                 label=addr,
                 kind=NodeKind.EXTERNAL,
+                name=addr,
             ))
         graph.add_edge(Edge(
             source=declaration.address,
             target=addr,
             kind=EdgeKind.USES_EXTERNAL,
-            start_line=declaration.start_line,
+            lines=(() if declaration.start_line is None
+                   else (declaration.start_line,)),
         ))

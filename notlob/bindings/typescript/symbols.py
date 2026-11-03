@@ -115,7 +115,8 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
     preceded by ``.`` (method calls).  Method calls require type
     information to resolve and are excluded by design — this is a known
     ceiling of static analysis without ``tsc``.  *line* is 1-indexed
-    within *source*; first occurrence is returned.
+    within *source*; a name has a pair for every line it is on, once for
+    each line.
 
     >>> sorted(extract_calls("const x = toRoman(n) + fromRoman(s);"))
     [('fromRoman', 1), ('toRoman', 1)]
@@ -124,14 +125,12 @@ def extract_calls(source: str) -> list[tuple[str, int]]:
     """
     defined = {info.name for info in extract_symbols(source.splitlines())}
     exclude = defined | _TS_BUILTINS
-    first_line: dict[str, int] = {}
+    found: set[tuple[str, int]] = set()
     for m in _TS_CALL_RE.finditer(source):
         name = m.group(1)
         if name not in exclude:
-            line = source.count('\n', 0, m.start()) + 1
-            if name not in first_line:
-                first_line[name] = line
-    return sorted(first_line.items())
+            found.add((name, source.count('\n', 0, m.start()) + 1))
+    return sorted(found)
 
 
 def split_imports(

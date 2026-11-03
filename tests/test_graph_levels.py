@@ -158,7 +158,7 @@ class TestTheDocument:
 
 
 class TestOutline:
-    def test_every_node_but_the_anonymous_leaves(self):
+    def test_every_node_but_the_positional_leaves(self):
         graph = _graph(_EVERYTHING)
         doc = graph.to_dict(level="outline")
         shown = {n.address for n in graph.nodes()
@@ -170,13 +170,12 @@ class TestOutline:
                  _graph(_EVERYTHING).to_dict()["nodes"]}
         assert kinds == {
             "MODULE", "SUBHEADING", "SYMBOL", "EXAMPLE", "PROPERTY", "RUN",
-            "TESTS", "TEST_GROUP", "TEST", "APPENDIX"}
+            "TESTS", "TEST_GROUP", "TEST", "TEST_LINES", "APPENDIX"}
 
     def test_the_fields_of_a_node(self):
         nodes = _by_address(_graph(_EVERYTHING).to_dict())
         assert nodes["m#Sec"] == {
-            "address": "m#Sec", "kind": "SUBHEADING",
-            "named": True, "start_line": 22}
+            "address": "m#Sec", "kind": "SUBHEADING", "start_line": 22}
         assert nodes["m#f"]["start_line"] == 8
         assert "end_line" not in nodes["m#f"]
 
@@ -189,14 +188,10 @@ class TestOutline:
             "kind": "SYMBOL",
             "start_line": 19}
 
-    def test_named_is_where_the_document_gives_a_name(self):
-        nodes = _by_address(_graph(_EVERYTHING).to_dict())
-        assert nodes["m#p"]["named"] is True
-        assert nodes["m#Tests#grp"]["named"] is True
-        assert nodes["m#Tests#grp#nm"]["named"] is True
-        assert "named" not in nodes["m#example#1"]
-        assert "named" not in nodes["m#f"]
-        assert "named" not in nodes["m#Tests#test#1"]
+    def test_no_node_is_marked_named(self):
+        for level in LEVELS:
+            doc = _graph(_EVERYTHING).to_dict(level=level)
+            assert all("named" not in n for n in doc["nodes"])
 
     def test_the_name_itself_is_never_printed_it_is_in_the_address(self):
         for level in LEVELS:
@@ -273,8 +268,9 @@ class TestIndex:
     def test_a_section_cites_a_node_once_at_the_earlier_line(self):
         graph = _graph(
             "#M\n\n##S\n\nFirst #T.\n\nSecond #T.\n\n##T\n\nTarget.\n")
-        assert [(e.source, e.target, e.start_line)
-                for e in cites_edges(graph, "m#S")] == [("m#S", "m#T", 5)]
+        assert [(e.source, e.target, e.lines)
+                for e in cites_edges(graph, "m#S")] == [
+                    ("m#S", "m#T", (5,))]
 
     def test_every_node_has_a_size(self):
         doc = _graph(_EVERYTHING).to_dict(level="index")
@@ -318,7 +314,7 @@ class TestFull:
     def test_a_containers_text_is_not_repeated(self):
         nodes = _by_address(_graph(_EVERYTHING).to_dict(level="full"))
         for address in ("m", "m#Sec", "m#Tests", "m#post-text",
-                        "m#Tests#grp", "m#appendix#1"):
+                        "m#Tests#grp", "m#Notes"):
             assert "text" not in nodes[address], address
 
     def test_the_text_of_a_paragraph_and_a_claim(self):
@@ -336,7 +332,7 @@ class TestEveryExample:
         assert not [n for n in with_text if n["kind"] == "SYMBOL"]
         assert {n["kind"] for n in with_text} <= {
             "PROSE", "CODE", "BULLETS", "EXAMPLE", "PROPERTY", "RUN", "TEST",
-            "LISTING", "IMPORT", "DECLARATION"}
+            "TEST_LINES", "LISTING", "IMPORT", "DECLARATION"}
 
     def test_index_is_full_without_the_text(self, name, kit):
         graph = _project(name, kit)

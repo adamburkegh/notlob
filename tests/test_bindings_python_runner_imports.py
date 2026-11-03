@@ -17,7 +17,7 @@ from notlob.bindings.python.runner import Status
 
 run_examples = in_project(runner.run_examples, kit, "EXAMPLE")
 run_properties = in_project(runner.run_properties, kit, "PROPERTY")
-run_tests = in_project(runner.run_tests, kit, "TEST")
+run_tests = in_project(runner.run_tests, kit, "TEST", "TEST_LINES")
 
 
 # ── Helpers ───────────────────────────────────────────────────

@@ -43,7 +43,7 @@ from notlob.project import build_package
 
 run_examples = in_project(_run_examples, kit, "EXAMPLE")
 run_properties = in_project(_run_properties, kit, "PROPERTY")
-run_tests = in_project(_run_tests, kit, "TEST")
+run_tests = in_project(_run_tests, kit, "TEST", "TEST_LINES")
 build_python = building(_build_python, kit)
 
 _PYTHON = "#B\n\n---\n\n#Binding\n    ~language python\n"

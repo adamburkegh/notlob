@@ -19,8 +19,8 @@ from notlob.project import find_project_root, load_dependencies
 
 def claims_of(module, *kinds: str) -> list[ClaimToRun]:
     """The claims of *module* as notlob collects them, only those of the
-    given *kinds* (``"EXAMPLE"``, ``"PROPERTY"``, ``"RUN"``, ``"TEST"``)
-    when there are any."""
+    given *kinds* (``"EXAMPLE"``, ``"PROPERTY"``, ``"RUN"``, ``"TEST"``,
+    ``"TEST_LINES"``) when there are any."""
     graph = build(module)
     return [c for c in claims_to_run(graph, module_address(module.title))
             if not kinds or c.kind in kinds]

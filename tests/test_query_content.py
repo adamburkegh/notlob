@@ -168,8 +168,7 @@ def test_the_lines_of_a_node_match_its_text_in_the_graph(project):
         if text is None or node.kind == NodeKind.MODULE:
             continue
         lines = _lines(root / node.file)[node.start_line - 1:node.end_line]
-        if KINDS[node.kind].claim or (
-                node.kind == NodeKind.TEST and node.name is not None):
+        if KINDS[node.kind].claim or node.kind == NodeKind.TEST:
             lines = lines[1:]               # the sigil line
         elif node.kind == NodeKind.BULLETS:
             lines = [ln.lstrip()[1:] for ln in lines]
@@ -248,11 +247,9 @@ class TestJson:
                      if n["address"] == f"{SECTION}#prose#1")
         assert "Decoding is the inverse" in prose["text"]
 
-    def test_named_is_there_when_the_document_names_it(self, roman, capsys):
+    def test_no_node_is_marked_named(self, roman, capsys):
         _rc, doc = _json(capsys, "roman/numerals")
-        named = {n["address"]: n.get("named") for n in _walk(doc)}
-        assert named[SECTION] is True
-        assert named[f"{SECTION}#example#1"] is None
+        assert all("named" not in n for n in _walk(doc))
 
     def test_a_symbol_asked_for_alone_carries_its_text(self, roman, capsys):
         _rc, doc = _json(capsys, "roman/numerals#to_roman")

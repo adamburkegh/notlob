@@ -28,7 +28,7 @@ from notlob.bindings.python import runner
 
 run_examples = collecting(runner.run_examples, "EXAMPLE")
 run_properties = collecting(runner.run_properties, "PROPERTY")
-run_tests = collecting(runner.run_tests, "TEST")
+run_tests = collecting(runner.run_tests, "TEST", "TEST_LINES")
 
 
 class TestSitePackagesResolvesByImportNotPrefix:

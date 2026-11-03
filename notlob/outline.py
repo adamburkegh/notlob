@@ -31,19 +31,18 @@ class Entry(NamedTuple):
 
 def _words(node: Node, level: str) -> str | None:
     """What the line of *node* says, or ``None`` when it has none: what
-    ``outline`` leaves out has no line, nor has a run of bare assertions,
-    and a declaration is a line from ``index`` on. A heading, group or
-    symbol says its name; a claim or a named test its sigil and then its
-    name, if it has one."""
+    ``outline`` leaves out has no line, nor has a run of test lines, and a
+    declaration is a line from ``index`` on. A heading, group or symbol
+    says its name; a claim or a test its sigil and then its name, if it
+    has one."""
     if node.kind == NodeKind.DECLARATION:
         if level == "outline":
             return None
         return " ".join(filter(None, (f"~{node.declares}", node.value)))
-    if KINDS[node.kind].hidden_at_outline:
+    if KINDS[node.kind].hidden_at_outline or node.kind == NodeKind.TEST_LINES:
         return None
     if KINDS[node.kind].sigil is not None:
-        sigil = sigil_of(node)
-        return " ".join(filter(None, (sigil, node.name))) if sigil else None
+        return " ".join(filter(None, (sigil_of(node), node.name)))
     return node.label
 
 
@@ -88,16 +87,16 @@ def _references(
     first."""
     first: dict[tuple[str, EdgeKind, str], tuple[int, str]] = {}
     for edge in graph.edges():
-        if edge.kind not in _REFERENCES or edge.start_line is None:
+        line = edge.first_line
+        if edge.kind not in _REFERENCES or line is None:
             continue
         name = _name(graph, edge.target)
         holder = _holder(graph, edge.source, level)
         if name is None or holder is None:
             continue
         key = (holder.address, edge.kind, edge.target)
-        if key not in first or edge.start_line < first[key][0]:
-            first[key] = (edge.start_line,
-                          f"{edge.kind.name.lower()} {name}")
+        if key not in first or line < first[key][0]:
+            first[key] = (line, f"{edge.kind.name.lower()} {name}")
     held: dict[str, list[tuple[int, str]]] = {}
     for (address, _, _), reference in first.items():
         held.setdefault(address, []).append(reference)
