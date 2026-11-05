@@ -2,11 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/query-result",
   "title": "QueryResult",
-  "description": "What the `notlob query ...` commands print to stdout with `--format json`, each a JSON value (`search`, `children`, `imports`, `imported-by`, `callers`, `callees`, `cites` and `cited-by` print text by default, a line a node). `children`, `imports`, `imported-by`, `callers`, `callees`, `cites`, `cited-by` and `search` print a NodeList (an empty array when there is nothing to list, exit code 0). `resolve` prints a NodeOrNull. `content` prints, with `--format json`, a ContentOrNull: the subtree at an address, nested and narrow (by default it prints the source as text, which is not JSON). All print `null` and exit 1 when the address or label does not resolve. A node, a reference and an edge here are the name-graph's (`GraphRef` and `Edge` are identical to `GraphRef` and `GraphEdge` in name_graph.json, and `Node` has the properties of `GraphNode`; a test keeps them so). A query prints every node with its `label` and `file`, which the graph document gives a module only, because an answer stands on its own. With no project, a .lob file that does not parse, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
+  "description": "What the `notlob query ...` commands print to stdout with `--format json`, each a JSON value (`search`, `children`, `imports`, `imported-by`, `callers`, `callees`, `cites` and `cited-by` print text by default, a line a node). `children`, `imports`, `imported-by`, `callers`, `callees`, `cites`, `cited-by` and `search` print a NodeList (an empty array when there is nothing to list, exit code 0). `resolve` prints a NodeOrNull. `content` prints, with `--format json`, a graph document (name_graph.json): the view started at the address, at `full`; by default it prints the source as text, which is not JSON. All print `null` and exit 1 when the address or label does not resolve. A node here is the name-graph's at `outline` (`Node` has the properties of `GraphNode` in name_graph.json; a test keeps them so), with the `file` that the graph document gives only the root of a view, because an answer stands on its own. With no project, a .lob file that does not parse, or an address collision that stops the graph being built, nothing is printed to stdout, an error goes to stderr, and the exit code is 1.",
   "anyOf": [
     {"$ref": "#/definitions/NodeList"},
     {"$ref": "#/definitions/Node"},
-    {"$ref": "#/definitions/Content"},
     {"type": "null"}
   ],
   "definitions": {
@@ -22,159 +21,42 @@
         {"type": "null"}
       ]
     },
-    "Content": {
-      "description": "A node and what it contains, down the depth asked for, nested: `children` are what the node contains, in document order. There are no edges (nesting is the containment; the other queries answer the cross-references), no label (the address carries it), no size and no references (they are written in the text). Each line of source is in the answer once: a leaf holds its `text`, and a symbol holds none unless the code block it is written in is not in the answer. The root also has its `file`.",
-      "type": "object",
-      "required": [
-        "address",
-        "kind"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "address": {
-          "description": "Globally unique machine identifier, e.g. 'roman/numerals#to_roman'.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "What kind of element this node is.",
-          "type": "string",
-          "enum": [
-            "MODULE",
-            "SUBHEADING",
-            "SYMBOL",
-            "PROPERTY",
-            "EXAMPLE",
-            "RUN",
-            "TEST",
-            "TEST_LINES",
-            "EXTERNAL",
-            "PROSE",
-            "CODE",
-            "BULLETS",
-            "APPENDIX",
-            "TESTS",
-            "POST_TEXT",
-            "TEST_GROUP",
-            "REFERENCES",
-            "BINDING",
-            "LISTING",
-            "IMPORT",
-            "DECLARATION"
-          ]
-        },
-        "mode": {
-          "description": "When a RUN runs; present on a RUN only.",
-          "type": "string",
-          "enum": [
-            "on-load",
-            "on-invocation"
-          ]
-        },
-        "declares": {
-          "description": "What a DECLARATION declares; present on a DECLARATION only.",
-          "type": "string",
-          "enum": [
-            "language",
-            "external",
-            "on-build",
-            "keep-generated-src"
-          ]
-        },
-        "value": {
-          "description": "The value a DECLARATION gives it, when it has one.",
-          "type": "string"
-        },
-        "file": {
-          "description": "The .lob file the root is written in, relative to the project root, with '/' separators. On the root only.",
-          "type": "string"
-        },
-        "start_line": {
-          "description": "1-based line of its file where it begins.",
-          "type": "integer"
-        },
-        "text": {
-          "description": "The text the node holds: a paragraph with its references written with their sigils, a dedented code block, a bullet list's items one to a line, a claim's dedented lines, a run of assertions or a named test as written. Absent on a node that holds none.",
-          "type": "string"
-        },
-        "children": {
-          "description": "What the node contains, in document order. Absent when it contains nothing, or at the depth asked for.",
-          "type": "array",
-          "items": {"$ref": "#/definitions/Content"}
-        }
-      }
-    },
-    "ContentOrNull": {
-      "description": "A node's content, or null when the address does not resolve.",
-      "anyOf": [
-        {"$ref": "#/definitions/Content"},
-        {"type": "null"}
-      ]
-    },
     "Node": {
-      "description": "One element of a .lob file: a module, a section, a paragraph, a code block, a claim, a test, a symbol, or an external file.",
+      "description": "One element of a .lob file: a module, a section, a paragraph, a code block, a claim, a test, a symbol, or an external file. An answer never carries a `body`.",
       "type": "object",
-      "required": [
-        "address",
-        "label",
-        "kind"
-      ],
+      "required": ["address", "kind"],
       "additionalProperties": false,
       "properties": {
         "address": {
-          "description": "Globally unique machine identifier, e.g. 'roman/numerals#to_roman'.",
+          "description": "Globally unique machine identifier. Named, as in 'roman/numerals#to_roman', or positional, as in 'roman/numerals#Decoding#prose#1'.",
           "type": "string"
         },
-        "label": {
-          "description": "Human-readable name as written in source.",
+        "name": {
+          "description": "The node's name, as the author wrote it: a module's title, a heading, a named claim or test, an appendix's title, or a symbol as written in the code. Present on every node that has one; a node with a positional address has none. The address is built from names, not the other way round.",
           "type": "string"
         },
         "kind": {
           "description": "What kind of element this node is.",
           "type": "string",
           "enum": [
-            "MODULE",
-            "SUBHEADING",
-            "SYMBOL",
-            "PROPERTY",
-            "EXAMPLE",
-            "RUN",
-            "TEST",
-            "TEST_LINES",
-            "EXTERNAL",
-            "PROSE",
-            "CODE",
-            "BULLETS",
-            "APPENDIX",
-            "TESTS",
-            "POST_TEXT",
-            "TEST_GROUP",
-            "REFERENCES",
-            "BINDING",
-            "LISTING",
-            "IMPORT",
-            "DECLARATION"
+            "MODULE", "SUBHEADING", "SYMBOL", "PROPERTY", "EXAMPLE", "RUN",
+            "TEST", "TEST_LINES", "EXTERNAL", "PROSE", "CODE", "BULLETS",
+            "APPENDIX", "TESTS", "POST_TEXT", "TEST_GROUP", "REFERENCES",
+            "BINDING", "LISTING", "IMPORT", "DECLARATION"
           ]
         },
         "mode": {
           "description": "When a RUN runs; present on a RUN only. A bare `~run` is `on-invocation`.",
           "type": "string",
-          "enum": [
-            "on-load",
-            "on-invocation"
-          ]
+          "enum": ["on-load", "on-invocation"]
         },
         "declares": {
           "description": "What a DECLARATION declares; present on a DECLARATION only.",
           "type": "string",
-          "enum": [
-            "language",
-            "external",
-            "on-build",
-            "keep-generated-src"
-          ]
+          "enum": ["language", "external", "on-build", "keep-generated-src"]
         },
         "value": {
-          "description": "The value a DECLARATION gives it (the language, or the file), when it has one; present on a DECLARATION only.",
+          "description": "The value a DECLARATION gives it, when it has one; present on a DECLARATION only.",
           "type": "string"
         },
         "file": {
@@ -182,86 +64,12 @@
           "type": "string"
         },
         "start_line": {
-          "description": "1-based line of its file where it begins.",
+          "description": "The line number where it begins in its file; a file's first line is 1.",
           "type": "integer"
         },
-        "size": {
-          "description": "The characters of text held at or under the node, each leaf's text counted once; a symbol holds none of its own, so it adds nothing to its section and its own size is that of its lines. Present from `index` on.",
-          "type": "integer",
-          "minimum": 0
-        },
-        "refs": {
-          "description": "The references a paragraph holds, in the order written. Present on a PROSE node from `index` on.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/GraphRef"
-          }
-        },
-        "text": {
-          "description": "The text the node holds: a paragraph with its references written with their sigils, a dedented code block, a bullet list's items one to a line, a claim's dedented lines, a run of assertions or a named test as written. Present at `full` on each node that holds text, and never on a symbol (its lines are in its code block).",
+        "body": {
+          "description": "The node's own written lines, verbatim, and not what is under it: a heading's body is its line, and a POST_TEXT's is `---`. A SYMBOL and an EXTERNAL have none of their own; but where a view does not show the node that holds a line, the line is in the body of the deepest node it shows that covers it, so a view started at a SYMBOL gives it its lines. The bodies of a file, each placed at its `start_line`, are the file, or, in a view that starts in it, the part of it the start covers.",
           "type": "string"
-        }
-      }
-    },
-    "GraphRef": {
-      "description": "A `#Label` or `##Label` written in a paragraph.",
-      "type": "object",
-      "required": [
-        "label",
-        "sub",
-        "start_line"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "label": {
-          "description": "What it names, without the sigil.",
-          "type": "string"
-        },
-        "sub": {
-          "description": "True for `##Label`, which names a subheading of the module only.",
-          "type": "boolean"
-        },
-        "start_line": {
-          "description": "1-based line where it is written.",
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      }
-    },
-    "Edge": {
-      "description": "A directed relationship between two nodes.",
-      "type": "object",
-      "required": [
-        "source",
-        "target",
-        "kind"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "source": {
-          "description": "Address of the source node.",
-          "type": "string"
-        },
-        "target": {
-          "description": "Address of the target node.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "CONTAINS: a node to what is written in it (the trees); CITES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
-          "type": "string",
-          "enum": [
-            "CONTAINS",
-            "CITES",
-            "USES",
-            "IMPORTS",
-            "USES_EXTERNAL"
-          ]
-        },
-        "start_line": {
-          "description": "1-based line of the source's file of the first reference or call site, where the edge has one. Where edges are merged, the earliest.",
-          "type": "integer"
         }
       }
     }

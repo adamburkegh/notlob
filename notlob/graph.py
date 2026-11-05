@@ -33,7 +33,7 @@ opens a scope, is stated once in :data:`KINDS`:
   Module:     title → lowercase, spaces → slashes
               "Pricing Discounts" → "pricing/discounts"
 
-  Subheading: module_address + "#" + label  (label preserved as-is)
+  Subheading: module_address + "#" + name  (name preserved as-is)
               "pricing/discounts#Stacking Discounts"
 
   Symbol:     module_address + "#" + name, wherever in the module it is
@@ -45,18 +45,23 @@ opens a scope, is stated once in :data:`KINDS`:
   Positional: parent_address + "#" + kind + "#" + n, counted from 1
               "pricing/discounts#prose#2", "pricing/discounts#example#1"
 
-Addresses are machine identifiers; labels are the human-readable names as
-written in source.  A name collision between nodes of different kinds
-(a symbol and a subheading in one module) is an error: all named things
-share one namespace per module.  The post-text (what follows ``---``) is
-a node in the tree but no part of an address: ``#Tests`` and the
-appendices are addressed as if they hung from the module.
+Addresses are machine identifiers; a name is the human-readable name as
+written in source, and a node addressed by position has none.  A name
+collision between nodes of different kinds (a symbol and a subheading in
+one module) is an error: all named things share one namespace per module.
+The post-text (what follows ``---``) is a node in the tree but no part of
+an address: ``#Tests`` and the appendices are addressed as if they hung
+from the module.
 
 This scheme is isomorphic to URI fragment addressing.
 
 Edge vocabulary
 ---------------
   CONTAINS      — parent → child, where a node is written; the tree
+  CONTAINS_INDIRECTLY
+                — a node → what is written in it, through nodes a view
+                  does not show; only a view writes one (see
+                  :mod:`notlob.view`)
   CITES         — paragraph → the node a ``#Label`` in it names
   USES          — code → a symbol it refers to by name
   IMPORTS       — module → module
@@ -80,10 +85,8 @@ Usage::
 from __future__ import annotations
 
 import fnmatch
-import json
-import re
 import textwrap
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Callable, Iterator
 
@@ -194,11 +197,6 @@ class KindFacts:
     opens_scope      a name written in a node of this kind belongs to it
     claim            an ``~example``, ``~property`` or ``~run``
     runnable         a binding runs it: a claim, or a test
-    hidden_at_outline
-                     the ``outline`` leaves it out, and moves its edges to
-                     the section that holds it: a paragraph, code block,
-                     bullet list, listing, import statement or declaration,
-                     and the region after the ``---``
     section          a section of the document
     region           a region of the tree, no part of an address
     text_in_holder   its text is lines of the node that holds it
@@ -207,18 +205,20 @@ class KindFacts:
     numbered         a positional address has an ordinal after the segment
     sigil            the sigil that begins it in its file, ``None`` for a kind
                      with none
+    heading          the word a reader's text says before its name, ``None``
+                     for a kind with none
     """
     rank:           int
     opens_scope:    bool = False
     claim:          bool = False
     runnable:       bool = False
-    hidden_at_outline: bool = False
     section:        bool = False
     region:         bool = False
     text_in_holder: bool = False
     segment:        str | None = None
     numbered:       bool = False
     sigil:          str | None = None
+    heading:        str | None = None
 
 
 #: The facts of each kind, one row for every :class:`NodeKind`.
@@ -239,27 +239,23 @@ KINDS: dict[NodeKind, KindFacts] = {
     NodeKind.TEST_LINES: KindFacts(
         Rank.BLOCK, runnable=True, segment="test", numbered=True),
     NodeKind.EXTERNAL: KindFacts(Rank.REFERENCES),
-    NodeKind.PROSE: KindFacts(
-        Rank.BLOCK, hidden_at_outline=True, segment="prose", numbered=True),
-    NodeKind.CODE: KindFacts(
-        Rank.BLOCK, hidden_at_outline=True, segment="code", numbered=True),
+    NodeKind.PROSE: KindFacts(Rank.BLOCK, segment="prose", numbered=True),
+    NodeKind.CODE: KindFacts(Rank.BLOCK, segment="code", numbered=True),
     NodeKind.BULLETS: KindFacts(
-        Rank.BLOCK, hidden_at_outline=True, segment="bullets", numbered=True),
-    NodeKind.APPENDIX: KindFacts(Rank.STRUCTURE, section=True),
+        Rank.BLOCK, segment="bullets", numbered=True),
+    NodeKind.APPENDIX: KindFacts(
+        Rank.STRUCTURE, section=True, heading="Appendix"),
     NodeKind.TESTS: KindFacts(Rank.STRUCTURE, opens_scope=True),
     NodeKind.POST_TEXT: KindFacts(
-        Rank.BLOCK, hidden_at_outline=True, region=True,
-        segment="post-text"),
+        Rank.BLOCK, region=True, segment="post-text"),
     NodeKind.TEST_GROUP: KindFacts(Rank.STRUCTURE, opens_scope=True),
     NodeKind.REFERENCES: KindFacts(Rank.STRUCTURE),
     NodeKind.BINDING: KindFacts(Rank.STRUCTURE),
     NodeKind.LISTING: KindFacts(
-        Rank.BLOCK, hidden_at_outline=True, segment="listing", numbered=True),
-    NodeKind.IMPORT: KindFacts(
-        Rank.BLOCK, hidden_at_outline=True, segment="import", numbered=True),
+        Rank.BLOCK, segment="listing", numbered=True),
+    NodeKind.IMPORT: KindFacts(Rank.BLOCK, segment="import", numbered=True),
     NodeKind.DECLARATION: KindFacts(
-        Rank.REFERENCES, hidden_at_outline=True, segment="declaration",
-        numbered=True),
+        Rank.REFERENCES, segment="declaration", numbered=True),
 }
 
 #: The named levels, each a rank: a view made from one carries its name,
@@ -277,7 +273,6 @@ class Node:
     """A node in the name-graph: one element of a ``.lob`` file.
 
     address     globally unique machine identifier (tooling-derived)
-    label       human-readable name as written in source
     kind        what type of element this node is
     start_line  first line of the element in the ``.lob`` file (1-based)
     end_line    last non-blank line of the element
@@ -303,19 +298,14 @@ class Node:
                 node with a positional address (a paragraph, an unnamed
                 ``~property``, a run of test lines) and for ``#Tests``,
                 ``#References`` and ``#Binding``, which are keywords
-    body        the node's own lines, as they are in the file, indent and
-                all: the lines of its span that no node under it holds,
-                less blank lines at either end. A heading's is its line, a
-                claim's its sigil line and the lines under it. ``None`` for
-                a derived node (a ``SYMBOL``, whose lines are its code
-                block's, and an ``EXTERNAL``) and wherever the module was
-                built with no source: see :func:`add_bodies`
+
+    A node's own lines, its body, are not a field: which lines a node's
+    body holds depends on which nodes a view shows (see :func:`bodies`).
 
     The fields after ``kind`` are excluded from equality and hash, so two
-    nodes with the same address, label and kind are the same node.
+    nodes with the same address and kind are the same node.
     """
     address: str
-    label:   str
     kind:    NodeKind
     start_line: int | None = field(
         default=None, hash=False, compare=False,
@@ -344,9 +334,6 @@ class Node:
     value: str | None = field(
         default=None, hash=False, compare=False,
     )
-    body: str | None = field(
-        default=None, hash=False, compare=False,
-    )
 
     def __repr__(self) -> str:
         return f"<{self.kind.name} {self.address!r}>"
@@ -355,24 +342,25 @@ class Node:
 # ── Edge ─────────────────────────────────────────────────────
 
 class EdgeKind(Enum):
-    """How two nodes relate. Only ``CONTAINS`` makes the tree."""
+    """How two nodes relate. Only ``CONTAINS`` makes the tree; a graph
+    holds no ``CONTAINS_INDIRECTLY``, which only a view writes."""
     CONTAINS      = auto()   # parent to child: where a node is written
+    CONTAINS_INDIRECTLY = auto()   # a node to what it holds, through nodes
+                                   # a view does not show
     IMPORTS      = auto()   # module to module, from a #References line
     USES_EXTERNAL = auto()   # binding module to a file it declares
     USES          = auto()   # code to a symbol it refers to by name
     CITES         = auto()   # a paragraph to the node a #Label in it names
 
 
-#: The rank of each edge kind, by name: one for every :class:`EdgeKind`,
-#: and for ``CONTAINS_INDIRECTLY``, which a view makes and a graph does not
-#: hold, so it is no member of the enum.
-EDGE_RANKS: dict[str, int] = {
-    "CONTAINS":            Rank.STRUCTURE,
-    "CONTAINS_INDIRECTLY": Rank.STRUCTURE,
-    "IMPORTS":             Rank.REFERENCES,
-    "USES_EXTERNAL":       Rank.REFERENCES,
-    "USES":                Rank.REFERENCES,
-    "CITES":               Rank.REFERENCES,
+#: The rank of each edge kind: one for every :class:`EdgeKind`.
+EDGE_RANKS: dict[EdgeKind, int] = {
+    EdgeKind.CONTAINS:            Rank.STRUCTURE,
+    EdgeKind.CONTAINS_INDIRECTLY: Rank.STRUCTURE,
+    EdgeKind.IMPORTS:             Rank.REFERENCES,
+    EdgeKind.USES_EXTERNAL:       Rank.REFERENCES,
+    EdgeKind.USES:                Rank.REFERENCES,
+    EdgeKind.CITES:               Rank.REFERENCES,
 }
 
 
@@ -393,104 +381,6 @@ class Edge:
         """The first of the *lines*, or ``None`` where there are none: the
         one line the old documents give a reference."""
         return self.lines[0] if self.lines else None
-
-
-# ── Turtle serialisation helpers ─────────────────────────────
-
-#: Characters that may not appear in an IRI reference, plus ``%`` (so a
-#: literal percent survives a round trip). Space and control characters
-#: are covered by ``ord(ch) <= 0x20``.
-_IRI_ENCODE = frozenset('<>"{}|\\^`%\x7f')
-
-
-def _turtle_iri(address: str) -> str:
-    """*address* as a Turtle IRI reference.
-
-    Addresses are free text (a subheading title can hold spaces, quotes,
-    ``:``, and a positional node's segments hold ``#`` -- a name written
-    in a document holds none), so they are made safe as a relative IRI
-    reference:
-
-    * characters not allowed in an IRI (and ``%``) are percent-encoded;
-    * only the first ``#`` is the fragment separator, later ones are
-      encoded (a fragment may not contain ``#``);
-    * a ``:`` in the first path segment is encoded, or ``foo:/bar``
-      would be read as scheme ``foo``.
-
-    Non-ASCII text is kept. The exact address is also emitted as the
-    ``notlob:address`` literal, so nothing is lost to the encoding.
-    """
-    text = "".join(
-        "".join(f"%{b:02X}" for b in ch.encode("utf-8"))
-        if ch in _IRI_ENCODE or ord(ch) <= 0x20 else ch
-        for ch in address
-    )
-    head, sep, fragment = text.partition("#")
-    text = head + sep + fragment.replace("#", "%23")
-    first_segment = re.match(r"[^/?#]*", text).group(0)
-    text = first_segment.replace(":", "%3A") + text[len(first_segment):]
-    return f"<{text}>"
-
-
-def _turtle_lit(s: str) -> str:
-    """*s* as a one-line Turtle string literal."""
-    escaped = (s.replace("\\", "\\\\")
-                .replace('"', '\\"')
-                .replace("\n", "\\n")
-                .replace("\r", "\\r"))
-    return f'"{escaped}"'
-
-
-def _turtle_long_lit(s: str) -> str:
-    """*s* as a triple-quoted Turtle string literal.
-
-    Every quote is escaped, not only a run of three: a long literal that
-    ends in a quote has four in a row at its close, which is ambiguous,
-    and escaping is always valid.
-    """
-    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"""{escaped}"""'
-
-
-#: The namespace of the vocabulary, declared in ``schema/notlob.ttl``.
-_TURTLE_NAMESPACE = "urn:notlob:ns:"
-
-
-def turtle_class_name(kind: NodeKind) -> str:
-    """The name of the ontology class of the nodes of *kind*, in
-    UpperCamelCase as RDF classes are named: ``Module``, ``PostText``,
-    ``TestGroup``. The emitter, the ontology and the guard on them all
-    take the name from here."""
-    return "".join(word.capitalize() for word in kind.name.split("_"))
-
-
-def _turtle_node(node: dict) -> list[str]:
-    """The lines that write *node*, an entry of the document, as one
-    Turtle subject."""
-    parts = [f"notlob:address {_turtle_lit(node['address'])}"]
-    if "label" in node:
-        parts.insert(0, f"rdfs:label {_turtle_lit(node['label'])}")
-    for key in ("mode", "declares", "value"):
-        if key in node:
-            parts.append(f"notlob:{key} {_turtle_lit(node[key])}")
-    if "file" in node:
-        parts.append(f"notlob:file {_turtle_lit(node['file'])}")
-    for key, prop in (("start_line", "startLine"), ("size", "size")):
-        if key in node:
-            parts.append(f"notlob:{prop} {node[key]}")
-    for ref in node.get("refs", []):
-        inner = [f"rdfs:label {_turtle_lit(ref['label'])}",
-                 f"notlob:sub {'true' if ref['sub'] else 'false'}"]
-        if ref["start_line"] is not None:
-            inner.append(f"notlob:startLine {ref['start_line']}")
-        parts.append(f"notlob:ref [ {' ; '.join(inner)} ]")
-    if "text" in node:
-        parts.append(f"notlob:text {_turtle_long_lit(node['text'])}")
-    kind = turtle_class_name(NodeKind[node["kind"]])
-    lines = [f"{_turtle_iri(node['address'])} a notlob:{kind} ;"]
-    lines += [f"    {part} ;" for part in parts]
-    lines[-1] = lines[-1][:-2] + " ."
-    return lines
 
 
 # ── Graph ────────────────────────────────────────────────────
@@ -562,6 +452,7 @@ class NameGraph:
         self._edges:  list[Edge]             = []
         self._out:    dict[str, list[Edge]]  = {}
         self._parent: dict[str, str]         = {}
+        self._sources: dict[str, list[str]]  = {}
         self._collisions: list | None        = None
 
     # ── Mutation ─────────────────────────────────────────────
@@ -599,6 +490,7 @@ class NameGraph:
             self.add_node(node)
         for edge in other._edges:
             self.add_edge(edge)
+        self._sources.update(other._sources)
 
     # ── Query ─────────────────────────────────────────────────
 
@@ -784,10 +676,10 @@ class NameGraph:
 
     def resolve(
         self,
-        label:   str,
+        name:    str,
         context: str | None = None,
     ) -> Node | None:
-        """Resolve a #label reference to a node.
+        """Resolve the name a reference gives to a node.
 
         Implements the three-step resolution order from DESIGN.md:
           1. Symbol defined in the current module.
@@ -809,18 +701,18 @@ class NameGraph:
         """
         if context is not None:
             # Steps 1 & 2: symbol or subheading in the current module
-            node = self._nodes.get(named_address(context, label))
+            node = self._nodes.get(named_address(context, name))
             if node is not None:
                 if node.kind in (NodeKind.SYMBOL, NodeKind.SUBHEADING):
                     return node
             # Step 3: a module the current module lists
             for target in self.imports_of(context):
-                if target.label == label:
+                if target.name == name:
                     return target
         else:
             # No context: scan all MODULE nodes (tooling use only)
             for node in self._nodes.values():
-                if node.label == label and node.kind == NodeKind.MODULE:
+                if node.name == name and node.kind == NodeKind.MODULE:
                     return node
         return None
 
@@ -829,16 +721,18 @@ class NameGraph:
         pattern: str,
         kind: NodeKind | None = None,
     ) -> Iterator[Node]:
-        """Yield nodes whose label matches *pattern* (fnmatch-style).
+        """Yield nodes whose name matches *pattern* (fnmatch-style).
 
-        ``*discount*`` matches any label containing "discount".
-        ``apply_*`` matches any label starting with "apply_".
+        ``*discount*`` matches any name containing "discount".
+        ``apply_*`` matches any name starting with "apply_".
         Matching is case-sensitive.  Pass *kind* to restrict results.
+        A node without a name (see :attr:`Node.name`) is found by no
+        pattern, whatever *kind* is.
         """
         for node in self._nodes.values():
             if kind is not None and node.kind != kind:
                 continue
-            if fnmatch.fnmatch(node.label, pattern):
+            if node.name is not None and fnmatch.fnmatch(node.name, pattern):
                 yield node
 
     def parents(
@@ -858,100 +752,6 @@ class NameGraph:
                 source = self._nodes.get(edge.source)
                 if source:
                     yield source
-
-    # ── Serialisation ─────────────────────────────────────────
-
-    def to_dict(self, level: str | int = "outline") -> dict:
-        """The graph as a document: a plain dict of the shape described by
-        ``notlob/schema/name_graph.json``.
-
-        *level* is how much it shows, by name or by number (see
-        :data:`LEVELS`):
-
-        * ``outline`` (1): every node but the positional leaves
-          (paragraphs, code blocks, bullet lists) and the region after
-          the ``---``, with an edge to or from one of those moved to the
-          section that holds it.
-        * ``index`` (2): every node, the references a paragraph holds, and
-          a ``size`` for each node.
-        * ``full`` (3): and the ``text`` of each node that holds text,
-          once.
-
-        ``nodes`` is in the order the files are written, and the
-        ``CONTAINS`` edges, one into each node but a module and an
-        ``EXTERNAL``, in that order too. Only a module has a ``label`` and
-        a ``file``.
-
-        Raises ``ValueError`` for a level that is none of these.
-        """
-        level = parse_level(level)
-        return {
-            "version": DOCUMENT_VERSION,
-            "level":   level,
-            "nodes":   _document_nodes(self, level),
-            "edges":   _document_edges(self, level),
-        }
-
-    def to_json(
-        self,
-        indent: int | None = 2,
-        level: str | int = "outline",
-    ) -> str:
-        """Serialise the graph to a JSON string.
-
-        *indent* controls pretty-printing; pass ``None`` for compact
-        single-line output.  *level* is forwarded to :meth:`to_dict`.
-        """
-        return json.dumps(
-            self.to_dict(level=level), indent=indent, ensure_ascii=False)
-
-    def to_turtle(
-        self,
-        base: str | None = None,
-        level: str | int = "outline",
-    ) -> str:
-        """Serialise the graph as RDF in Turtle syntax.
-
-        It writes the nodes and edges that :meth:`to_dict` does at the
-        same *level* (see there for what each level shows), with the
-        edges lifted the same way, the tree among them as
-        ``notlob:contains`` triples. Only a module has an
-        ``rdfs:label`` and a ``notlob:file``. A node's ``mode`` and
-        ``size``, a paragraph's references (``notlob:ref``) and a node's
-        ``text`` are written as the level gives them; an edge is a triple
-        without its line, which RDF has no place for (the JSON carries
-        it).
-
-        The vocabulary (``notlob:``) is declared in
-        ``notlob/schema/notlob.ttl`` under the informal ``urn:notlob:ns:``
-        namespace. Node addresses become relative IRI references (see
-        :func:`_turtle_iri`), so they resolve against wherever the
-        document is loaded; pass *base* to emit an ``@base`` and put the
-        project's nodes under an IRI of your own. There is no default
-        base: project data does not belong in notlob's namespace.
-
-        No external dependency — Turtle is emitted as plain strings.
-        """
-        level = parse_level(level)
-        lines = [f"@base <{base}> ."] if base else []
-        lines += [
-            f"@prefix notlob: <{_TURTLE_NAMESPACE}> .",
-            "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
-            "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
-            "",
-        ]
-        nodes = _document_nodes(self, level)
-        for node in nodes:
-            lines += _turtle_node(node)
-            lines.append("")
-        for edge in _document_edges(self, level):
-            lines.append(
-                f"{_turtle_iri(edge['source'])} "
-                f"notlob:{edge['kind'].lower()} "
-                f"{_turtle_iri(edge['target'])} ."
-            )
-        lines.append("")
-        return "\n".join(lines)
 
     def __len__(self) -> int:
         return len(self._nodes)
@@ -989,18 +789,16 @@ class _Ordinals:
         return self._n[kind]
 
 
-def _positional_identity(
-    parent: str, kind: NodeKind, n: int,
-) -> tuple[str, str]:
-    """``(address, label)`` of the *n*th node of *kind* written in the
-    node at *parent* that the document does not name."""
-    return positional_address(parent, kind, n), f"{KINDS[kind].segment}#{n}"
+def _positional_identity(parent: str, kind: NodeKind, n: int) -> str:
+    """The address of the *n*th node of *kind* written in the node at
+    *parent* that the document does not name."""
+    return positional_address(parent, kind, n)
 
 
 def _claim_identity(
     graph: NameGraph, claim: Claim, parent: str, ordinals: _Ordinals,
-) -> tuple[str, str, NodeKind, str | None]:
-    """``(address, label, kind, name)`` of *claim* written in the node at
+) -> tuple[str, NodeKind, str | None]:
+    """``(address, kind, name)`` of *claim* written in the node at
     *parent*. The kind follows the sigil: every ``~run`` (bare, ``on-load``
     or ``on-invocation``) is a ``RUN``, ``~example`` an ``EXAMPLE`` and
     anything else a ``PROPERTY``. A named property is named in the scope
@@ -1016,8 +814,8 @@ def _claim_identity(
     n = ordinals.next(kind)
     if kind == NodeKind.PROPERTY and len(parts) > 1:
         name = parts[1].strip()
-        return named_address(graph.scope_of(parent), name), name, kind, name
-    return (*_positional_identity(parent, kind, n), kind, None)
+        return named_address(graph.scope_of(parent), name), kind, name
+    return _positional_identity(parent, kind, n), kind, None
 
 
 def _run_mode(claim: Claim) -> str:
@@ -1057,9 +855,9 @@ def _add_prose(
     graph: NameGraph, parent: str, block: ProseBlock, n: int,
     file: str | None,
 ) -> None:
-    address, label = _positional_identity(parent, NodeKind.PROSE, n)
+    address = _positional_identity(parent, NodeKind.PROSE, n)
     _add_child(graph, parent, Node(
-        address=address, label=label,
+        address=address,
         kind=NodeKind.PROSE, text=_prose_leaf_text(block),
         refs=tuple(s for s in block.spans if isinstance(s, Ref)),
         start_line=block.start_line, end_line=block.end_line, file=file,
@@ -1107,7 +905,7 @@ def _build_tree(graph: NameGraph, module: Module, file: str | None) -> None:
     addr = module_address(module.title)
 
     graph.add_node(Node(
-        address=addr, label=module.title, kind=NodeKind.MODULE,
+        address=addr, kind=NodeKind.MODULE,
         start_line=module.start_line, end_line=module.end_line, file=file,
         name=module.title,
     ))
@@ -1118,7 +916,7 @@ def _build_tree(graph: NameGraph, module: Module, file: str | None) -> None:
         return
     post_addr = positional_address(addr, NodeKind.POST_TEXT, 1)
     _add_child(graph, addr, Node(
-        address=post_addr, label="post-text", kind=NodeKind.POST_TEXT,
+        address=post_addr, kind=NodeKind.POST_TEXT,
         start_line=post_text.start_line, end_line=post_text.end_line,
         file=file,
     ))
@@ -1128,7 +926,6 @@ def _build_tree(graph: NameGraph, module: Module, file: str | None) -> None:
             app_addr = named_address(graph.scope_of(post_addr), name)
             _add_child(graph, post_addr, Node(
                 address=app_addr,
-                label=section.title.lstrip("#").strip(),
                 kind=NodeKind.APPENDIX,
                 start_line=section.start_line, end_line=section.end_line,
                 file=file, name=name,
@@ -1154,16 +951,16 @@ def _add_references(
     which has the binding that knows where one ends."""
     address = named_address(graph.scope_of(parent), "References")
     _add_child(graph, parent, Node(
-        address=address, label="References", kind=NodeKind.REFERENCES,
+        address=address, kind=NodeKind.REFERENCES,
         start_line=section.start_line, end_line=section.end_line,
         file=file,
     ))
     ordinals = _Ordinals()
     for listing in section.listings:
-        listing_address, label = _positional_identity(
+        listing_address = _positional_identity(
             address, NodeKind.LISTING, ordinals.next(NodeKind.LISTING))
         _add_child(graph, address, Node(
-            address=listing_address, label=label, kind=NodeKind.LISTING,
+            address=listing_address, kind=NodeKind.LISTING,
             text=f"#{listing.title}",
             start_line=listing.line, end_line=listing.line, file=file,
         ))
@@ -1180,17 +977,17 @@ def _add_binding(
     something on."""
     address = named_address(graph.scope_of(parent), "Binding")
     _add_child(graph, parent, Node(
-        address=address, label="Binding", kind=NodeKind.BINDING,
+        address=address, kind=NodeKind.BINDING,
         start_line=section.start_line, end_line=section.end_line,
         file=file,
     ))
     ordinals = _Ordinals()
     for declaration in section.declarations:
-        decl_address, label = _positional_identity(
+        decl_address = _positional_identity(
             address, NodeKind.DECLARATION,
             ordinals.next(NodeKind.DECLARATION))
         _add_child(graph, address, Node(
-            address=decl_address, label=label, kind=NodeKind.DECLARATION,
+            address=decl_address, kind=NodeKind.DECLARATION,
             text=declaration.text,
             start_line=declaration.line, end_line=declaration.line,
             file=file, declares=declaration.keyword,
@@ -1211,7 +1008,7 @@ def _add_items(
         if isinstance(item, Subheading):
             sub_addr = named_address(graph.scope_of(parent), item.title)
             _add_child(graph, parent, Node(
-                address=sub_addr, label=item.title,
+                address=sub_addr,
                 kind=NodeKind.SUBHEADING,
                 start_line=item.start_line, end_line=item.end_line,
                 file=file, name=item.title,
@@ -1221,29 +1018,29 @@ def _add_items(
             _add_prose(
                 graph, parent, item, ordinals.next(NodeKind.PROSE), file)
         elif isinstance(item, CodeBlock):
-            address, label = _positional_identity(
+            address = _positional_identity(
                 parent, NodeKind.CODE, ordinals.next(NodeKind.CODE))
             _add_child(graph, parent, Node(
-                address=address, label=label,
+                address=address,
                 kind=NodeKind.CODE,
                 text=textwrap.dedent("\n".join(item.lines)),
                 start_line=item.start_line, end_line=item.end_line,
                 file=file,
             ))
         elif isinstance(item, BulletBlock):
-            address, label = _positional_identity(
+            address = _positional_identity(
                 parent, NodeKind.BULLETS, ordinals.next(NodeKind.BULLETS))
             _add_child(graph, parent, Node(
-                address=address, label=label,
+                address=address,
                 kind=NodeKind.BULLETS, text="\n".join(item.items),
                 start_line=item.start_line, end_line=item.end_line,
                 file=file,
             ))
         elif isinstance(item, Claim):
-            address, label, kind, name = _claim_identity(
+            address, kind, name = _claim_identity(
                 graph, item, parent, ordinals)
             _add_child(graph, parent, Node(
-                address=address, label=label, kind=kind,
+                address=address, kind=kind,
                 text=textwrap.dedent("\n".join(item.lines)),
                 start_line=item.start_line, end_line=item.end_line,
                 file=file, mode=_run_mode(item) if kind == NodeKind.RUN
@@ -1261,7 +1058,7 @@ def _add_tests(
     *parent*, to it, and what it holds."""
     tests_addr = named_address(graph.scope_of(parent), "Tests")
     _add_child(graph, parent, Node(
-        address=tests_addr, label="Tests", kind=NodeKind.TESTS,
+        address=tests_addr, kind=NodeKind.TESTS,
         start_line=section.start_line, end_line=section.end_line,
         file=file,
     ))
@@ -1296,11 +1093,11 @@ def _add_assertions(
             lit = [k for k in range(i, j) if items[k].strip()]
             if lit:
                 first, last = lit[0], lit[-1]
-                address, label = _positional_identity(
+                address = _positional_identity(
                     parent, NodeKind.TEST_LINES,
                     ordinals.next(NodeKind.TEST_LINES))
                 _add_child(graph, parent, Node(
-                    address=address, label=label,
+                    address=address,
                     kind=NodeKind.TEST_LINES,
                     text="\n".join(items[first:last + 1]),
                     start_line=offsets.get(first),
@@ -1314,7 +1111,7 @@ def _add_assertions(
         elif isinstance(item, TestGroup):
             group_addr = named_address(graph.scope_of(parent), item.title)
             _add_child(graph, parent, Node(
-                address=group_addr, label=item.title,
+                address=group_addr,
                 kind=NodeKind.TEST_GROUP,
                 start_line=item.start_line, end_line=item.end_line,
                 file=file, name=item.title,
@@ -1327,7 +1124,7 @@ def _add_assertions(
             # every assertion line in it shares that address.
             _add_child(graph, parent, Node(
                 address=named_address(graph.scope_of(parent), item.name),
-                label=item.name, kind=NodeKind.TEST,
+                kind=NodeKind.TEST,
                 text="\n".join(item.lines).rstrip(),
                 start_line=item.start_line, end_line=item.end_line,
                 file=file, name=item.name,
@@ -1402,10 +1199,10 @@ def _add_imports(
         return
     ordinals = _Ordinals()
     for text, first_line in split_imports(section.imports):
-        address, label = _positional_identity(
+        address = _positional_identity(
             node.address, NodeKind.IMPORT, ordinals.next(NodeKind.IMPORT))
         _add_child(graph, node.address, Node(
-            address=address, label=label, kind=NodeKind.IMPORT, text=text,
+            address=address, kind=NodeKind.IMPORT, text=text,
             start_line=first_line,
             end_line=(None if first_line is None
                       else first_line + text.count("\n")),
@@ -1433,13 +1230,13 @@ def _symbol_node(
     """
     if info.first_line is None or first is None:
         return Node(
-            address=address, label=info.name, kind=NodeKind.SYMBOL,
+            address=address, kind=NodeKind.SYMBOL,
             text=info.source,
             start_line=holder.start_line, end_line=holder.end_line,
             file=file, name=info.name)
     last = info.first_line if info.last_line is None else info.last_line
     return Node(
-        address=address, label=info.name, kind=NodeKind.SYMBOL,
+        address=address, kind=NodeKind.SYMBOL,
         start_line=first + info.first_line - 1, end_line=first + last - 1,
         file=file, name=info.name)
 
@@ -1455,47 +1252,77 @@ def _descendants(graph: NameGraph, address: str) -> list[Node]:
     return found
 
 
-def add_bodies(graph: NameGraph, module: Module) -> None:
-    """Give each node written in *module* its ``body``: the lines of its
-    span that no node under it holds, as they are in the file (the
-    module's ``source``), less blank lines at either end. A blank line
-    inside a body stays in it, and one between two nodes is in neither.
+def add_source(graph: NameGraph, module: Module) -> None:
+    """Keep the text *module* was parsed from (its ``source``), the file
+    the bodies of its nodes are lines of (see :func:`bodies`). A module
+    with no ``source`` has no bodies."""
+    address = module_address(module.title)
+    if module.source is not None and graph.node(address) is not None:
+        graph._sources[address] = module.source.split("\n")
 
-    A ``SYMBOL`` and an ``EXTERNAL`` are derived and have none, and a
-    symbol's lines are not counted as held by the code block it is in: they
-    are that block's. A module with no ``source`` has no bodies.
 
-    Call it last, after :func:`enrich`: the ``IMPORT`` nodes it adds hold
-    lines of ``#References``.
-    """
-    if module.source is None:
-        return
-    lines = module.source.split("\n")
-    root = graph.node(module_address(module.title))
-    if root is None:
-        return
+def bodies(graph: NameGraph, shown: set[str]) -> dict[str, str]:
+    """The body of each node of *shown* that has one, by the line rule: a
+    line is in the body of the written node that holds it, and where
+    *shown* does not have that node, in the body of the deepest node it has
+    that covers the line (a node covers the lines from its ``start_line``
+    to its ``end_line``). A body is the lines as they are in the file,
+    indent and all, less blank lines at either end; a blank line inside it
+    stays in it, and one between two nodes is in neither. So a heading's
+    body is its line, and a claim's its sigil line and the lines under it.
 
-    def walk(node: Node) -> set[int]:
-        """Give *node* and the written nodes under it their bodies; the
-        lines of the file at or under *node*."""
-        span = set(range(node.start_line, node.end_line + 1))
-        below: set[int] = set()
-        for child in graph.children(node.address):
-            if (child.kind in (NodeKind.SYMBOL, NodeKind.EXTERNAL)
-                    or child.start_line is None or child.end_line is None):
-                continue
-            below |= walk(child)
-        own = sorted(n for n in span - below if n <= len(lines))
-        while own and not lines[own[0] - 1].strip():
-            own.pop(0)
-        while own and not lines[own[-1] - 1].strip():
-            own.pop()
-        if own:
-            graph.add_node(replace(
-                node, body="\n".join(lines[n - 1] for n in own)))
-        return span | below
+    A node whose text is lines of the node that holds it (a ``SYMBOL``) is
+    derived: it has the lines its holder, when *shown* has it, has not. An
+    ``EXTERNAL`` has no lines, so no body. Nothing is given for a module
+    whose source was not kept (see :func:`add_source`)."""
+    by_module: dict[str, list[Node]] = {}
+    for address in shown:
+        node = graph.node(address)
+        module = graph.module_of(address)
+        if (node is None or module is None or node.start_line is None
+                or node.end_line is None):
+            continue
+        by_module.setdefault(module, []).append(node)
+    found: dict[str, str] = {}
+    for module, nodes in by_module.items():
+        source = graph._sources.get(module)
+        if source is not None:
+            found.update(_bodies_of(graph, nodes, source))
+    return found
 
-    walk(root)
+
+def _bodies_of(
+    graph: NameGraph, nodes: list[Node], source: list[str],
+) -> dict[str, str]:
+    """The bodies of *nodes*, all of one module, whose file is the lines
+    *source* (see :func:`bodies`)."""
+    def depth(node: Node) -> int:
+        steps, above = 0, graph.parent_of(node.address)
+        while above is not None:
+            steps, above = steps + 1, graph.parent_of(above.address)
+        return steps
+
+    holder: dict[int, str] = {}
+    written = [n for n in nodes if not KINDS[n.kind].text_in_holder]
+    derived = [n for n in nodes if KINDS[n.kind].text_in_holder]
+    ordered = [*sorted(written, key=lambda n: -depth(n)),
+               *sorted(derived, key=lambda n: n.end_line - n.start_line)]
+    for node in ordered:
+        for number in range(node.start_line, node.end_line + 1):
+            if number <= len(source):
+                holder.setdefault(number, node.address)
+    held: dict[str, list[int]] = {}
+    for number in sorted(holder):
+        held.setdefault(holder[number], []).append(number)
+    found: dict[str, str] = {}
+    for address, numbers in held.items():
+        while numbers and not source[numbers[0] - 1].strip():
+            numbers.pop(0)
+        while numbers and not source[numbers[-1] - 1].strip():
+            numbers.pop()
+        if numbers:
+            found[address] = "\n".join(source[n - 1] for n in numbers)
+    return found
 
 
 def claims_to_run(graph: NameGraph, module_address_: str) -> list[ClaimToRun]:
@@ -1616,7 +1443,7 @@ def add_uses_edges(
     # Build name → [address] index over all known symbols.
     name_index: dict[str, list[str]] = {}
     for node in graph.nodes(kind=NodeKind.SYMBOL):
-        name_index.setdefault(node.label, []).append(node.address)
+        name_index.setdefault(node.name, []).append(node.address)
 
     # used: (source_addr, target_addr) → the lines it is used on, none when
     # they are not known
@@ -1643,357 +1470,11 @@ def add_uses_edges(
         ))
 
 
-# ── The graph as a document ───────────────────────────────────
-
-#: The version of the document :meth:`NameGraph.to_dict` writes.
-DOCUMENT_VERSION = 2
-
-#: The levels of detail, in the order of how much each shows: the number
-#: of a level is its place here, counting from 1.
-LEVELS = ("outline", "index", "full")
-
-def parse_level(level: str | int | None) -> str:
-    """The name of *level*, given as a name or as a number (``1`` to
-    ``3``, or the digit as a string).
-
-    Raises ``ValueError``, naming the choices, for anything else.
-    """
-    if isinstance(level, str) and level in LEVELS:
-        return level
-    number = level
-    if isinstance(level, str) and level.isdigit():
-        number = int(level)
-    if (isinstance(number, int) and not isinstance(number, bool)
-            and 1 <= number <= len(LEVELS)):
-        return LEVELS[number - 1]
-    raise ValueError(
-        f"unknown level {level!r}: choose outline, index or full "
-        f"(or 1, 2, 3)")
-
-
-def _sizes(graph: NameGraph) -> dict[str, int]:
-    """The characters of text held at or under each node, each leaf's
-    text counted once. A symbol holds none of its own (its lines are in
-    the text that holds it), so it adds nothing to what contains it and its
-    own size is that of its lines."""
-    sizes: dict[str, int] = {}
-
-    def size(node: Node) -> int:
-        if node.address in sizes:
-            return sizes[node.address]
-        if KINDS[node.kind].text_in_holder:
-            total = len(graph.text(node.address) or "")
-        else:
-            total = len(node.text or "") + sum(
-                size(child) for child in graph.children(node.address)
-                if not KINDS[child.kind].text_in_holder)
-        sizes[node.address] = total
-        return total
-
-    for node in graph.nodes():
-        size(node)
-    return sizes
-
-
-def _what_it_is(node: Node) -> dict:
-    """What a node is, apart from where it is: the facts both a query's
-    answer and the document write for it."""
-    d: dict = {}
-    for field_name in ("mode", "declares", "value"):
-        value = getattr(node, field_name)
-        if value is not None:
-            d[field_name] = value
-    return d
-
-
-def _where_it_is(node: Node) -> dict:
-    """The line a node is written on. Nothing printed gives where it
-    ends: a reader takes that from the file, and the model keeps it for
-    ``query content``."""
-    return {} if node.start_line is None else {"start_line": node.start_line}
-
-
-def _what_the_level_adds(
-    node: Node, level: str, sizes: dict[str, int],
-) -> dict:
-    """What the document adds for a node from ``index`` on: its size, the
-    references a paragraph holds and, at ``full``, its text. *sizes* is
-    :func:`_sizes` of its graph."""
-    d: dict = {}
-    if level != "outline":
-        d["size"] = sizes[node.address]
-        if node.kind == NodeKind.PROSE:
-            d["refs"] = [
-                {"label": ref.label, "sub": ref.sub,
-                 "start_line": ref.start_line}
-                for ref in node.refs]
-    if (level == "full" and node.text is not None
-            and not KINDS[node.kind].text_in_holder):
-        d["text"] = node.text
-    return d
-
-
-def _node_entry(node: Node, level: str, sizes: dict[str, int]) -> dict:
-    """The node as the document writes it at *level*. Only a module has a
-    ``label``, its title, and a ``file``: any other node's follow from its
-    address."""
-    d: dict = {"address": node.address}
-    if node.kind == NodeKind.MODULE:
-        d["label"] = node.label
-    d["kind"] = node.kind.name
-    d.update(_what_it_is(node))
-    if node.kind == NodeKind.MODULE and node.file is not None:
-        d["file"] = node.file
-    d.update(_where_it_is(node))
-    d.update(_what_the_level_adds(node, level, sizes))
-    return d
-
-
-def _is_left_out(node: Node, level: str) -> bool:
-    return level == "outline" and KINDS[node.kind].hidden_at_outline
-
-
-def _in_writing_order(
-    graph: NameGraph, level: str,
-) -> list[tuple[Node, str | None]]:
-    """The nodes the document shows at *level*, each with the address of
-    the node above it that is shown, in the order they are written: each
-    module, then what is written in it depth first, siblings by
-    ``start_line``; then any other node but an ``EXTERNAL``, then the
-    ``EXTERNAL`` nodes, in the order they were added. What a level leaves
-    out is passed through: its children belong to the node above."""
-    def held(address: str) -> list[Node]:
-        found: list[Node] = []
-        for child in graph.children(address):
-            if _is_left_out(child, level):
-                found += held(child.address)
-            else:
-                found.append(child)
-        return found
-
-    order: list[tuple[Node, str | None]] = []
-    seen: set[str] = set()
-
-    def walk(node: Node, parent: str | None) -> None:
-        seen.add(node.address)
-        order.append((node, parent))
-        below = sorted(held(node.address),
-                       key=lambda n: n.start_line or 0)
-        for child in below:
-            walk(child, node.address)
-
-    for module in graph.nodes(NodeKind.MODULE):
-        walk(module, None)
-    others = [n for n in graph.nodes()
-              if n.address not in seen and not _is_left_out(n, level)]
-    for node in others:
-        if node.kind != NodeKind.EXTERNAL:
-            order.append((node, None))
-    for node in others:
-        if node.kind == NodeKind.EXTERNAL:
-            order.append((node, None))
-    return order
-
-
-def _document_nodes(graph: NameGraph, level: str) -> list[dict]:
-    """The nodes of the document at *level*, in writing order (see
-    :func:`_in_writing_order`)."""
-    sizes = _sizes(graph) if level != "outline" else {}
-    return [
-        _node_entry(node, level, sizes)
-        for node, _ in _in_writing_order(graph, level)
-    ]
-
-
-def _document_edges(graph: NameGraph, level: str) -> list[dict]:
-    """The edges of the document at *level*: the ``CONTAINS`` edges, one
-    into each node but a module and an ``EXTERNAL``, in writing order (see
-    :func:`_in_writing_order`) so a node's children come in the order they
-    are written; and from ``index`` on the others, the cross-references,
-    in the order they were added. ``outline`` is the tree alone: a level
-    is the same content in text and in JSON, and the text of ``outline``
-    has no references."""
-    contains = [
-        {"source": parent, "target": node.address, "kind": "CONTAINS"}
-        for node, parent in _in_writing_order(graph, level)
-        if parent is not None
-    ]
-    if level == "outline":
-        return contains
-    return contains + _cross_references(graph, level)
-
-
-def _cross_references(graph: NameGraph, level: str) -> list[dict]:
-    """The edges but ``CONTAINS`` as they stand at *level*, in the order
-    they were added: an edge to or from a node that *level* leaves out is
-    moved to the nearest node above it that is shown, along ``CONTAINS``;
-    edges that are then the same (source, target and kind) are one, at the
-    earliest line."""
-    def hidden(address: str) -> bool:
-        node = graph.node(address)
-        return node is not None and _is_left_out(node, level)
-
-    def shown(address: str) -> str | None:
-        while hidden(address):
-            parent = graph.parent_of(address)
-            if parent is None:
-                return None
-            address = parent.address
-        return address
-
-    merged: dict[tuple[str, str, str], dict] = {}
-    for edge in graph.edges():
-        if edge.kind == EdgeKind.CONTAINS:
-            continue
-        source, target = shown(edge.source), shown(edge.target)
-        if source is None or target is None:
-            continue
-        key = (source, target, edge.kind.name)
-        line = edge.first_line
-        if key not in merged:
-            merged[key] = {"source": source, "target": target,
-                           "kind": edge.kind.name}
-            if line is not None:
-                merged[key]["start_line"] = line
-        elif line is not None and (
-                merged[key].get("start_line", line + 1) > line):
-            merged[key]["start_line"] = line
-    return list(merged.values())
-
-
-def _lifted_citations(graph: NameGraph) -> list[dict]:
-    """The ``CITES`` edges lifted to the nodes ``outline`` shows: a
-    paragraph's citation is its section's. These answer ``query cites``
-    and ``cited-by``; the document at ``outline`` no longer holds them."""
-    return [e for e in _cross_references(graph, "outline")
-            if e["kind"] == "CITES"]
-
-
-# ── Answers to queries ────────────────────────────────────────
-
-def node_summary(node: Node) -> dict:
-    """The node as a query prints it: its ``label`` and ``file`` as well,
-    for an answer stands on its own, with no module beside it to look them
-    up in."""
-    d: dict = {"address": node.address, "label": node.label,
-               "kind": node.kind.name}
-    d.update(_what_it_is(node))
-    if node.file is not None:
-        d["file"] = node.file
-    d.update(_where_it_is(node))
-    return d
-
-
 def sigil_of(node: Node) -> str:
     """The sigil that begins the node in its file (``~example``,
     ``~property``, ``~run`` or ``~test``), or ``""`` for a node with
     none."""
     return KINDS[node.kind].sigil or ""
-
-
-def content_tree(
-    graph: NameGraph, address: str, depth: int | None = None,
-) -> dict | None:
-    """The subtree at *address*, nested and narrow, or ``None`` if there
-    is no such node.
-
-    Each node has its ``address``, ``kind`` and ``start_line``, its
-    ``mode``, ``declares`` and ``value`` when set, its ``text`` when it
-    holds text, and its ``children`` (what it contains, in document order)
-    when it has any, down *depth* ``CONTAINS`` steps (``0`` the node alone,
-    ``None`` all of them). The root also has its ``file``. There
-    are no edges, labels, sizes or references: nesting is the containment,
-    the address carries the label, and the references are written in the
-    text.
-
-    Text is held once, so a symbol has none, its lines being in the code
-    block it is written in; but a symbol whose code block is not in the
-    answer carries its text, so the answer still shows each line of
-    source. That is the symbol asked for itself: a symbol is a child of
-    its code block, so *depth* never leaves one without it.
-    """
-    root = graph.node(address)
-    if root is None:
-        return None
-
-    def entry(node: Node, remaining: int | None, holder_in: bool) -> dict:
-        d: dict = {"address": node.address, "kind": node.kind.name}
-        for field_name in ("mode", "declares", "value"):
-            value = getattr(node, field_name)
-            if value is not None:
-                d[field_name] = value
-        if node is root:
-            if node.file is not None:
-                d["file"] = node.file
-        d.update(_where_it_is(node))
-        if KINDS[node.kind].text_in_holder:
-            text = None if holder_in else graph.text(node.address)
-        else:
-            text = node.text
-        if text is not None:
-            d["text"] = text
-        if remaining != 0:
-            children = [
-                entry(child, None if remaining is None else remaining - 1,
-                      True)
-                for child in graph.children(node.address)]
-            if children:
-                d["children"] = children
-        return d
-
-    return entry(root, depth, False)
-
-
-def _citations(graph: NameGraph) -> list[Edge]:
-    """The ``CITES`` edges lifted to the nodes ``outline`` shows, each
-    with the line it is written on (the earliest, where edges were
-    merged)."""
-    return [
-        Edge(source=e["source"], target=e["target"], kind=EdgeKind.CITES,
-             lines=(e["start_line"],) if "start_line" in e else ())
-        for e in _lifted_citations(graph)]
-
-
-def cites_edges(graph: NameGraph, address: str) -> list[Edge]:
-    """The ``CITES`` edges from the node at *address*, in the order first
-    found, one to each node it cites (the first): those named in its
-    paragraphs (as ``outline`` shows the edges, a section's citations are
-    its paragraphs'), or, for a paragraph itself, in it."""
-    node = graph.node(address)
-    if node is None:
-        return []
-    if KINDS[node.kind].hidden_at_outline:
-        edges = list(graph.edges(EdgeKind.CITES))
-    else:
-        edges = _citations(graph)
-    found: dict[str, Edge] = {}
-    for edge in edges:
-        if edge.source == address and graph.node(edge.target) is not None:
-            found.setdefault(edge.target, edge)
-    return list(found.values())
-
-
-def cited_by_edges(graph: NameGraph, address: str) -> list[Edge]:
-    """The ``CITES`` edges into the node at *address*, one from each node
-    that cites it (the first), in the order first found: a paragraph that
-    does is given as the section that holds it."""
-    found: dict[str, Edge] = {}
-    for edge in _citations(graph):
-        if edge.target == address and graph.node(edge.source) is not None:
-            found.setdefault(edge.source, edge)
-    return list(found.values())
-
-
-def cites_of(graph: NameGraph, address: str) -> list[Node]:
-    """The nodes that the node at *address* cites (see
-    :func:`cites_edges`)."""
-    return [graph.node(e.target) for e in cites_edges(graph, address)]
-
-
-def cited_by(graph: NameGraph, address: str) -> list[Node]:
-    """The nodes that cite the node at *address* (see
-    :func:`cited_by_edges`)."""
-    return [graph.node(e.source) for e in cited_by_edges(graph, address)]
 
 
 # ── Cross-reference validation ────────────────────────────────

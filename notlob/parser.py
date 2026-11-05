@@ -143,14 +143,22 @@ def parse(source: str) -> Tree:
     return tree
 
 
-def parse_file(path: str | Path) -> Tree:
-    """Parse a .lob file and return a Lark Tree. A ``#`` in a name raises
-    :class:`LobSyntaxError` with the file (as given, with ``/``)."""
+def load_file(path: str | Path) -> tuple[Tree, str]:
+    """Parse a .lob file and return its Lark Tree and the text it was read
+    as. A ``#`` in a name raises :class:`LobSyntaxError` with the file (as
+    given, with ``/``)."""
+    source = Path(path).read_text(encoding="utf-8")
     try:
-        return parse(Path(path).read_text(encoding="utf-8"))
+        return parse(source), source
     except LobSyntaxError as exc:
         raise LobSyntaxError(
             exc.line, exc.reason, Path(path).as_posix()) from None
+
+
+def parse_file(path: str | Path) -> Tree:
+    """Parse a .lob file and return a Lark Tree. A ``#`` in a name raises
+    :class:`LobSyntaxError` with the file (as given, with ``/``)."""
+    return load_file(path)[0]
 
 
 # ── Serialisation ────────────────────────────────────────────

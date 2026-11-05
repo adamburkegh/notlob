@@ -571,11 +571,11 @@ notlob weave [file]             render as Markdown
 notlob new <name>               create a new module
 notlob docs [--output DIR]      write this reference to notlob-docs/
 notlob query search <pattern> [--format text|json]  find nodes by label (bare word = substring)
-notlob query content <address> [--format json [--depth N]]  the source at an address
+notlob query content <address> [--format json] [--depth N]  the source at an address
 notlob query children <address> list child nodes
 notlob query imports <address>  modules imported by an address
 notlob query imported-by <addr> modules that import an address
-notlob graph [--level LEVEL] [--format text|json|turtle]  the shape of each file, or the name-graph
+notlob graph [file] [--level LEVEL] [--format text|json|turtle]  the name-graph at a level
 notlob mcp                      start the MCP tool server (stdin/stdout)
 ```
 
@@ -639,78 +639,104 @@ stderr with exit code 1.
 ~example   pricing/discounts#example#1   pricing/discounts.lob:15
 ```
 `--format json` prints the nodes as `notlob graph` does at `outline`
-(`address`, `label`, `kind`, and `mode`, `file`, `start_line`
-where they apply) as an array (`[]` when there is nothing to list), and
-`resolve` a single node. An address or label that is not a node prints
-`null` with exit code 1, and the error on stderr, as in text. `resolve` is
-deprecated: it prints as it did and says so on stderr; use `search`.
-`children` follows any edge kind the graph holds
-(`CONTAINS` by default, and a section's paragraphs and code blocks are
-among its children); `search` finds the nodes `outline` shows; `cites` and
-`cited-by` give a section for a paragraph.
-`content` prints the source at an address, as written: a header line, the
-address and the span (`roman/numerals#Decoding  roman/numerals.lob:40-60`),
-then the node's own lines from its file, which the `.lob` syntax already
-labels (a heading, an indented code block, a sigil). An address with no
-lines (an external file) is an error. With `--format json` it prints the
-subtree instead, nested and narrow: each node has `address`, `kind`,
-`start_line`, and `mode`, `declares` and `value` where they apply,
-its `text` if it holds text (each line of text once, on the leaf it is
-written in, except that a symbol whose code block is not in the answer
-carries its text) and its `children`; the root also has `file`. A node says
-where it begins and not where it ends: a reader takes that from the file,
-and the text form of `content` says what it printed in its header
-(`file:40-60`). There are no edges, labels, sizes or references: nesting is the
-containment, and the other queries answer the cross-references. `--depth N`
-(JSON only) stops N containment steps down (0 is the node alone). The
-shapes are specified by `schema/query_result.json`.
+(`address`, `name` where the node has one, `kind`, and `mode`, `declares`,
+`value` and `start_line` where they apply), and a `file` on every node, as
+an answer stands on its own, as an array (`[]` when there is nothing to
+list), and `resolve` a single node. An address or label that is not a node
+prints `null` with exit code 1, and the error on stderr, as in text.
+`resolve` is deprecated: it prints as it did and says so on stderr; use
+`search`. `children` follows any edge kind the graph holds (`CONTAINS` by
+default, and a section's paragraphs and code blocks are among its
+children; a graph holds no `CONTAINS_INDIRECTLY`, which only `notlob graph`
+writes); `search` finds the nodes whose label matches, of the `--kind`
+asked for (any kind) or, without one, those an `outline` shows; `cites` and
+`cited-by` give a section for a paragraph. The shapes are specified by
+`schema/query_result.json`.
+`content` prints the source at an address, as written: the view of the
+graph started at that address, at `full`. As text, the file on a line, with
+the line the node starts at when that is not the first
+(`roman/numerals.lob:40`), and then the node's lines from there, which the
+`.lob` syntax already labels (a heading, an indented code block, a sigil).
+An address with no lines (an external file) is an error. With `--format
+json` it prints the graph document of that view (`schema/name_graph.json`,
+below), its root carrying the `file`. `--depth N` stops N steps down,
+counting those the view shows (0 is the node alone).
 `notlob graph` prints the whole project, for a reader as text by default,
-and for a program as the graph itself with `--format json` or `turtle`. A
-level (`--level`, a name or a number) says how much, and means the same
-content in each form. As text, each module is its file on a line alone,
-relative to the project root, and then a line for what is written in it:
-the name first, and the line it is written on in a column on the right,
-indented two spaces a step by what is written in what.
+and for a program as the graph itself with `--format json` or `turtle`; a
+`.lob` file with no `binding.lob` above it is a project of one file, whose
+`file` is the path given. A level (`--level`) says how much, by name or by
+its rank, `1` to `4`, and means the same content in each form; each level
+holds the one before:
+
+* `outline` (1, the default) is the structure of each file: its headings,
+  symbols, claims, tests and sections, and what is written in what.
+* `index` (2) adds the references (`uses`, `cites`, `imports`), each under
+  the node an `outline` shows that holds it, and the `#Binding`
+  declarations.
+* `block` (3) adds the blocks of each file: paragraphs, code blocks, bullet
+  lists, listings, import statements, runs of bare assertions, and the
+  region after the `---`.
+* `full` (4) adds each node's own written lines, its `body`: the files
+  themselves.
+
+As text, each module is its file on a line alone, relative to the project
+root, and then a line for what is written in it: the name first, and the
+line it is written on in a column on the right, indented two spaces a step
+by what is written in what. A reference says every line it is written on,
+a run of consecutive lines as a range.
 ```
 pricing/discounts.lob
-Pricing Discounts                        1
-  apply_discount                        11
-  ~example                              14
-  Stacking Discounts                    17
-    ~property                           31
+Pricing Discounts                                  1
+  cites Stacking Discounts                         9
+  apply_discount                                  11
+  ~example                                        14
+    uses apply_discount                           15
+  Stacking Discounts                              17
+    ~example                                      26
+      uses apply_discount                      27-28
 ```
-A heading, group or module says its name (no hashes), a symbol its name,
-and a claim or a named test its sigil and then its name, if it has one; a
-run of bare assertions has no line of its own. `outline` (1, the default)
-is those lines. `index` (2) adds, under the node that holds each, in line
-order, a line for every cross-reference written there (`uses apply_discount`,
-`cites Stacking Discounts`, `imports Gutenberg Corpus`, the last under
-`References`) at the line it is written on, and for each `#Binding`
-declaration (`~language python`): the `uses` and `cites` are at `--level
-index`, not `outline`. `full` (3) is each module as `query content` prints
-it, one after another.
+A heading, group, module or symbol says its name (no hashes), a claim or a
+named test its sigil and then its name, if it has one, a declaration what
+it declares (`~language python`), an `#Appendix` its heading and then its
+name (`Appendix Glossary`; a bare one is `Appendix`), and a node with only
+a positional address the end of it (`prose#1`, `test#1`). At `full` as
+text, each file is its path and then its lines (starting from the first it
+has, `path.lob:65` when that is not the first), the bodies of its nodes each
+at its line.
+
 With `--format json` (`schema/name_graph.json`) it prints
 `{version, level, nodes, edges}`: one tree of nodes for each file, joined by
-`CONTAINS` edges, with `CITES`, `USES`, `IMPORTS` and `USES_EXTERNAL` edges
-between them from `index` on. Each node says once what it is: only a module has a `label`
-(its title) and a `file`, as any other node's follow from its address.
-`nodes` is in the order the files are written, and the `CONTAINS` edges
-come first, in that order too, so a node's children are in the order they
-are written. `#References` and `#Binding` are nodes like the other
-sections (`REFERENCES`, `BINDING`): a listing is a `LISTING` (`#Title`),
-each import statement of the bound language one `IMPORT` (a statement over
-several lines is one node), and each `#Binding` line a `DECLARATION`, with
-`declares` (`language`, `external`, `on-build` or `keep-generated-src`) and
-`value`. An `IMPORTS` edge starts at the listing that makes it, and a
-`USES_EXTERNAL` edge at the declaration that names the file. A node gives
-the line it begins on, and no line where it ends. In JSON `outline` (1, the
-default) is every node but the paragraphs, code blocks, bullet lists and the
-region after the `---`, and the `CONTAINS` edges alone (those into their
-children come from the section that holds them); `index` (2) is those too,
-the other edges, the references a paragraph holds and a `size` for each
-node; `full` (3) adds the `text` of each node that holds text, once.
-`notlob graph --format turtle` exports the same nodes and edges as RDF, at
-the same `--level`, writing the tree as `notlob:contains` triples; its
-vocabulary is declared in `schema/notlob.ttl`
-(informal namespace `urn:notlob:ns:`), and node IRIs are relative
-references, so they resolve against wherever the file is loaded.
+`CONTAINS` edges, and `CONTAINS_INDIRECTLY` edges where the level does not
+show what lies between a node and what is written in it (an `outline`'s
+section holds the symbols its code blocks define, through the code blocks).
+Only `CONTAINS` is the tree's. From `index` on there are `CITES`, `USES`,
+`IMPORTS` and `USES_EXTERNAL` edges, one for each source, target and kind,
+with the `lines` they are written on: a reference starts at the nearest node
+an `outline` shows to where it is written (a paragraph's citation is its
+section's, a call is its symbol's), at every level. An edge is in the
+document only if both its ends are. A node says once what it is: its
+`address`, its `name` where it has one, its `kind`, the line it begins on
+(`start_line`; no line where it ends), and a `file` on the root of each tree
+(a module) only. At `full` it has its `body` too: its own lines as written,
+less blank lines at either end, so the bodies of a file, each placed at its
+`start_line`, are the file. A `SYMBOL` and an `EXTERNAL` have none: a
+symbol's lines are the code block's. `nodes` is in the order the files are
+written, and the edges that make the tree come in that order too, so a
+node's children are in the order they are written. `#References` and
+`#Binding` are nodes like the other sections (`REFERENCES`, `BINDING`): a
+listing is a `LISTING` (`#Title`), each import statement of the bound
+language one `IMPORT` (a statement over several lines is one node), and each
+`#Binding` line a `DECLARATION`, with `declares` (`language`, `external`,
+`on-build` or `keep-generated-src`) and `value`. An `IMPORTS` edge starts at
+the `#References` that lists the module, and a `USES_EXTERNAL` edge at the
+`#Binding` that declares the file.
+
+`notlob graph --format turtle` writes the same nodes and edges as RDF, at
+the same `--level`: a node's kind is its class, and its other fields are
+literals named as in the JSON, in camelCase (`notlob:startLine`,
+`notlob:body`); every edge is a triple, its kind in camelCase the predicate
+(`notlob:contains`, `notlob:usesExternal`), and an edge with lines also has
+an `rdf:Statement` about that triple carrying them as `notlob:lines`, one
+value a line. Its vocabulary is declared in `schema/notlob.ttl` (informal
+namespace `urn:notlob:ns:`), and node IRIs are relative references, so they
+resolve against wherever the file is loaded.

@@ -24,6 +24,8 @@ import pytest
 from notlob.bindings.python import extract_calls, extract_symbols
 from notlob.commands import cmd_build, cmd_test
 from notlob.project import build_package
+from notlob.view import level_view
+from notlob.writers import write_json
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _REPO_ROOT / "examples"
@@ -144,4 +146,5 @@ class TestExampleGraph:
         graph = build_package(project, extract_symbols,
                               call_extractor=extract_calls)
         schema = json.loads(_SCHEMA.read_text(encoding="utf-8"))
-        jsonschema.validate(graph.to_dict("full"), schema)
+        jsonschema.validate(
+            json.loads(write_json(level_view(graph, "full"))), schema)

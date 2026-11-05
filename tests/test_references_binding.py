@@ -10,6 +10,7 @@ make, `IMPORTS` and `USES_EXTERNAL`, start at their lines.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import jsonschema
@@ -21,7 +22,9 @@ from notlob.bindings import default_split_imports
 from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
-from notlob.graph import KINDS, LEVELS
+from notlob.graph import KINDS, PRESETS
+from notlob.view import level_view
+from notlob.writers import write_json
 from notlob.model import (
     BindingSection, Declaration, ImportLine, Listing, ReferencesSection,
     CodeBlock,
@@ -189,8 +192,7 @@ class TestTheKinds:
         for kind in (NodeKind.REFERENCES, NodeKind.BINDING):
             facts = KINDS[kind]
             assert facts.segment is None
-            assert not (facts.opens_scope or facts.section or facts.region
-                        or facts.hidden_at_outline)
+            assert not (facts.opens_scope or facts.section or facts.region)
 
     def test_their_lines_are_anonymous_numbered_and_left_out_of_outline(
         self,
@@ -200,13 +202,7 @@ class TestTheKinds:
         for kind, segment in segments.items():
             facts = KINDS[kind]
             assert (facts.segment, facts.numbered) == (segment, True)
-            assert facts.hidden_at_outline
-
-    def test_what_outline_leaves_out(self):
-        assert {k for k in NodeKind if KINDS[k].hidden_at_outline} == {
-            NodeKind.PROSE, NodeKind.CODE, NodeKind.BULLETS,
-            NodeKind.LISTING, NodeKind.IMPORT, NodeKind.DECLARATION,
-            NodeKind.POST_TEXT}
+            assert facts.rank > PRESETS["outline"]
 
 
 # ── The nodes ────────────────────────────────────────────────
@@ -235,16 +231,16 @@ class TestReferencesNodes:
     def test_the_section_is_a_named_node_under_the_post_text(self):
         graph = _graph()
         node = graph.node("m#References")
-        assert (node.kind, node.label, node.start_line) == (
-            NodeKind.REFERENCES, "References", 7)
+        assert (node.kind, node.name, node.start_line) == (
+            NodeKind.REFERENCES, None, 7)
         assert graph.parent_of("m#References").kind == NodeKind.POST_TEXT
         assert graph.scope_of("m#References") == "m"
 
     def test_a_listing_is_the_line_as_written(self):
         graph = _graph()
         node = graph.node("m#References#listing#1")
-        assert (node.kind, node.label, node.text) == (
-            NodeKind.LISTING, "listing#1", "#Util")
+        assert (node.kind, node.name, node.text) == (
+            NodeKind.LISTING, None, "#Util")
         assert (node.start_line, node.end_line, node.file) == (
             8, 8, "m.lob")
         assert graph.node("m#References#listing#2").text == "#Other Thing"
@@ -252,8 +248,8 @@ class TestReferencesNodes:
     def test_an_import_is_one_node_for_a_statement(self):
         graph = _graph()
         one = graph.node("m#References#import#1")
-        assert (one.kind, one.label, one.text) == (
-            NodeKind.IMPORT, "import#1", "import os")
+        assert (one.kind, one.name, one.text) == (
+            NodeKind.IMPORT, None, "import os")
         assert (one.start_line, one.end_line) == (9, 9)
         two = graph.node("m#References#import#2")
         assert two.text == "from decimal import (\n    Decimal,\n    ROUND_UP)"
@@ -277,11 +273,10 @@ class TestReferencesNodes:
                 if c.kind == NodeKind.IMPORT] == [
             "import os", "from decimal import (", "Decimal,", "ROUND_UP)"]
 
-    def test_text_and_size_follow_the_leaves(self):
-        doc = _graph().to_dict("full")
-        by_address = {n["address"]: n for n in doc["nodes"]}
-        assert by_address["m#References#listing#1"]["text"] == "#Util"
-        assert "text" not in by_address["m#References"]
+    def test_the_text_follows_the_leaves(self):
+        graph = _graph()
+        assert graph.node("m#References#listing#1").text == "#Util"
+        assert graph.node("m#References").text is None
 
 
 _BINDING_GRAPH_SOURCE = (
@@ -297,7 +292,7 @@ class TestBindingNodes:
         module = from_tree(parse(_BINDING_GRAPH_SOURCE))
         graph = build(module, "binding.lob")
         section = graph.node("proj#Binding")
-        assert (section.kind, section.label) == (NodeKind.BINDING, "Binding")
+        assert (section.kind, section.name) == (NodeKind.BINDING, None)
         assert [c.address for c in graph.children("proj#Binding")] == [
             "proj#Binding#declaration#1", "proj#Binding#declaration#2",
             "proj#Binding#declaration#3"]
@@ -318,7 +313,8 @@ class TestBindingNodes:
 
     def test_the_fields_print_like_mode(self):
         module = from_tree(parse(_BINDING_GRAPH_SOURCE))
-        doc = build(module, "binding.lob").to_dict("index")
+        doc = json.loads(write_json(level_view(
+            build(module, "binding.lob"), "index")))
         entry = next(n for n in doc["nodes"]
                      if n["address"] == "proj#Binding#declaration#2")
         assert entry["declares"] == "external"
@@ -333,14 +329,13 @@ class TestBindingNodes:
         assert "declares" not in language
 
     def test_outline_leaves_the_lines_out_and_keeps_the_sections(self):
-        module = from_tree(parse(_SOURCE))
-        doc = _graph().to_dict("outline")
+        doc = json.loads(write_json(level_view(_graph(), "outline")))
         addresses = {n["address"] for n in doc["nodes"]}
         assert "m#References" in addresses
         assert not any("#listing#" in a or "#import#" in a
                        for a in addresses)
         module = from_tree(parse(_BINDING_GRAPH_SOURCE))
-        doc = build(module).to_dict("outline")
+        doc = json.loads(write_json(level_view(build(module), "outline")))
         assert "proj#Binding" in {n["address"] for n in doc["nodes"]}
         assert not any("#declaration#" in n["address"]
                        for n in doc["nodes"])
@@ -467,14 +462,17 @@ class TestEdgesStartAtTheirLines:
 
     def test_the_outline_holds_none_of_them(self, tmp_path):
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})
-        edges = graph.to_dict("outline")["edges"]
-        assert {e["kind"] for e in edges} == {"CONTAINS"}
+        edges = json.loads(write_json(level_view(graph, "outline")))["edges"]
+        assert {e["kind"] for e in edges} <= {
+            "CONTAINS", "CONTAINS_INDIRECTLY"}
 
-    def test_at_index_they_start_at_the_line(self, tmp_path):
+    def test_at_index_they_start_at_their_section_and_the_line(
+        self, tmp_path,
+    ):
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})
-        edges = graph.to_dict("index")["edges"]
-        assert {"source": "user#References#listing#1", "target": "lib",
-                "kind": "IMPORTS", "start_line": 9} in edges
+        edges = json.loads(write_json(level_view(graph, "index")))["edges"]
+        assert {"source": "user#References", "target": "lib",
+                "kind": "IMPORTS", "lines": [9]} in edges
 
 
 class TestWhatAModuleLists:
@@ -561,13 +559,13 @@ class TestEveryLineOfTheExamples:
 # ── Schemas and the ontology ─────────────────────────────────
 
 class TestSchemasAndOntology:
-    @pytest.mark.parametrize("level", LEVELS)
+    @pytest.mark.parametrize("level", list(PRESETS))
     def test_a_document_with_the_new_kinds_validates(self, level, tmp_path):
-        import json
         graph = _project(tmp_path, {"user.lob": _USER, "lib.lob": _LIB})
         schema = json.loads(
             (SCHEMAS / "name_graph.json").read_text(encoding="utf-8"))
-        jsonschema.validate(graph.to_dict(level), schema)
+        jsonschema.validate(
+            json.loads(write_json(level_view(graph, level))), schema)
 
     def test_the_kinds_and_properties_are_declared(self):
         text = (SCHEMAS / "notlob.ttl").read_text(encoding="utf-8")

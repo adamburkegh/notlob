@@ -22,20 +22,20 @@ from notlob.bindings.python.symbols import extract_symbols, extract_calls
 def _sym(module: str, name: str) -> tuple[Node, Edge]:
     """Create a SYMBOL node and the CONTAINS edge from its module."""
     addr = f"{module}#{name}"
-    node = Node(address=addr, label=name, kind=NodeKind.SYMBOL)
+    node = Node(address=addr, kind=NodeKind.SYMBOL, name=name)
     edge = Edge(source=module, target=addr, kind=EdgeKind.CONTAINS)
     return node, edge
 
 
-def _mod(address: str, label: str) -> Node:
-    return Node(address=address, label=label, kind=NodeKind.MODULE)
+def _mod(address: str, name: str) -> Node:
+    return Node(address=address, kind=NodeKind.MODULE, name=name)
 
 
-def _sub(module: str, label: str) -> Node:
+def _sub(module: str, name: str) -> Node:
     return Node(
-        address=f"{module}#{label}",
-        label=label,
+        address=f"{module}#{name}",
         kind=NodeKind.SUBHEADING,
+        name=name,
     )
 
 

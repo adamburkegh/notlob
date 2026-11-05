@@ -38,8 +38,6 @@ class TestTheTable:
         ("opens_scope", {K.MODULE, K.PROPERTY, K.TESTS, K.TEST_GROUP}),
         ("claim", {K.EXAMPLE, K.PROPERTY, K.RUN}),
         ("runnable", {K.EXAMPLE, K.PROPERTY, K.RUN, K.TEST, K.TEST_LINES}),
-        ("hidden_at_outline", {K.PROSE, K.CODE, K.BULLETS, K.LISTING,
-                               K.IMPORT, K.DECLARATION, K.POST_TEXT}),
         ("section", {K.SUBHEADING, K.APPENDIX}),
         ("region", {K.POST_TEXT}),
         ("text_in_holder", {K.SYMBOL}),
@@ -61,8 +59,8 @@ class TestTheTable:
         have_segment = {k for k in NodeKind if KINDS[k].segment}
         assert _with("numbered") == have_segment - {K.POST_TEXT}
 
-    def test_no_kind_is_both_hidden_at_outline_and_a_section(self):
-        assert not _with("hidden_at_outline") & _with("section")
+    def test_no_section_is_above_the_outline(self):
+        assert all(KINDS[k].rank == 1 for k in _with("section"))
 
 
 # ── Scope ────────────────────────────────────────────────────
@@ -196,7 +194,9 @@ class TestScopeOf:
             self, graph, address, scope):
         holder = graph.parent_of(address)
         assert graph.scope_of(holder.address) == scope
-        assert address == named_address(scope, graph.node(address).label)
+        name = graph.node(address).name
+        if name is not None:        # `#Tests` is a keyword: it has none
+            assert address == named_address(scope, name)
 
     def test_an_unknown_address_has_no_scope(self, graph):
         assert graph.scope_of("no/such#thing") is None
@@ -297,7 +297,7 @@ class TestANamedPropertyIsInItsModulesScope:
             "#T\n\n##Section\n\n" + self.PROPERTY.format(name="same"))
         node = graph.node("t#same")
         assert node.kind == K.PROPERTY
-        assert node.label == "same"
+        assert node.name == "same"
         assert graph.node("t#Section#same") is None
         assert graph.parent_of("t#same").address == "t#Section"
 

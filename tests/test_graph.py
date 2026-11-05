@@ -91,7 +91,7 @@ class TestNodes:
         node = g.node("roman/numerals")
         assert node is not None
         assert node.kind == NodeKind.MODULE
-        assert node.label == "Roman Numerals"
+        assert node.name == "Roman Numerals"
 
     def test_module_address_from_title(self):
         g = graph_of("#Pricing Discounts\n")
@@ -102,7 +102,7 @@ class TestNodes:
         node = g.node("t#Decoding")
         assert node is not None
         assert node.kind == NodeKind.SUBHEADING
-        assert node.label == "Decoding"
+        assert node.name == "Decoding"
 
     def test_no_subheadings_in_empty_body(self):
         g = graph_of("#T\n")
@@ -131,8 +131,8 @@ class TestEdges:
 
     def test_children_ordered(self):
         g = graph_of("#T\n##A\n    a\n##B\n    b\n##C\n    c\n")
-        labels = [n.label for n in g.children("t")]
-        assert labels == ["A", "B", "C"]
+        names = [n.name for n in g.children("t")]
+        assert names == ["A", "B", "C"]
 
 
 # ── Graph queries ────────────────────────────────────────────
@@ -246,9 +246,9 @@ class TestExampleFiles:
         g = build(from_tree(parse_file(
             EXAMPLES / "roman/roman/numerals.lob"
         )))
-        labels = [n.label for n in g.children("roman/numerals")]
-        assert "Decoding" in labels
-        assert "Round-Trip" in labels
+        names = [n.name for n in g.children("roman/numerals")]
+        assert "Decoding" in names
+        assert "Round-Trip" in names
 
     def test_pricing_discounts(self):
         g = build(from_tree(parse_file(
@@ -278,8 +278,15 @@ def _enriched(source: str) -> NameGraph:
     return g
 
 
+def _edges_of(g: NameGraph, kind: EdgeKind) -> list[dict]:
+    """The edges of *kind* the graph holds, each as source, target and
+    every line it is written on."""
+    return [{"source": e.source, "target": e.target, "lines": list(e.lines)}
+            for e in g.edges(kind)]
+
+
 def _uses_edges(g: NameGraph) -> list[dict]:
-    return [e for e in g.to_dict("index")["edges"] if e["kind"] == "USES"]
+    return _edges_of(g, EdgeKind.USES)
 
 
 class TestAddUsesEdges:
@@ -356,11 +363,10 @@ class TestAddUsesEdges:
             e for e in _uses_edges(g)
             if e["source"] == "m#caller" and e["target"] == "m#callee"
         )
-        assert "start_line" in edge
-        assert edge["start_line"] == 3  # line 2 (caller) + offset 1 (return callee())
+        assert edge["lines"] == [3]  # line 2 (caller) + offset 1 (return callee())
 
-    def test_uses_edge_first_call_site(self):
-        # callee called on lines 2 and 3 of caller's body — first wins
+    def test_uses_edge_every_call_site(self):
+        # callee called on lines 2 and 3 of caller's body — both are kept
         src = (
             "#M\n"
             "    def caller():\n"
@@ -376,7 +382,7 @@ class TestAddUsesEdges:
             e for e in _uses_edges(g)
             if e["source"] == "m#caller" and e["target"] == "m#callee"
         )
-        assert edge["start_line"] == 3  # first call site
+        assert edge["lines"] == [3, 4]
 
 
 class TestUsesLines:
@@ -436,7 +442,7 @@ class TestUsesLines:
 # ── add_cites_edges ──────────────────────────────────────
 
 def _refs_edges(g: NameGraph) -> list[dict]:
-    return [e for e in g.to_dict("index")["edges"] if e["kind"] == "CITES"]
+    return _edges_of(g, EdgeKind.CITES)
 
 
 def _module_graph(source: str):
@@ -517,7 +523,7 @@ class TestAddCitesEdges:
         refs = [e for e in _refs_edges(g)
                 if e["source"] == "m#prose#1" and e["target"] == "m#Section"]
         assert len(refs) == 1
-        assert refs[0].get("start_line") == 2
+        assert refs[0]["lines"] == [2]
 
     def test_multiple_modules(self):
         mod_a = from_tree(parse("#A\nSee #B here.\n"))
@@ -554,8 +560,8 @@ class TestModuleOf:
 
     def test_an_external_node_has_no_module(self):
         g = _enriched("#Mod\n")
-        g.add_node(Node(address="index.html", label="index.html",
-                        kind=NodeKind.EXTERNAL))
+        g.add_node(Node(address="index.html", kind=NodeKind.EXTERNAL,
+                        name="index.html"))
         assert g.module_of("index.html") is None
 
 
@@ -571,8 +577,8 @@ class TestEdgesAccessor:
     def _graph(self) -> NameGraph:
         g = NameGraph()
         for address in "abc":
-            g.add_node(Node(address=address, label=address,
-                            kind=NodeKind.SYMBOL))
+            g.add_node(Node(address=address, kind=NodeKind.SYMBOL,
+                            name=address))
         for source, target, kind in self.EDGES:
             g.add_edge(Edge(source, target, kind))
         return g
@@ -596,7 +602,7 @@ class TestSections:
     def test_subheadings_in_document_order(self):
         g = _enriched("#Mod\n\n##Beta\n\nx\n\n##Alpha\n\ny\n")
         sections = g.sections("mod")
-        assert [s.label for s in sections] == ["Beta", "Alpha"]
+        assert [s.name for s in sections] == ["Beta", "Alpha"]
         assert all(s.kind == NodeKind.SUBHEADING for s in sections)
 
     def test_a_module_without_sections(self):

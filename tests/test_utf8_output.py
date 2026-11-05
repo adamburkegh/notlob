@@ -67,7 +67,7 @@ class TestPipedOutputIsUtf8:
         assert PROSE in text
         assert "\\u" not in text
         nodes = json.loads(text)["nodes"]
-        assert any(PROSE in n.get("text", "") for n in nodes)
+        assert any(PROSE in n.get("body", "") for n in nodes)
 
     def test_query_content_json(self, project):
         proc = _notlob(

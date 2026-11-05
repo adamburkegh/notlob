@@ -31,7 +31,8 @@ from notlob.bindings import Status
 from notlob.bindings.python import build_python as _build_python, kit
 from notlob.bindings.python.runner import run_examples as _run_examples
 from notlob.commands import cmd_test
-from notlob.graph import EdgeKind, cites_of
+from notlob.graph import EdgeKind
+from notlob.view import cites_of
 from notlob.project import build_package
 
 run_examples = in_project(_run_examples, kit, "EXAMPLE")

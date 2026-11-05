@@ -4,29 +4,32 @@ Each takes a :class:`~notlob.view.View` and nothing else, and writes what
 it holds: it never asks the graph, a kind's rank or what a level is. What
 a view holds is decided once, in :mod:`notlob.view`.
 
-* **JSON** is the document of ``schema/name_graph_next.json``.
+* **JSON** is the document of ``schema/name_graph.json``.
 * **Turtle** gives a node's kind as its class and its other fields as
   literals, named in camelCase from the JSON's. Every edge is a triple with
   its kind, in camelCase, for the predicate; an edge with lines also has an
   ``rdf:Statement`` about that triple, which carries them as
-  ``notlob:lines``, one value a line (RDF 1.1 reification).
+  ``notlob:lines``, one value a line (RDF 1.1 reification). The vocabulary
+  is declared in ``schema/notlob.ttl``.
 * **Text** is for a reader: each file's path on a line alone and its lines
   under it, a blank line between files. A line's words are on the left,
   indented two spaces a step, and its line numbers right aligned in a
-  column. Where the view has bodies, a file is its bodies, each at its
-  line.
+  column; a run of consecutive lines is a range (``78-86``). Where the view
+  has bodies, a file is its bodies, each at its line, from the first it
+  has.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import fields
 
-from .graph import (
-    DOCUMENT_VERSION, KINDS, NodeKind, _turtle_iri, _turtle_lit,
-    _turtle_long_lit, turtle_class_name,
-)
+from .graph import KINDS, NodeKind
 from .view import View, ViewEdge, ViewNode
+
+#: The version of the document the JSON writer writes.
+DOCUMENT_VERSION = 2
 
 #: The namespace of the vocabulary, declared in ``schema/notlob.ttl``.
 _NAMESPACE = "urn:notlob:ns:"
@@ -39,13 +42,14 @@ def write_json(view: View) -> str:
     doc: dict = {"version": DOCUMENT_VERSION}
     if view.level is not None:
         doc["level"] = view.level
-    doc["nodes"] = [_json_node(node) for node in view.nodes]
+    doc["nodes"] = [node_dict(node) for node in view.nodes]
     doc["edges"] = [_json_edge(edge) for edge in (*view.tree,
                                                   *view.references)]
     return json.dumps(doc, indent=2, ensure_ascii=False)
 
 
-def _json_node(node: ViewNode) -> dict:
+def node_dict(node: ViewNode) -> dict:
+    """*node* as the JSON document writes it: each field it has."""
     found = {f.name: getattr(node, f.name) for f in fields(ViewNode)}
     return {name: value.name if isinstance(value, NodeKind) else value
             for name, value in found.items() if value is not None}
@@ -53,7 +57,7 @@ def _json_node(node: ViewNode) -> dict:
 
 def _json_edge(edge: ViewEdge) -> dict:
     found = {"source": edge.source, "target": edge.target,
-             "kind": edge.kind}
+             "kind": edge.kind.name}
     if edge.lines:
         found["lines"] = list(edge.lines)
     return found
@@ -61,16 +65,80 @@ def _json_edge(edge: ViewEdge) -> dict:
 
 # ── Turtle ───────────────────────────────────────────────────
 
-def _camel(word: str) -> str:
-    """A snake_case or UPPER_SNAKE word in camelCase."""
+#: Characters that may not appear in an IRI reference, plus ``%`` (so a
+#: literal percent survives a round trip). Space and control characters
+#: are covered by ``ord(ch) <= 0x20``.
+_IRI_ENCODE = frozenset('<>"{}|\\^`%\x7f')
+
+
+def _turtle_iri(address: str) -> str:
+    """*address* as a Turtle IRI reference.
+
+    Addresses are free text (a subheading title can hold spaces, quotes,
+    ``:``, and a positional node's segments hold ``#`` -- a name written
+    in a document holds none), so they are made safe as a relative IRI
+    reference:
+
+    * characters not allowed in an IRI (and ``%``) are percent-encoded;
+    * only the first ``#`` is the fragment separator, later ones are
+      encoded (a fragment may not contain ``#``);
+    * a ``:`` in the first path segment is encoded, or ``foo:/bar``
+      would be read as scheme ``foo``.
+
+    Non-ASCII text is kept. The exact address is also emitted as the
+    ``notlob:address`` literal, so nothing is lost to the encoding.
+    """
+    text = "".join(
+        "".join(f"%{b:02X}" for b in ch.encode("utf-8"))
+        if ch in _IRI_ENCODE or ord(ch) <= 0x20 else ch
+        for ch in address
+    )
+    head, sep, fragment = text.partition("#")
+    text = head + sep + fragment.replace("#", "%23")
+    first_segment = re.match(r"[^/?#]*", text).group(0)
+    text = first_segment.replace(":", "%3A") + text[len(first_segment):]
+    return f"<{text}>"
+
+
+def _turtle_lit(s: str) -> str:
+    """*s* as a one-line Turtle string literal."""
+    escaped = (s.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\n", "\\n")
+                .replace("\r", "\\r"))
+    return f'"{escaped}"'
+
+
+def _turtle_long_lit(s: str) -> str:
+    """*s* as a triple-quoted Turtle string literal.
+
+    Every quote is escaped, not only a run of three: a long literal that
+    ends in a quote has four in a row at its close, which is ambiguous,
+    and escaping is always valid.
+    """
+    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"""{escaped}"""'
+
+
+def turtle_class_name(kind: NodeKind) -> str:
+    """The name of the ontology class of the nodes of *kind*, in
+    UpperCamelCase as RDF classes are named: ``Module``, ``PostText``,
+    ``TestGroup``. The writer, the ontology and the guard on them all take
+    the name from here."""
+    return "".join(word.capitalize() for word in kind.name.split("_"))
+
+
+def turtle_field_name(word: str) -> str:
+    """A snake_case or UPPER_SNAKE *word* in camelCase: how Turtle names a
+    field or an edge kind, from the JSON's."""
     first, *rest = word.lower().split("_")
     return first + "".join(part.title() for part in rest)
 
 
 def write_turtle(view: View) -> str:
     """*view* as RDF in Turtle syntax. Node addresses become relative IRI
-    references (see ``notlob.graph._turtle_iri``); the exact address is
-    also the ``notlob:address`` literal."""
+    references (see ``_turtle_iri``); the exact address is also the
+    ``notlob:address`` literal."""
     out = [f"@prefix notlob: <{_NAMESPACE}> .",
            "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
            ""]
@@ -79,7 +147,7 @@ def write_turtle(view: View) -> str:
         out.append("")
     for edge in (*view.tree, *view.references):
         subject, predicate = _turtle_iri(edge.source), (
-            f"notlob:{_camel(edge.kind)}")
+            f"notlob:{turtle_field_name(edge.kind.name)}")
         target = _turtle_iri(edge.target)
         out.append(f"{subject} {predicate} {target} .")
         if edge.lines:
@@ -97,7 +165,8 @@ def _turtle_node(node: ViewNode) -> list[str]:
         value = getattr(node, f.name)
         if f.name == "kind" or value is None:
             continue
-        parts.append(f"notlob:{_camel(f.name)} {_turtle_value(value)}")
+        parts.append(
+            f"notlob:{turtle_field_name(f.name)} {_turtle_value(value)}")
     head = f"{_turtle_iri(node.address)} {parts[0]} ;"
     return [head] + [f"    {p} ;" for p in parts[1:-1]] + [
         f"    {parts[-1]} ."]
@@ -132,9 +201,8 @@ def write_text(view: View) -> str:
                   for edge in held.get(node.address, [])]
         for _, _, item in sorted(items, key=lambda i: i[:2]):
             if isinstance(item, ViewEdge):
-                words = f"{_verb(item.kind)} {_target(nodes[item.target])}"
-                rows.append((depth + 1, words,
-                             ", ".join(map(str, item.lines))))
+                words = f"{_verb(item.kind.name)} {_target(nodes[item.target])}"
+                rows.append((depth + 1, words, _ranges(item.lines)))
             else:
                 walk(item, depth + 1, rows)
 
@@ -149,24 +217,28 @@ def write_text(view: View) -> str:
         if node.file is None:
             continue
         if with_bodies:
-            body = _file_lines(below(node))
+            first, body = _file_lines(below(node))
+            blocks.append(f"{_path(node.file, first)}\n{body}")
         else:
             rows: list = []
             walk(node, 0, rows)
-            body = _laid_out(rows)
-        blocks.append(f"{node.file}\n{body}")
+            blocks.append(f"{node.file}\n{_laid_out(rows)}")
     return "\n".join(blocks)
 
 
 def _words(node: ViewNode) -> str:
     """What the line of *node* says: a claim or test its sigil and its name,
-    a declaration what it declares, any other node its name, and one with
-    only a positional address the end of it (``prose#1``)."""
-    sigil = KINDS[node.kind].sigil
-    if sigil is not None:
-        return " ".join(filter(None, (sigil, node.name)))
+    a declaration what it declares, a kind with a heading that and its name
+    (once, where the name is the heading), any other node its name, and one
+    with only a positional address the end of it (``prose#1``)."""
+    facts = KINDS[node.kind]
+    if facts.sigil is not None:
+        return " ".join(filter(None, (facts.sigil, node.name)))
     if node.declares is not None:
         return " ".join(filter(None, (f"~{node.declares}", node.value)))
+    if facts.heading is not None:
+        return " ".join(dict.fromkeys(filter(None, (facts.heading,
+                                                    node.name))))
     if node.name is not None:
         return node.name
     parts = node.address.split("#")
@@ -184,6 +256,20 @@ def _verb(kind: str) -> str:
     return kind.lower().split("_")[0]
 
 
+def _ranges(lines: tuple[int, ...]) -> str:
+    """*lines*, in order, with each run of two or more consecutive lines a
+    range: ``12, 15-17``."""
+    runs: list[list[int]] = []
+    for number in lines:
+        if runs and number == runs[-1][-1] + 1:
+            runs[-1].append(number)
+        else:
+            runs.append([number])
+    return ", ".join(
+        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}"
+        for run in runs)
+
+
 def _laid_out(rows: list[tuple[int, str, str]]) -> str:
     """*rows* as lines: each indented two spaces a step, with its numbers
     right aligned in a column two spaces past the longest of them."""
@@ -196,9 +282,15 @@ def _laid_out(rows: list[tuple[int, str, str]]) -> str:
         for text, (_, _, where) in zip(texts, rows))
 
 
-def _file_lines(nodes: list[ViewNode]) -> str:
-    """The bodies of *nodes*, each at its line, as the file they are
-    from: the lines between them are blank."""
+def _path(file: str, first: int | None) -> str:
+    """A file's path as the text puts it above its lines: with the line
+    they start at, when that is not the first."""
+    return file if first in (None, 1) else f"{file}:{first}"
+
+
+def _file_lines(nodes: list[ViewNode]) -> tuple[int | None, str]:
+    """The line the bodies of *nodes* start at, and the bodies, each at its
+    line, as the file they are from: the lines between them are blank."""
     placed: dict[int, str] = {}
     for node in nodes:
         if node.body is None or node.start_line is None:
@@ -207,6 +299,7 @@ def _file_lines(nodes: list[ViewNode]) -> str:
                                       node.start_line):
             placed[number] = text
     if not placed:
-        return ""
-    return "".join(f"{placed.get(number, '')}\n"
-                   for number in range(1, max(placed) + 1))
+        return None, ""
+    return min(placed), "".join(
+        f"{placed.get(number, '')}\n"
+        for number in range(min(placed), max(placed) + 1))

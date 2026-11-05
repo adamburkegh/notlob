@@ -32,10 +32,10 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 
 
 def written_in(graph: NameGraph, section: str) -> set[str]:
-    """The labels of the symbols written in the code blocks of the module
+    """The names of the symbols written in the code blocks of the module
     or section at *section*: each is contained by its code block."""
     return {
-        symbol.label
+        symbol.name
         for code in graph.children(section) if code.kind == NodeKind.CODE
         for symbol in graph.children(code.address)
         if symbol.kind == NodeKind.SYMBOL
@@ -66,7 +66,7 @@ class TestSymbolNodes:
         node = g.node("t#f")
         assert node is not None
         assert node.kind == NodeKind.SYMBOL
-        assert node.label == "f"
+        assert node.name == "f"
 
     def test_constant_at_module_level(self):
         g = enriched("#T\n    X = 1\n")
@@ -263,7 +263,9 @@ class TestSymbolsInAnAppendix:
         assert g.parent_of(prop.address).address == "t#p"
 
     def test_the_outline_shows_them(self):
-        shown = {n["address"] for n in enriched(self.SRC).to_dict()["nodes"]}
+        from notlob.view import level_view
+        shown = {n.address for n in level_view(
+            enriched(self.SRC), "outline").nodes}
         assert {"t#helper", "t#deeper", "t#p#prop"} <= shown
 
 

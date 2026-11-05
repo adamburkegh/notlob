@@ -27,7 +27,11 @@ in the view. Rank is not the tree's: a block of low rank may hold a
 symbol of high. A `CONTAINS` edge is always one of the tree's; where a
 view hides what holds a node, it writes a `CONTAINS_INDIRECTLY` edge
 from the nearest node above that it shows. This is clear, though it may
-not be final.
+not be final. A line is in the body of the written node that holds it;
+where a view does not show that node, the line is in the body of the
+deepest node it shows that covers it. So a view shows each of its lines
+once, and one started at a symbol gives the symbol its own: references
+move up to what a view shows, and lines to where it starts.
 
 Any change is tested against these lines. One that does not fit them
 is a design question, not a trade-off for its author to settle: a
@@ -324,8 +328,8 @@ module boundaries and will not exhibit this behaviour. The take-away: lob
 module boundaries govern notlob theory (explicit, declared, navigable);
 language-level name visibility is governed by the language binding.
 
-**Node addresses and labels are distinct.** Every node in the
-name-graph has two representations:
+**Node addresses and names are distinct.** Every node in the name-graph
+has an address, and a node written with a name has that name too:
 
 - *Address* — the globally unique machine identifier, derived
   deterministically from the node's position in the package hierarchy.
@@ -333,21 +337,23 @@ name-graph has two representations:
   address appends a fragment: `pricing/discounts#Stacking Discounts`.
   Addresses are not written by authors; they are computed by tooling.
 
-- *Label* — the human-readable name as written in the source file:
-  `Stacking Discounts`. A named node's label is unique within its scope
-  (below): a second node with the same name in the same scope is an
-  error, since the address would name two nodes. The same name in
-  different scopes is legal. An anonymous node's label is its kind and
-  ordinal (`prose#1`, `example#2`). The address is derived from the
-  label plus context.
+- *Name* — the name as written in the source file, which the address is
+  built from: a module's title, a heading, a symbol, an appendix's
+  title, a named claim or test (`Stacking Discounts`). A name is unique
+  within its scope (below): a second node with the same name in the same
+  scope is an error, since the address would name two nodes. The same
+  name in different scopes is legal. A node addressed by position (a
+  paragraph, a code block, an unnamed claim) has no name, and nor does a
+  keyword section (`#Tests`, `#References`, `#Binding`), whose address
+  holds its keyword.
 
 The two are mechanically related. A named node's address is its scope's
 address, `#`, and its name: `roman/numerals#from_roman`. The scope is the
 nearest enclosing node, along `CONTAINS`, whose kind opens one: `MODULE`,
-`PROPERTY`, `TESTS` or a `#Tests` group. Sections do not. An anonymous
-node (a prose paragraph, a code block, an unnamed claim) is addressed by
-position instead: its parent's address, its kind and its ordinal, as in
-`roman/numerals#Decoding#example#1` and `roman/numerals#Decoding#prose#1`.
+`PROPERTY`, `TESTS` or a `#Tests` group. Sections do not. A node with no
+name is addressed by position instead: its parent's address, its kind and
+its ordinal, as in `roman/numerals#Decoding#example#1` and
+`roman/numerals#Decoding#prose#1`.
 This mirrors the URI fragment convention and is isomorphic to an RDF URI,
 enabling the mechanical export to RDF/Turtle (`notlob graph --format
 turtle`).
@@ -463,9 +469,12 @@ once, on the leaf it was written in; a symbol's text is the lines of its
 code block. What a consumer wants as one string is derived. An element of
 the document that is missing from the graph is a bug.
 
-The graph is exported at three levels of detail (`outline`, `index`,
-`full`), each a view of the same structure written by its own
-serialiser; the in-memory layout is not the wire format.
+The graph is exported as a view (a start, a depth and a rank; see the top
+of this document), most often at one of the four named levels (`outline`,
+`index`, `block`, `full`, or the ranks `1` to `4`). What a view holds is
+decided once, in `notlob/view.py`, and three writers that decide nothing
+write it as text, JSON or Turtle (`notlob/writers.py`); the in-memory
+layout is not the wire format.
 
 The name-graph accumulates in layers, each adding richer information:
 
@@ -624,12 +633,14 @@ binding's implementation is tied to a specific library.
   `dist/`).  After assembly, runs the `~on-build` hook if declared in
   `binding.lob`.  The primary entry point for browser-target languages.
 - `notlob weave` — render a `.lob` file (or project) as Markdown.
-- `notlob graph` — the package name-graph, at one of three levels of
-  detail (`outline`, `index`, `full`): as text for a reader (the shape of
-  each file, in `notlob/outline.py`), or as JSON or Turtle for a program.
+- `notlob graph` — the package name-graph, as a view at one of four
+  levels (`outline`, `index`, `block`, `full`): as text for a reader
+  (each file and its outline, or at `full` its lines), or as JSON or
+  Turtle for a program.
 - `notlob query` — navigate the name-graph from the command line
-  (`children`, `resolve`, `search`, `imports`, `imported-by`,
-  `content`).
+  (`children`, `resolve`, `search`, `imports`, `imported-by`, `callers`,
+  `callees`, `cites`, `cited-by`, and `content`, the view started at an
+  address).
 - `notlob docs` — write the language reference to `notlob-docs/`.
 - `notlob init` — initialise a new notlob project in the current directory.
 - `notlob new` — create a new `.lob` module in the current project.

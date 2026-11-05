@@ -40,20 +40,23 @@ from notlob.bindings import (
 from notlob.bindings.python.runner import _resolve_python_interpreter
 from notlob.bindings import ClaimToRun
 from notlob.graph import (
-    KINDS, NameGraph, Node, cited_by_edges, cites_edges, claims_to_run,
-    content_tree, module_address, node_summary, parse_level, sigil_of,
+    NameGraph, Node, claims_to_run, module_address, sigil_of,
 )
 from notlob.model import BindingSection
-from notlob.outline import project_outline
 from notlob.project import (
     LobRefCycleError,
     ProjectParseError,
     address_from_path,
     build_package,
+    file_graph,
     find_project_root,
     load_dependencies,
     parse_project,
 )
+from notlob.view import (
+    answer_node, cited_by_edges, cites_edges, level_name, level_view,
+)
+from notlob.writers import node_dict, write_json, write_text, write_turtle
 
 
 def use_utf8_streams(*streams) -> None:
@@ -1342,8 +1345,19 @@ def cmd_build(
 
 # ── Graph export ──────────────────────────────────────────────
 
+#: The writers of the formats ``notlob graph`` prints.
+_WRITERS = {"text": write_text, "json": write_json, "turtle": write_turtle}
+
 #: The formats ``notlob graph`` prints.
-GRAPH_FORMATS = ("text", "json", "turtle")
+GRAPH_FORMATS = tuple(_WRITERS)
+
+
+def _emit(text: str) -> None:
+    """Write *text* to stdout as UTF-8 bytes, ending in a line end, so
+    what a program reads is what was written (a body keeps its ``\\n``)."""
+    if not text.endswith("\n"):
+        text += "\n"
+    sys.stdout.buffer.write(text.encode("utf-8"))
 
 
 def cmd_graph(
@@ -1356,23 +1370,23 @@ def cmd_graph(
     When *path* is omitted, discovers the project from CWD and exports
     the full package graph.  Pass a specific *.lob* path to export that
     file's module graph (or its project graph when it is inside a
-    project).
+    project, or the graph of the one file when it is not: its ``file`` is
+    the path given).
 
     The language binding (from ``binding.lob``) controls symbol
     extraction.  *fmt* selects the output format: ``"text"`` (the
-    default) is each module's file and the outline of what is written in
-    it, for a reader (see :mod:`notlob.outline`; at ``full`` each module
-    as ``query content`` prints it); ``"json"`` and ``"turtle"`` (RDF
-    Turtle) are the graph itself, for a program.  All are at a *level*
-    of detail, by name or number (``outline``, the default, ``index`` or
-    ``full``; see :meth:`notlob.graph.NameGraph.to_dict`).
+    default) is each file and its lines, for a reader; ``"json"`` and
+    ``"turtle"`` (RDF Turtle) are the graph itself, for a program (see
+    :mod:`notlob.writers`).  All write the view at a *level*, by name or
+    rank: ``outline`` (1, the default), ``index`` (2), ``block`` (3) or
+    ``full`` (4); see :data:`notlob.graph.PRESETS`.
     """
     if fmt not in GRAPH_FORMATS:
         print(f"ERROR  <graph>  unknown format {fmt!r}: choose "
               f"{', '.join(GRAPH_FORMATS)}", file=sys.stderr)
         return 1
     try:
-        level = parse_level("outline" if level is None else level)
+        level = level_name(level)
     except ValueError as exc:
         print(f"ERROR  <graph>  {exc}", file=sys.stderr)
         return 1
@@ -1399,50 +1413,20 @@ def cmd_graph(
         except ProjectParseError as exc:
             return _report_unparsed(exc)
     else:
-        # standalone file — only reachable via an explicit path arg
+        # a project of one file — only reachable via an explicit path arg
         try:
-            module = from_tree(parse_file(path))
-        except Exception as exc:
-            print(f"ERROR  <parse>  {exc}", file=sys.stderr)
-            return 1
-        try:
-            graph = build(module)
-            enrich(graph, module, extract_symbols, kit.split_imports)
+            graph = file_graph(
+                _project_relative(str(path), None), extract_symbols,
+                call_extractor=kit.extract_calls,
+                split_imports=kit.split_imports)
         except AddressCollisionError as exc:
             print(f"ERROR  <names>  {exc}", file=sys.stderr)
             return 1
+        except Exception as exc:
+            print(f"ERROR  <parse>  {exc}", file=sys.stderr)
+            return 1
 
-    if fmt == "turtle":
-        sys.stdout.buffer.write(
-            graph.to_turtle(level=level).encode("utf-8")
-        )
-        sys.stdout.buffer.write(b"\n")
-    elif fmt == "json":
-        print(graph.to_json(level=level))
-    elif level == "full":
-        return _print_modules(graph, root)
-    else:
-        lone_file = (None if root is not None
-                     else _project_relative(str(path), None))
-        print(project_outline(graph, level, lone_file), end="")
-    return 0
-
-
-def _print_modules(graph: NameGraph, root: Path | None) -> int:
-    """Print each module of *graph* as ``query content`` prints it, with
-    a blank line between, or an error when there is no project to read
-    the files from."""
-    if root is None:
-        print("ERROR  <graph>  --level full as text needs a project to "
-              "read the files of; use --format json", file=sys.stderr)
-        return 1
-    try:
-        texts = [_content_text(graph, root, module.address)
-                 for module in graph.nodes(NodeKind.MODULE)]
-    except ValueError as exc:
-        print(f"ERROR  <graph>  {exc}", file=sys.stderr)
-        return 1
-    print("\n".join(texts), end="")
+    _emit(_WRITERS[fmt](level_view(graph, level)))
     return 0
 
 
@@ -1500,16 +1484,17 @@ def _require_graph(
 #
 # Each reads the package graph itself. A list answer is one entry for a
 # node: in ``text`` (the default) a line of three columns, the node's
-# sigil, its address and where it is; in ``json`` an array of node
-# summaries as ``notlob graph`` prints them at ``outline`` (see
-# :func:`notlob.graph.node_summary`).
+# sigil, its address and where it is; in ``json`` an array of nodes as
+# ``notlob graph`` prints them at ``outline``, with their ``file`` too (see
+# :func:`notlob.view.answer_node`).
 
-#: The edge kinds a graph holds, for ``query children``.
-QUERY_EDGE_KINDS = tuple(k.name for k in EdgeKind)
+#: The edge kinds a graph holds, for ``query children``: a graph holds no
+#: ``CONTAINS_INDIRECTLY``, which only a view writes.
+QUERY_EDGE_KINDS = tuple(
+    k.name for k in EdgeKind if k is not EdgeKind.CONTAINS_INDIRECTLY)
 
-#: The kinds of node ``outline`` shows, for ``query search``.
-QUERY_NODE_KINDS = tuple(
-    k.name for k in NodeKind if not KINDS[k].hidden_at_outline)
+#: Every kind of node, for ``query search``.
+QUERY_NODE_KINDS = tuple(k.name for k in NodeKind)
 
 #: The formats a query answers in.
 QUERY_FORMATS = ("text", "json")
@@ -1564,7 +1549,7 @@ def _answer(
               file=sys.stderr)
         return 1
     if fmt == "json":
-        print(json.dumps([node_summary(n) for n, _ in entries],
+        print(json.dumps([node_dict(answer_node(n)) for n, _ in entries],
                          indent=2, ensure_ascii=False))
         return 0
     print(_columns([(sigil_of(n), n.address, where)
@@ -1605,7 +1590,8 @@ def cmd_query_resolve(label: str, context: str | None = None) -> int:
         return 1
     node = graph.resolve(label, context)
     print(json.dumps(
-        node_summary(node) if node else None, indent=2, ensure_ascii=False))
+        node_dict(answer_node(node)) if node else None, indent=2,
+        ensure_ascii=False))
     return 0 if node else 1
 
 
@@ -1614,8 +1600,9 @@ def cmd_query_search(
     kind_str: str | None = None,
     fmt: str = "text",
 ) -> int:
-    """Print the nodes ``outline`` shows whose label matches *pattern*
-    (fnmatch-style), each where it starts.
+    """Print the nodes whose name matches *pattern* (fnmatch-style), each
+    where it starts, of the *kind_str* asked for if one is. A node with no
+    name is not found.
 
     Bare words (no ``*`` or ``?`` wildcards) are automatically wrapped
     as ``*pattern*`` for convenient substring matching.
@@ -1632,7 +1619,6 @@ def cmd_query_search(
     kind = NodeKind[kind_str] if kind_str else None
     return _answer(graph, None, [
         (n, _where(n)) for n in graph.search(pattern, kind)
-        if not KINDS[n.kind].hidden_at_outline
     ], fmt)
 
 
@@ -1825,69 +1811,46 @@ def cmd_weave(
     return 0
 
 
-def _content_text(graph: NameGraph, root: Path, address: str) -> str:
-    """The source of the node at *address*: a header line, the address and
-    the span (``address  file:first-last``), then the node's own lines
-    from its file under *root*, as written.
-
-    Raises ``ValueError`` with the reason when there is no such node, or
-    it has no lines in a ``.lob`` file (an external file), or its file
-    cannot be read."""
-    node = graph.node(address)
-    if node is None:
-        raise ValueError(f"no node at address {address!r}")
-    if node.file is None or node.start_line is None or node.end_line is None:
-        raise ValueError(
-            f"{address!r} has no lines in a .lob file to show")
-    try:
-        lines = (root / node.file).read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        raise ValueError(f"cannot read {node.file}: {exc}") from exc
-    body = "\n".join(lines[node.start_line - 1:node.end_line])
-    return (f"{address}  {node.file}:{node.start_line}-{node.end_line}\n"
-            f"{body}\n")
-
-
 def cmd_query_content(
     address: str, depth: int | None = None, fmt: str = "text",
 ) -> int:
-    """Print the node at *address* as it is written.
+    """Print the node at *address* as it is written: the view started at
+    it, at ``full`` (see :func:`notlob.view.level_view`).
 
-    ``text`` (the default) is a header line, the address and the span, and
-    then the node's own lines from its file, as written (see
-    :func:`_content_text`). ``json`` is the subtree, nested and narrow (see
-    :func:`notlob.graph.content_tree`), with ``null`` and exit code 1 when
-    the address does not resolve. *depth* counts ``CONTAINS`` steps from
-    the node (``0`` the node alone; by default there is no limit) and is
-    for ``json`` only: with ``text`` it is an error.
+    ``json`` is the graph document, its root carrying the ``file``, with
+    ``null`` and exit code 1 when the address does not resolve. ``text`` is
+    the root's file on a line, with the line the view starts at when that
+    is not the first (``hello.lob:65``), and then its lines from there. A
+    node with no lines (an external file) is an error. *depth* counts the
+    steps the view shows from the node (``0`` the node alone; by default
+    there is no limit).
     """
-    if fmt not in ("text", "json"):
+    if fmt not in QUERY_FORMATS:
         print(f"ERROR  <query>  unknown format {fmt!r}: choose text or "
               f"json", file=sys.stderr)
-        return 1
-    if depth is not None and fmt != "json":
-        print("ERROR  <query>  depth is for --format json only",
-              file=sys.stderr)
         return 1
     if depth is not None and depth < 0:
         print("ERROR  <query>  depth must be 0 or more", file=sys.stderr)
         return 1
-    project, _binding = _require_root()
-    if project is None:
-        return 1
     graph = _require_graph()
     if graph is None:
         return 1
+    node = graph.node(address)
     if fmt == "json":
-        document = content_tree(graph, address, depth)
-        print(json.dumps(document, indent=2, ensure_ascii=False))
-        return 0 if document else 1
-    try:
-        text = _content_text(graph, project, address)
-    except ValueError as exc:
-        print(f"ERROR  <query>  {exc}", file=sys.stderr)
+        if node is None:
+            print("null")
+            return 1
+        _emit(write_json(level_view(graph, "full", address, depth)))
+        return 0
+    if node is None:
+        print(f"ERROR  <query>  no node at address {address!r}",
+              file=sys.stderr)
         return 1
-    print(text, end="")
+    if node.file is None or node.start_line is None or node.end_line is None:
+        print(f"ERROR  <query>  {address!r} has no lines in a .lob file to "
+              f"show", file=sys.stderr)
+        return 1
+    _emit(write_text(level_view(graph, "full", address, depth)))
     return 0
 
 

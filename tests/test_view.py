@@ -22,7 +22,7 @@ from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
 from notlob.graph import (
-    EDGE_RANKS, KINDS, PRESETS, Rank, add_bodies, add_cites_edges,
+    EDGE_RANKS, KINDS, PRESETS, Rank, add_cites_edges, add_source,
     add_uses_edges, enrich,
 )
 from notlob.view import View, ViewEdge, ViewNode, level_view, view
@@ -55,7 +55,7 @@ def _graph(source: str):
     enrich(graph, module, python_kit.extract_symbols, python_kit.split_imports)
     add_cites_edges(graph)
     add_uses_edges(graph, python_kit.extract_calls)
-    add_bodies(graph, module)
+    add_source(graph, module)
     return graph
 
 
@@ -117,13 +117,28 @@ class TestRank:
         assert {k: f.rank for k, f in KINDS.items()} == wanted
 
     def test_every_edge_kind_has_a_rank(self):
-        assert set(EDGE_RANKS) == (
-            {k.name for k in EdgeKind} | {"CONTAINS_INDIRECTLY"})
+        assert set(EDGE_RANKS) == set(EdgeKind)
+        assert "CONTAINS_INDIRECTLY" in EdgeKind.__members__
+
+    def test_no_graph_holds_an_indirect_edge(self):
+        for name in ("roman", "retail"):
+            held = {e.kind for e in _project(name).edges()}
+            assert EdgeKind.CONTAINS_INDIRECTLY not in held
+
+    def test_only_a_view_writes_one(self):
+        v = view(_graph(SOURCE), rank=Rank.STRUCTURE)
+        assert {e.kind for e in v.tree} == {
+            EdgeKind.CONTAINS, EdgeKind.CONTAINS_INDIRECTLY}
+
+    def test_a_kind_with_a_heading_says_it(self):
+        assert {k: f.heading for k, f in KINDS.items()
+                if f.heading is not None} == {K.APPENDIX: "Appendix"}
 
     def test_the_rank_of_each_edge_kind(self):
         assert EDGE_RANKS == {
-            "CONTAINS": 1, "CONTAINS_INDIRECTLY": 1, "USES": 2, "CITES": 2,
-            "IMPORTS": 2, "USES_EXTERNAL": 2}
+            EdgeKind.CONTAINS: 1, EdgeKind.CONTAINS_INDIRECTLY: 1,
+            EdgeKind.USES: 2, EdgeKind.CITES: 2, EdgeKind.IMPORTS: 2,
+            EdgeKind.USES_EXTERNAL: 2}
 
     def test_the_presets_are_four_ranks(self):
         assert PRESETS == {"outline": 1, "index": 2, "block": 3, "full": 4}
@@ -134,15 +149,18 @@ class TestRank:
 class TestContainment:
     def test_a_view_hides_what_holds_a_node_and_says_so(self):
         v = view(_graph(SOURCE), rank=Rank.STRUCTURE)
-        assert ("m", "m#g", "CONTAINS_INDIRECTLY", ()) in _edges(v)
-        assert ("m#Sec2", "m#f", "CONTAINS_INDIRECTLY", ()) in _edges(v)
-        assert ("m#Sec2", "m#Sec2#example#1", "CONTAINS", ()) in _edges(v)
+        indirect, direct = (EdgeKind.CONTAINS_INDIRECTLY,
+                            EdgeKind.CONTAINS)
+        assert ("m", "m#g", indirect, ()) in _edges(v)
+        assert ("m#Sec2", "m#f", indirect, ()) in _edges(v)
+        assert ("m#Sec2", "m#Sec2#example#1", direct, ()) in _edges(v)
 
     def test_a_view_that_hides_nothing_writes_the_tree_alone(self):
         v = view(_graph(SOURCE), rank=Rank.BLOCK)
-        assert ("m", "m#code#1", "CONTAINS", ()) in _edges(v)
-        assert ("m#code#1", "m#g", "CONTAINS", ()) in _edges(v)
-        assert "CONTAINS_INDIRECTLY" not in {e.kind for e in v.tree}
+        direct = EdgeKind.CONTAINS
+        assert ("m", "m#code#1", direct, ()) in _edges(v)
+        assert ("m#code#1", "m#g", direct, ()) in _edges(v)
+        assert EdgeKind.CONTAINS_INDIRECTLY not in {e.kind for e in v.tree}
 
     def test_nodes_and_their_edges_come_in_the_order_written(self):
         v = view(_graph(SOURCE), rank=Rank.STRUCTURE)
@@ -161,10 +179,11 @@ class TestReferences:
     def test_a_reference_starts_at_the_nearest_node_an_outline_shows(self):
         v = view(_graph(SOURCE), rank=Rank.REFERENCES)
         sources = {(e.source, e.target, e.kind) for e in v.references}
-        assert sources == {("m", "m#Sec", "CITES"),
-                           ("m#Sec", "m#Sec2", "CITES"),
-                           ("m#f", "m#g", "USES"),
-                           ("m#Sec2#example#1", "m#f", "USES")}
+        cites, uses = EdgeKind.CITES, EdgeKind.USES
+        assert sources == {("m", "m#Sec", cites),
+                           ("m#Sec", "m#Sec2", cites),
+                           ("m#f", "m#g", uses),
+                           ("m#Sec2#example#1", "m#f", uses)}
 
     def test_it_starts_there_at_every_rank_that_has_it(self):
         graph = _graph(SOURCE)
@@ -186,7 +205,7 @@ class TestReferences:
         v = view(_graph(TWO_PARAGRAPHS), rank=Rank.REFERENCES)
         (edge,) = v.references
         assert (edge.source, edge.target, edge.kind, edge.lines) == (
-            "m#A", "m#T", "CITES", (5, 7))
+            "m#A", "m#T", EdgeKind.CITES, (5, 7))
 
     def test_an_edge_is_in_the_view_only_if_both_its_ends_are(self):
         graph = _graph(SOURCE)
@@ -257,8 +276,8 @@ def _small(level: str | None = "index") -> View:
                         file="m.lob", start_line=1),
                ViewNode(address="m#g", name="g", kind=K.SYMBOL,
                         start_line=3)),
-        tree=(ViewEdge("m", "m#g", "CONTAINS"),),
-        references=(ViewEdge("m", "m#g", "USES", (4, 5)),))
+        tree=(ViewEdge("m", "m#g", EdgeKind.CONTAINS),),
+        references=(ViewEdge("m", "m#g", EdgeKind.USES, (4, 5)),))
 
 
 class TestWritersTakeTheViewAlone:
@@ -308,9 +327,9 @@ class TestWritersTakeTheViewAlone:
     def test_text_is_a_file_its_lines_and_every_line_of_a_reference(self):
         assert write_text(_small()) == (
             "m.lob\n"
-            "M" + " " * 12 + "1\n"
-            "  g" + " " * 10 + "3\n"
-            "  uses g  4, 5\n")
+            "M" + " " * 11 + "1\n"
+            "  g" + " " * 9 + "3\n"
+            "  uses g  4-5\n")
 
     def test_a_level_s_name_is_nothing_a_writer_reads_but_json(self):
         assert write_text(_small("full")) == write_text(_small(None))
@@ -323,8 +342,134 @@ class TestWritersTakeTheViewAlone:
                      start_line=1, body="#M"),
             ViewNode(address="m#Sec", name="Sec", kind=K.SUBHEADING,
                      start_line=3, body="##Sec")),
-            tree=(ViewEdge("m", "m#Sec", "CONTAINS"),), references=())
+            tree=(ViewEdge("m", "m#Sec", EdgeKind.CONTAINS),),
+            references=())
         assert write_text(v) == "m.lob\n#M\n\n##Sec\n"
+
+
+def _with_references(*lines: int) -> View:
+    return View(
+        level=None,
+        nodes=(ViewNode(address="m", name="M", kind=K.MODULE,
+                        file="m.lob", start_line=1),
+               ViewNode(address="m#g", name="g", kind=K.SYMBOL,
+                        start_line=3)),
+        tree=(ViewEdge("m", "m#g", EdgeKind.CONTAINS),),
+        references=(ViewEdge("m", "m#g", EdgeKind.USES, lines),))
+
+
+class TestRangesInText:
+    @pytest.mark.parametrize("lines, written", [
+        ((7,), "7"),
+        ((28, 29, 30), "28-30"),
+        ((59, 60), "59-60"),
+        ((12, 15, 16, 17), "12, 15-17"),
+        ((3, 5, 7), "3, 5, 7"),
+        ((1, 2, 4, 5, 6, 9), "1-2, 4-6, 9"),
+    ])
+    def test_a_run_of_lines_is_a_range(self, lines, written):
+        (row,) = [r for r in write_text(_with_references(*lines)).splitlines()
+                  if "uses g" in r]
+        assert row.split("uses g")[1].strip() == written
+
+    def test_json_and_turtle_keep_every_line(self):
+        v = _with_references(4, 5, 6)
+        edge = json.loads(write_json(v))["edges"][-1]
+        assert edge["lines"] == [4, 5, 6]
+        g = rdflib.Graph()
+        g.parse(data=write_turtle(v), format="turtle",
+                publicID="http://example.test/")
+        assert sorted(int(o) for o in g.objects(
+            predicate=rdflib.URIRef(NS + "lines"))) == [4, 5, 6]
+
+
+class TestAHeadingInText:
+    def _text(self, name: str | None) -> str:
+        v = View(
+            level=None,
+            nodes=(ViewNode(address="m", name="M", kind=K.MODULE,
+                            file="m.lob", start_line=1),
+                   ViewNode(address="m#" + (name or "Appendix"), name=name
+                            or "Appendix", kind=K.APPENDIX, start_line=5)),
+            tree=(ViewEdge("m", "m#" + (name or "Appendix"),
+                           EdgeKind.CONTAINS),),
+            references=())
+        return write_text(v).splitlines()[-1].rsplit(None, 1)[0].strip()
+
+    def test_a_titled_appendix_is_its_heading_then_its_name(self):
+        assert self._text("Glossary") == "Appendix Glossary"
+
+    def test_a_bare_appendix_says_the_heading_once(self):
+        assert self._text(None) == "Appendix"
+
+
+class TestTextFromTheFirstLineItHas:
+    def test_a_view_that_starts_at_the_first_line_says_just_the_file(self):
+        v = View(level=None, nodes=(
+            ViewNode(address="m", name="M", kind=K.MODULE, file="m.lob",
+                     start_line=1, body="#M"),), tree=(), references=())
+        assert write_text(v) == "m.lob\n#M\n"
+
+    def test_one_that_starts_later_says_the_line(self):
+        v = View(level=None, nodes=(
+            ViewNode(address="m#g", name="g", kind=K.SYMBOL, file="m.lob",
+                     start_line=3,
+                     body="    def g():\n\n        return 1"),),
+            tree=(), references=())
+        assert write_text(v) == (
+            "m.lob:3\n    def g():\n\n        return 1\n")
+
+
+# ── A view from a start: the line rule ───────────────────────
+
+def _lines(first: int, last: int) -> str:
+    return "\n".join(SOURCE.split("\n")[first - 1:last])
+
+
+class TestTheLineRule:
+    """A line is in the body of the written node that holds it; where a
+    view does not show that node, it is in the body of the deepest node the
+    view shows that covers it."""
+
+    def _bodies(self, **kwargs) -> dict[str, str | None]:
+        v = view(_graph(SOURCE), rank=Rank.BODY, **kwargs)
+        return {n.address: n.body for n in v.nodes}
+
+    def test_a_symbol_the_view_starts_at_has_its_lines(self):
+        assert self._bodies(start="m#g") == {"m#g": _lines(6, 7)}
+
+    def test_a_symbol_whose_block_is_shown_has_none(self):
+        bodies = self._bodies(start="m#Sec2")
+        assert bodies["m#f"] is None
+        assert bodies["m#Sec2#code#1"] == _lines(15, 17)
+
+    def test_a_start_alone_holds_every_line_it_covers(self):
+        assert self._bodies(start="m#Sec2", depth=0) == {
+            "m#Sec2": _lines(13, 20)}
+
+    def test_a_node_the_depth_hides_gives_its_lines_to_what_holds_it(self):
+        bodies = self._bodies(start="m#Sec2", depth=1)
+        assert set(bodies) == {
+            "m#Sec2", "m#Sec2#code#1", "m#Sec2#example#1"}
+        assert bodies["m#Sec2"] == "##Sec2"
+        assert bodies["m#Sec2#code#1"] == _lines(15, 17)
+        assert "m#f" not in bodies
+
+
+class TestReferencesInAStartedView:
+    def test_a_reference_moves_up_to_what_the_view_shows(self):
+        v = view(_graph(SOURCE), depth=1, rank=Rank.REFERENCES)
+        found = {(e.source, e.target, e.lines) for e in v.references}
+        assert ("m#Sec2", "m#g", (16, 17)) in found
+        assert all(source in _addresses(v) for source, _, _ in found)
+
+    def test_a_reference_to_what_is_not_shown_is_left_out(self):
+        v = view(_graph(SOURCE), start="m#Sec2", depth=0, rank=Rank.BODY)
+        assert v.references == ()
+
+    def test_a_started_view_has_the_file_on_its_root(self):
+        v = view(_graph(SOURCE), start="m#g", rank=Rank.BODY)
+        assert [(n.address, n.file) for n in v.nodes] == [("m#g", "m.lob")]
 
 
 # ── Text, exactly ────────────────────────────────────────────

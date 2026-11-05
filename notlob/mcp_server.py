@@ -120,21 +120,24 @@ _TOOL_LIST = [
         ("graph",), cmd_graph,
         "Show the package name-graph. Answers in text: each file, then "
         "its headings, symbols and claims, indented by what is written in "
-        "what, with the line each is on. The level outline is the default; "
-        "index adds the uses, cites and imports and the declarations "
-        "under the node that holds them; full is each file's source. "
+        "what, with the line each is on. The level outline (1) is the "
+        "default; index (2) adds the uses, cites and imports and the "
+        "declarations under the node that holds them; block (3) adds the "
+        "blocks, paragraphs and code; full (4) is each file's source. "
         "With format json, the graph itself: nodes and edges, at the "
         "same level; turtle gives it as RDF.",
         {
             "level": {
                 "type": ["string", "integer"],
-                "enum": ["outline", "index", "full", 1, 2, 3],
+                "enum": ["outline", "index", "block", "full", 1, 2, 3, 4],
                 "description": (
-                    "How much to show: outline (1, the default) is the "
-                    "structure of each file; index (2) adds the uses, "
-                    "cites and imports, and the declarations; full (3) "
-                    "is each file's source (text), or adds the text, "
-                    "once (json, turtle)"
+                    "How much to show, each level holding the one before: "
+                    "outline (1, the default) is the structure of each "
+                    "file; index (2) adds the uses, cites and imports, and "
+                    "the declarations; block (3) adds the blocks, "
+                    "paragraphs, code, lists and listings; full (4) adds "
+                    "each node's own written lines, so the files "
+                    "themselves"
                 ),
             },
             "format": _format(
@@ -143,7 +146,7 @@ _TOOL_LIST = [
     ),
     _Tool(
         ("query", "search"), cmd_query_search,
-        "Search nodes by label pattern (fnmatch); bare words auto-wrap "
+        "Search nodes by name pattern (fnmatch); bare words auto-wrap "
         "as *pattern* for substring matching. Answers in text, "
         + _LISTS + "; format json for an array of nodes.",
         _lists(
@@ -162,19 +165,19 @@ _TOOL_LIST = [
     _Tool(
         ("query", "content"), cmd_query_content,
         "Show the source at a name-graph address, as written. Answers in "
-        "text: a header line (address, file and lines) and the node's own "
-        "lines; format json for the subtree instead, nested, with the "
-        "text of each node that holds text, once.",
+        "text: the file, with the line the node starts at when that is "
+        "not the first (hello.lob:65), and the node's lines; format json "
+        "for the graph document of the view started at the node, at full.",
         {
             "address": _ADDRESS,
             "format": _format(
-                QUERY_FORMATS, "the header and the node's lines"),
+                QUERY_FORMATS, "the file and the node's lines"),
             "depth": {
                 "type": "integer",
                 "minimum": 0,
                 "description": (
-                    "With format json, stop this many containment steps "
-                    "below the node (0: the node alone; default: the "
+                    "Stop this many steps below the node, counting those "
+                    "the view shows (0: the node alone; default: the "
                     "whole subtree)"
                 ),
             },

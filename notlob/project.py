@@ -21,7 +21,7 @@ from typing import Callable
 
 from .graph import (
     module_address,
-    add_bodies, add_cites_edges, add_uses_edges, build, enrich,
+    add_cites_edges, add_source, add_uses_edges, build, enrich,
     AddressCollisionError, Edge, EdgeKind, Node, NodeKind, NameGraph,
 )
 from .model import Module, ReferencesSection
@@ -65,15 +65,15 @@ def parse_project(root: Path) -> list[tuple[Path, Module]]:
     files are read. If any do not parse,
     all of them have been read first, and :class:`ProjectParseError` lists
     each failure."""
-    from .parser import parse
+    from .parser import load_file
     from .model import from_tree
 
     parsed: list[tuple[Path, Module]] = []
     unparsed: list[str] = []
     for path in sorted(root.glob("**/*.lob")):
         try:
-            source = path.read_text(encoding="utf-8")
-            parsed.append((path, from_tree(parse(source), source)))
+            tree, source = load_file(path)
+            parsed.append((path, from_tree(tree, source)))
         except Exception as exc:
             unparsed.append(parse_failure(path, root, exc))
     if unparsed:
@@ -176,7 +176,7 @@ def _used_in_code(graph: NameGraph) -> dict[str, dict[str, set[str]]]:
         if user is None or defining is None or user == defining:
             continue
         found.setdefault(user, {}).setdefault(defining, set()).add(
-            target.label)
+            target.name)
     return found
 
 
@@ -188,7 +188,7 @@ def _defined_in_code(graph: NameGraph) -> dict[str, set[str]]:
         holder = graph.parent_of(symbol.address)
         if holder is not None and holder.kind == NodeKind.CODE:
             found.setdefault(graph.module_of(symbol.address), set()).add(
-                symbol.label)
+                symbol.name)
     return found
 
 
@@ -281,7 +281,7 @@ def _module_graph(
 ) -> NameGraph:
     """The graph of the module at *path* in a package, its tree and, when
     there is an *extractor*, its symbols and import statements, and the
-    ``body`` of each node written in it (see :func:`add_bodies`).
+    text it was parsed from (see :func:`add_source`).
 
     A name that collides raises, unless a list of *collisions* is given.
     Then the module keeps its tree without symbols and ``(path, error)``
@@ -291,7 +291,7 @@ def _module_graph(
         graph = build(module, file)
         if extractor is not None:
             enrich(graph, module, extractor, split_imports)
-        add_bodies(graph, module)
+        add_source(graph, module)
         return graph
     found: list[AddressCollisionError] = []
     graph = build(module, file, collisions=found)
@@ -301,7 +301,7 @@ def _module_graph(
         except AddressCollisionError as exc:
             found.append(exc)
             graph = build(module, file, collisions=[])
-    add_bodies(graph, module)
+    add_source(graph, module)
     if found:
         collisions.append((path, found[0]))
     return graph
@@ -410,6 +410,34 @@ def build_package(
     return graph
 
 
+def file_graph(
+    path:           Path,
+    extractor:      Callable | None = None,
+    call_extractor: Callable | None = None,
+    split_imports:  Callable | None = None,
+) -> NameGraph:
+    """The graph of the one ``.lob`` file at *path*, which is in no project:
+    the graph of a project of one file. The module's ``file`` is *path* as
+    given (with ``/``) and its source is read as :func:`parse_project`
+    reads it, so a view writes it at every level.
+
+    Raises what parsing the file raises, and
+    :class:`~notlob.graph.AddressCollisionError`."""
+    from .parser import load_file
+    from .model import from_tree
+
+    tree, source = load_file(path)
+    module = from_tree(tree, source)
+    graph = build(module, Path(path).as_posix())
+    if extractor is not None:
+        enrich(graph, module, extractor, split_imports)
+    add_source(graph, module)
+    add_cites_edges(graph)
+    if call_extractor is not None and extractor is not None:
+        add_uses_edges(graph, call_extractor)
+    return graph
+
+
 def _add_external_nodes(graph: NameGraph) -> None:
     """Add EXTERNAL nodes and USES_EXTERNAL edges for the files
     ``binding.lob`` declares.
@@ -429,7 +457,6 @@ def _add_external_nodes(graph: NameGraph) -> None:
         if graph.node(addr) is None:
             graph.add_node(Node(
                 address=addr,
-                label=addr,
                 kind=NodeKind.EXTERNAL,
                 name=addr,
             ))

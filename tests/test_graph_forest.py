@@ -228,9 +228,9 @@ class TestTheGraphIsTheModel:
         graph = build(from_tree(parse(
             "#M\n\n---\n\n#Appendix One\n\nA.\n\n#Appendix Two\n\nB.\n")))
         apps = list(graph.nodes(kind=NodeKind.APPENDIX))
-        assert [(a.address, a.label) for a in apps] == [
-            ("m#One", "Appendix One"),
-            ("m#Two", "Appendix Two")]
+        assert [(a.address, a.name) for a in apps] == [
+            ("m#One", "One"),
+            ("m#Two", "Two")]
 
     def test_the_tests_section_and_what_it_holds(self):
         graph = build(from_tree(parse(_SOURCES["tests"])))
@@ -290,7 +290,7 @@ class TestClaimKinds:
         graph = build(from_tree(parse(self.SRC)))
         first, second = list(graph.nodes(NodeKind.RUN))[:2]
         assert first.mode != second.mode
-        assert type(first)(first.address, first.label, first.kind) == first
+        assert type(first)(first.address, first.kind) == first
 
     def test_claims_are_made_without_a_binding(self):
         graph = build(from_tree(parse(self.SRC)))
@@ -422,7 +422,7 @@ class TestPostText:
     def test_the_sections_after_the_separator_hang_from_it(self):
         graph = self._graph()
         node = graph.node("m#post-text")
-        assert (node.kind, node.label) == (NodeKind.POST_TEXT, "post-text")
+        assert (node.kind, node.name) == (NodeKind.POST_TEXT, None)
         assert (node.start_line, node.end_line, node.file) == (
             5, 25, "m.lob")
         assert [(c.address, c.kind) for c in graph.children("m#post-text")] == [
@@ -580,9 +580,9 @@ _STRING_TESTS = {"fullmatch", "match", "search", "endswith", "startswith",
                  "split", "rsplit", "partition", "rpartition"}
 
 
-class TestNothingTellsKindsApartByAddressOrLabel:
+class TestNothingTellsKindsApartByAddressOrName:
     """A node's kind says what it is. Code that matches a pattern against
-    an address or a label to find out breaks when a name happens to look
+    an address or a name to find out breaks when a name happens to look
     like the pattern, so none may."""
 
     def _functions(self):
@@ -593,11 +593,11 @@ class TestNothingTellsKindsApartByAddressOrLabel:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 yield node
 
-    def _reads_an_address_or_label(self, call) -> bool:
+    def _reads_an_address_or_name(self, call) -> bool:
         import ast
         return any(
             isinstance(part, ast.Attribute)
-            and part.attr in ("address", "label")
+            and part.attr in ("address", "name")
             for part in ast.walk(call))
 
     def _offences(self) -> list[str]:
@@ -608,11 +608,11 @@ class TestNothingTellsKindsApartByAddressOrLabel:
                 if (isinstance(call, ast.Call)
                         and isinstance(call.func, ast.Attribute)
                         and call.func.attr in _STRING_TESTS
-                        and self._reads_an_address_or_label(call)):
+                        and self._reads_an_address_or_name(call)):
                     found.append(f"{function.name}: line {call.lineno}")
         return found
 
-    def test_graph_py_does_not_decide_a_kind_from_an_address_or_label(self):
+    def test_graph_py_does_not_decide_a_kind_from_an_address_or_name(self):
         assert self._offences() == []
 
     def test_the_guard_sees_what_it_guards_against(self):
@@ -621,8 +621,8 @@ class TestNothingTellsKindsApartByAddressOrLabel:
         import ast
         source = (
             "def is_run(node):\n"
-            "    return re.fullmatch(r'test#\\d+', node.label)\n")
+            "    return re.fullmatch(r'test#\\d+', node.name)\n")
         (function,) = ast.parse(source).body
         (call,) = [c for c in ast.walk(function) if isinstance(c, ast.Call)]
         assert call.func.attr in _STRING_TESTS
-        assert self._reads_an_address_or_label(call)
+        assert self._reads_an_address_or_name(call)

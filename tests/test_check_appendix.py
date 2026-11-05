@@ -25,12 +25,14 @@ class TestTitles:
     def test_an_appendix_title_is_compared_with_the_others(self, tmp_path):
         graph = _package(
             tmp_path,
-            "#Main\n\n##Notes Appendix\n\nText.\n\n"
-            "---\n\n#Appendix Notes\n\nMore text.\n")
+            "#Main\n\n##Notes on Pricing Rules Words\n\nText.\n\n"
+            "---\n\n#Appendix Notes on Pricing Rules Word\n\nMore text.\n")
         findings = check_titles(graph)
         assert [f.addresses for f in findings] == [
-            ("main#Notes Appendix", "main#Notes")]
+            ("main#Notes on Pricing Rules Words",
+             "main#Notes on Pricing Rules Word")]
         assert "similar" in findings[0].message
+        assert "(similarity 67%)" in findings[0].message
 
     def test_an_unlike_appendix_title_is_not_flagged(self, tmp_path):
         graph = _package(

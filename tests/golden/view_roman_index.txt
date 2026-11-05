@@ -1,29 +1,29 @@
 roman/numerals.lob
-Roman Numerals                                          1
-  NUMERALS                                             12
-  to_roman                                             19
-    uses NUMERALS                                      21
-  ~example                                             27
-    uses to_roman                              28, 29, 30
-  ~example                                             37
-    uses to_roman                                      38
-  Decoding                                             40
-    from_roman                                         46
-      uses NUMERALS                                    47
-    ~example                                           58
-      uses from_roman                              59, 60
-  Round-Trip                                           62
-    ~property                                          68
-      uses from_roman                                  71
-      uses to_roman                                    71
-  Tests                                                75
-    encoding                                           77
-      uses to_roman    78, 79, 80, 81, 82, 83, 84, 85, 86
-      ~test mcmxciv                                    92
-        uses to_roman                                  93
-    decoding                                           95
-      uses from_roman                          96, 97, 98
-    round-trip                                        100
-      uses from_roman                       101, 102, 103
-      uses to_roman                         101, 102, 103
-  References                                          105
+Roman Numerals               1
+  NUMERALS                  12
+  to_roman                  19
+    uses NUMERALS           21
+  ~example                  27
+    uses to_roman        28-30
+  ~example                  37
+    uses to_roman           38
+  Decoding                  40
+    from_roman              46
+      uses NUMERALS         47
+    ~example                58
+      uses from_roman    59-60
+  Round-Trip                62
+    ~property               68
+      uses from_roman       71
+      uses to_roman         71
+  Tests                     75
+    encoding                77
+      uses to_roman      78-86
+      ~test mcmxciv         92
+        uses to_roman       93
+    decoding                95
+      uses from_roman    96-98
+    round-trip             100
+      uses from_roman  101-103
+      uses to_roman    101-103
+  References               105

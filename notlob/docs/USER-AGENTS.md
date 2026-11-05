@@ -46,6 +46,6 @@ Notlob source files should be written in a literate programming style. Each file
 
 ## Command Guidance
 
-Notlob has specific features which make it easier to search for concepts in documentation and code. Use `notlob graph` to get a project-level overview of a notlob project: for each file, its headings, symbols and claims with the line each is on. That is `--level outline`, the default; `--level index` adds the `uses`, `cites` and `imports` written under each, and `--format json` gives the graph itself, for a program. Favour using `notlob query` over filesystem searches to navigate for the meaning of names and use of symbols throughout the codebase.
+Notlob has specific features which make it easier to search for concepts in documentation and code. Use `notlob graph` to get a project-level overview of a notlob project: for each file, its headings, symbols and claims with the line each is on. That is `--level outline`, the default; `--level index` adds the `uses`, `cites` and `imports` written under each, `--level block` adds the paragraphs and code blocks, `--level full` is the files themselves (the levels are also `1` to `4`), and `--format json` gives the graph itself, for a program. Favour using `notlob query` over filesystem searches to navigate for the meaning of names and use of symbols throughout the codebase.
 
 

@@ -27,9 +27,9 @@ from notlob.commands import (
     cmd_query_cited_by, cmd_query_cites, cmd_query_imported_by,
     cmd_query_imports, cmd_query_resolve, cmd_query_search,
 )
-from notlob.graph import (
-    EdgeKind, KINDS, NodeKind, cited_by, cites_of, node_summary,
-)
+from notlob.graph import EdgeKind, KINDS, NodeKind
+from notlob.view import answer_node, cited_by, cites_of
+from notlob.writers import node_dict
 
 ROOT = Path(__file__).parent.parent
 EXAMPLES = ROOT / "examples"
@@ -118,12 +118,13 @@ class TestRetail:
         assert out == _render([
             ("", f"{DISCOUNTS}#apply_discount", f"{DISCOUNTS_LOB}:11")])
 
-    def test_search_by_kind_has_the_sigil(self):
+    def test_a_node_has_the_sigil_of_its_kind(self):
         _, out, _ = _run(
-            RETAIL, "query", "search", "*", "--kind", "PROPERTY")
-        assert out == _render([
-            ("~property", f"{DISCOUNTS}#Stacking Discounts#property#1",
-             f"{DISCOUNTS_LOB}:31")])
+            RETAIL, "query", "children", f"{DISCOUNTS}#Stacking Discounts")
+        (line,) = [ln for ln in out.splitlines() if "#property#1" in ln]
+        assert re.fullmatch(
+            rf"~property +{re.escape(DISCOUNTS)}#Stacking Discounts"
+            rf"#property#1 +{re.escape(DISCOUNTS_LOB)}:31", line)
 
     def test_children_give_where_each_starts(self):
         code, out, _ = _run(
@@ -246,10 +247,10 @@ class TestEveryLineIsReal:
                     reached = (address if name in
                                ("callers", "cited-by", "imported-by")
                                else printed)
-                    label = graph.node(reached).label
+                    named = graph.node(reached).name
                     assert where, (name, address, printed)
-                    assert label in _line_of(project, where), (
-                        name, address, printed, where, label)
+                    assert named in _line_of(project, where), (
+                        name, address, printed, where, named)
                     checked += 1
         has_edges = any(list(graph.edges(kind)) for kind in (
             EdgeKind.USES, EdgeKind.CITES, EdgeKind.IMPORTS))
@@ -287,7 +288,8 @@ class TestSigils:
     ):
         monkeypatch.chdir(RETAIL)
         _, tests, _ = _query(cmd_query_search, "*", "TEST")
-        _, lines, _ = _query(cmd_query_search, "*", "TEST_LINES")
+        _, lines, _ = _query(
+            cmd_query_children, f"{DISCOUNTS}#Tests#boundary conditions")
         out = tests + lines
         by_address = {a: line for (a, _), line in
                       zip(_parse(out), out.splitlines())}
@@ -372,7 +374,8 @@ class TestJsonIsWhatItWas:
             for name, fn in _EDGE_QUERIES.items():
                 rc, doc = _json(fn, address)
                 assert rc == 0
-                assert doc == [node_summary(n) for n in before[name](address)]
+                assert doc == [node_dict(answer_node(n))
+                               for n in before[name](address)]
                 _schema_node_list(doc)
 
     def test_children_and_search(self, project, monkeypatch):
@@ -382,14 +385,13 @@ class TestJsonIsWhatItWas:
                 rc, doc = _json(cmd_query_children, node.address, kind)
                 assert rc == 0
                 assert doc == [
-                    node_summary(n)
+                    node_dict(answer_node(n))
                     for n in graph.children(node.address, EdgeKind[kind])]
         rc, doc = _json(cmd_query_search, "*")
         assert rc == 0
         _schema_node_list(doc)
-        shown = [n for n in graph.nodes()
-                 if not KINDS[n.kind].hidden_at_outline]
-        assert [d["address"] for d in doc] == [n.address for n in shown]
+        named = [n for n in graph.nodes() if n.name is not None]
+        assert [d["address"] for d in doc] == [n.address for n in named]
 
 
 # ── resolve is deprecated, and as it was ─────────────────────

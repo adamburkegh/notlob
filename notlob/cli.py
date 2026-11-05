@@ -203,14 +203,14 @@ def main() -> None:
     graph_p.add_argument(
         "--level", "-l", default=None, metavar="LEVEL",
         help=(
-            "how much to show: outline (1, the default) is the "
-            "structure of each file (text), or the nodes and their "
-            "containment (json, turtle); index (2) adds the "
-            "references, the uses, cites and imports, and the "
-            "declarations (text), or the references a paragraph "
-            "holds and a size for each node (json, turtle); full (3) "
-            "is each module's source (text), or adds the text, once "
-            "(json, turtle)"
+            "how much to show, each level holding the one before: "
+            "outline (1, the default) is the structure of each file, "
+            "its headings, symbols, claims and tests, and what is "
+            "written in what; index (2) adds the references, the uses, "
+            "cites and imports, and the declarations; block (3) adds "
+            "the blocks, its paragraphs, code, lists and listings; "
+            "full (4) adds each node's own written lines, so the "
+            "files themselves"
         ),
     )
     graph_p.add_argument(
@@ -312,7 +312,7 @@ def main() -> None:
         help="module address for resolution context",
     )
 
-    qs = qsub.add_parser("search", help="search nodes by label pattern")
+    qs = qsub.add_parser("search", help="search nodes by name pattern")
     qs.add_argument("pattern", help="fnmatch-style pattern, e.g. '*discount*'")
     qs.add_argument(
         "--kind", default=None, choices=QUERY_NODE_KINDS,
@@ -364,14 +364,15 @@ def main() -> None:
     qcont.add_argument(
         "--format", choices=("text", "json"), default="text",
         help=(
-            "text (the default): a header line and the node's lines from "
-            "its file; json: the subtree, nested"
+            "text (the default): the file and the lines of the node, from "
+            "its first (hello.lob:65); json: the graph document of the "
+            "view started at the node, at full"
         ),
     )
     qcont.add_argument(
         "--depth", type=int, default=None, metavar="N",
         help=(
-            "with --format json, stop N containment steps below the node "
+            "stop N steps below the node, counting those the view shows "
             "(0: the node alone; default: the whole subtree)"
         ),
     )

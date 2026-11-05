@@ -26,11 +26,9 @@ from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
 from notlob.commands import cmd_test
-from notlob.graph import (
-    KINDS, claims_to_run, content_tree, enrich, node_summary,
-    positional_address,
-)
-from notlob.outline import outline_entries
+from notlob.graph import KINDS, claims_to_run, enrich, positional_address
+from notlob.view import level_view
+from notlob.writers import write_json, write_text, write_turtle
 
 ROOT = Path(__file__).parent.parent
 EXAMPLES = ROOT / "examples"
@@ -81,7 +79,7 @@ class TestTwoKindsOfTest:
             call_extractor=python_kit.extract_calls)
         lines = graph.node("roman/numerals#Tests#encoding#test#1")
         assert lines.kind == K.TEST_LINES
-        assert lines.label == "test#1"
+        assert lines.name is None
 
     def test_romans_named_test_is_a_test_with_its_name(self):
         graph = build_package(
@@ -110,12 +108,16 @@ class TestTwoKindsOfTest:
         assert kinds == {"m#Tests#g#test#1": "TEST_LINES",
                          "m#Tests#g#t": "TEST"}
 
-    def test_the_outline_prints_no_line_for_lines(self, example_graph):
-        for module in example_graph.nodes(K.MODULE):
-            for level in ("outline", "index", "full"):
-                words = [e.words for e in outline_entries(
-                    example_graph, module.address, level)]
-                assert not [w for w in words if re.fullmatch(r"test#\d+", w)]
+    def test_the_outline_and_index_print_no_line_for_lines(
+        self, example_graph,
+    ):
+        for level in ("outline", "index"):
+            text = write_text(level_view(example_graph, level))
+            assert not re.search(r"^ *test#\d+ ", text, re.M)
+
+    def test_block_prints_one(self, example_graph):
+        text = write_text(level_view(example_graph, "block"))
+        assert re.search(r"^ *test#\d+ ", text, re.M)
 
     def test_test_json_reports_both_kinds(self, capsys):
         cmd_test(EXAMPLES / "roman" / "roman" / "numerals.lob", fmt="json")
@@ -149,7 +151,6 @@ class TestAnAppendixIsNamedByItsTitle:
         node = graph.node("m#Glossary")
         assert node.kind == K.APPENDIX
         assert node.name == "Glossary"
-        assert node.label == "Appendix Glossary"
 
     def test_a_bare_appendix_is_named_appendix(self):
         graph = _graph(_POST + "#Appendix\n\nA word.\n")
@@ -281,7 +282,8 @@ class TestNameWhereTheDocumentGivesOne:
 
     def test_a_module_has_its_title(self, example_graph):
         for node in example_graph.nodes(K.MODULE):
-            assert node.name == node.label
+            assert node.name
+            assert graph_module.module_address(node.name) == node.address
 
     def test_an_external_has_its_file(self, example_graph):
         for node in example_graph.nodes(K.EXTERNAL):
@@ -342,12 +344,12 @@ def _schema(name: str) -> dict:
     return json.loads((SCHEMAS / name).read_text(encoding="utf-8"))
 
 
-class TestTheOldDocuments:
-    @pytest.mark.parametrize("level", ["outline", "index", "full"])
+class TestTheDocumentsCarryTheModel:
+    @pytest.mark.parametrize("level", ["outline", "index", "block", "full"])
     def test_a_document_validates_and_has_no_named(
         self, example_graph, level,
     ):
-        doc = example_graph.to_dict(level=level)
+        doc = json.loads(write_json(level_view(example_graph, level)))
         jsonschema.validate(doc, _schema("name_graph.json"))
         assert all("named" not in node for node in doc["nodes"])
 
@@ -355,7 +357,8 @@ class TestTheOldDocuments:
         graph = build_package(
             EXAMPLES / "roman", python_kit.extract_symbols,
             call_extractor=python_kit.extract_calls)
-        nodes = {n["address"]: n for n in graph.to_dict()["nodes"]}
+        doc = json.loads(write_json(level_view(graph, "block")))
+        nodes = {n["address"]: n for n in doc["nodes"]}
         assert nodes["roman/numerals#Tests#encoding#test#1"]["kind"] == (
             "TEST_LINES")
         assert nodes["roman/numerals#Tests#encoding#mcmxciv"]["kind"] == (
@@ -363,21 +366,15 @@ class TestTheOldDocuments:
 
     def test_an_appendix_is_written_at_its_title(self):
         graph = _graph(_POST + "#Appendix Glossary\n\nA word.\n")
-        doc = graph.to_dict()
+        doc = json.loads(write_json(level_view(graph, "outline")))
         jsonschema.validate(doc, _schema("name_graph.json"))
         entry = [n for n in doc["nodes"] if n["kind"] == "APPENDIX"]
         assert [n["address"] for n in entry] == ["m#Glossary"]
 
-    def test_a_summary_and_a_content_tree_have_no_named(self, example_graph):
-        for node in example_graph.nodes():
-            assert "named" not in node_summary(node), node.address
-        for module in example_graph.nodes(K.MODULE):
-            tree = content_tree(example_graph, module.address)
-            assert '"named"' not in json.dumps(tree)
-
-    @pytest.mark.parametrize("level", ["outline", "index", "full"])
+    @pytest.mark.parametrize("level", ["outline", "index", "block", "full"])
     def test_the_turtle_has_no_named(self, example_graph, level):
-        assert "notlob:named" not in example_graph.to_turtle(level=level)
+        assert "notlob:named" not in write_turtle(
+            level_view(example_graph, level))
 
     def test_no_schema_or_ontology_has_named(self):
         for name in ("name_graph.json", "query_result.json"):

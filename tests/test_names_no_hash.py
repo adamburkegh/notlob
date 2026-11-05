@@ -263,11 +263,9 @@ _PROJECTS = [
     ("ts-media", typescript_kit),
 ]
 
-#: The model of each example file, and the graph document of each project
-#: at ``full``, as they were before a name was a terminal: a short digest of
-#: the dataclasses as JSON, and of the document. The documents' have changed
-#: since by a kind (``TEST_LINES`` for a run of test lines) and by ``named``
-#: going; nothing else.
+#: The model of each example file, as it was before a name was a terminal:
+#: a short digest of the dataclasses as JSON (less the text of the file
+#: they were read from).
 MODELS = {
     "gutenberg/binding.lob": "2ac74075a445920f",
     "gutenberg/gutenberg/corpus.lob": "29246d50af7939f5",
@@ -283,14 +281,6 @@ MODELS = {
     "ts-media/media-attributes/analysis.lob": "3fa38380ae3af0a7",
     "ts-media/media-attributes/render.lob": "ff1b3053118e3f30",
 }
-GRAPHS = {
-    "roman": "62e98bf0f08204b3",
-    "retail": "cbf72991a8f9a7e1",
-    "gutenberg": "4ed91a8c48a97419",
-    "haskell-roman": "18adb481ed1e1b01",
-    "ts-media": "29d592e743c2631c",
-}
-
 
 def _digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
@@ -311,13 +301,6 @@ class TestNothingDownstreamChanges:
                           default=str, ensure_ascii=False)
         assert _digest(text) == MODELS[name]
 
-    @pytest.mark.parametrize("project", _PROJECTS, ids=lambda p: p[0])
-    def test_the_graph_document_at_full(self, project):
-        name, kit = project
-        graph = build_package(
-            EXAMPLES / name, kit.extract_symbols,
-            call_extractor=kit.extract_calls)
-        assert _digest(graph.to_json(level="full")) == GRAPHS[name]
 
 
 #: The kinds a document gives a name to.
@@ -332,27 +315,27 @@ def example_graph(request):
 
 
 class TestOverTheExamples:
-    def test_a_named_node_has_a_label_with_no_hash(self, example_graph):
+    def test_a_named_node_has_a_name_with_no_hash(self, example_graph):
         named = [n for n in example_graph.nodes()
                  if n.kind in _NAMED or n.name is not None]
         assert named
         for node in named:
-            assert "#" not in node.label, node.address
+            assert "#" not in node.name, node.address
 
-    def test_the_rule_of_the_schema_gives_that_label(self, example_graph):
-        """A named node's label is what follows the last ``#`` of its
+    def test_the_rule_of_the_schema_gives_that_name(self, example_graph):
+        """A named node's name is what follows the last ``#`` of its
         address (name_graph.json)."""
         for node in example_graph.nodes():
             if node.kind == NodeKind.MODULE:
                 continue
             if node.kind in _NAMED or node.name is not None:
-                assert node.address.rsplit("#", 1)[-1] == node.label, (
+                assert node.address.rsplit("#", 1)[-1] == node.name, (
                     node.address)
 
     def test_a_module_and_an_appendix_have_none_either(self, example_graph):
         for node in example_graph.nodes():
             if node.kind in (NodeKind.MODULE, NodeKind.APPENDIX):
-                assert "#" not in node.label, node.address
+                assert "#" not in node.name, node.address
 
 
 # ── A file that does not parse stops a project command ───────

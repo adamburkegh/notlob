@@ -1,8 +1,10 @@
 """A written node holds its own lines, and a reference every line it is on.
 
-A node's ``body`` is the lines of its span that no node under it holds,
-as they are in the file, less blank lines at either end; a ``SYMBOL`` and
-an ``EXTERNAL`` are derived and have none. An ``Edge`` has ``lines``, a
+In a view of the whole project, a node's ``body`` is the lines of its span
+that no node under it holds, as they are in the file, less blank lines at
+either end; a ``SYMBOL`` and an ``EXTERNAL`` are derived and have none
+(``test_view.py`` has the line rule for a view that shows less). An
+``Edge`` has ``lines``, a
 tuple of every line a reference is written on, in order and each once: one
 edge for each source, target and kind.
 """
@@ -22,8 +24,9 @@ from notlob.bindings import ClaimResult, Status
 from notlob.bindings.haskell import kit as haskell_kit
 from notlob.bindings.python import kit as python_kit
 from notlob.bindings.typescript import kit as typescript_kit
-from notlob.graph import add_bodies, add_cites_edges, add_uses_edges, enrich
+from notlob.graph import add_cites_edges, add_source, add_uses_edges, enrich
 from notlob.model import AppendixSection
+from notlob.view import view
 
 ROOT = Path(__file__).parent.parent
 EXAMPLES = ROOT / "examples"
@@ -64,8 +67,13 @@ def _graph(source: str, kit=python_kit):
     enrich(graph, module, kit.extract_symbols, kit.split_imports)
     add_cites_edges(graph)
     add_uses_edges(graph, kit.extract_calls)
-    add_bodies(graph, module)
+    add_source(graph, module)
     return graph
+
+
+def _bodies(graph) -> dict[str, str | None]:
+    """The body of each node in the view of the whole project."""
+    return {n.address: n.body for n in view(graph).nodes}
 
 
 def _only(graph, kind: K):
@@ -73,18 +81,25 @@ def _only(graph, kind: K):
     return node
 
 
+def _body_of(graph, kind: K) -> str | None:
+    """The body of the one node of *kind*."""
+    return _bodies(graph)[_only(graph, kind).address]
+
+
 # ── Each line of a file is in one body ───────────────────────
 
 class TestTheBodiesAreTheFile:
     def test_each_line_that_is_not_blank_is_in_one_body(self, example):
         root, graph = example
+        bodies = _bodies(graph)
         for module in graph.nodes(K.MODULE):
             placed: dict[int, str] = {}
             for node in graph.nodes():
-                if node.file != module.file or node.body is None:
+                body = bodies[node.address]
+                if node.file != module.file or body is None:
                     continue
                 at = node.start_line
-                for number, text in enumerate(node.body.split("\n"), at):
+                for number, text in enumerate(body.split("\n"), at):
                     assert number not in placed, (node.address, number)
                     placed[number] = text
             written = (root / module.file).read_text(encoding="utf-8")
@@ -101,16 +116,17 @@ class TestTheBodiesAreTheFile:
         self, example,
     ):
         _root, graph = example
+        held = _bodies(graph)
         for node in graph.nodes():
             derived = node.kind in (K.SYMBOL, K.EXTERNAL)
-            assert (node.body is None) == derived, node.address
+            assert (held[node.address] is None) == derived, node.address
 
     def test_a_body_does_not_start_or_end_on_a_blank_line(self, example):
         _root, graph = example
-        for node in graph.nodes():
-            if node.body is not None:
-                assert node.body.split("\n")[0].strip(), node.address
-                assert node.body.split("\n")[-1].strip(), node.address
+        for address, body in _bodies(graph).items():
+            if body is not None:
+                assert body.split("\n")[0].strip(), address
+                assert body.split("\n")[-1].strip(), address
 
 
 class TestRomansBodies:
@@ -118,21 +134,21 @@ class TestRomansBodies:
         _root, graph = roman
         (heading,) = [n for n in graph.nodes(K.SUBHEADING)
                       if n.name == "Decoding"]
-        assert heading.body == "##Decoding"
+        assert _bodies(graph)[heading.address] == "##Decoding"
 
     def test_the_post_text_is_its_separator(self, roman):
         _root, graph = roman
         post = _only_in(graph, K.POST_TEXT, "roman/numerals")
-        assert post.body == "---"
+        assert _bodies(graph)[post.address] == "---"
 
     def test_a_module_is_its_title_line(self, roman):
         _root, graph = roman
-        assert graph.node("roman/numerals").body == "#Roman Numerals"
+        assert _bodies(graph)["roman/numerals"] == "#Roman Numerals"
 
     def test_a_claim_is_its_sigil_line_and_the_lines_under_it(self, roman):
         _root, graph = roman
         example = _first_in(graph, K.EXAMPLE, "roman/numerals")
-        assert example.body == (
+        assert _bodies(graph)[example.address] == (
             "~example\n"
             "    to_roman(4)    == 'IV'\n"
             "    to_roman(9)    == 'IX'\n"
@@ -142,12 +158,13 @@ class TestRomansBodies:
         _root, graph = roman
         (group,) = [n for n in graph.nodes(K.TEST_GROUP)
                     if n.name == "encoding"]
-        assert group.body == "##encoding"
+        assert _bodies(graph)[group.address] == "##encoding"
 
     def test_the_decoding_section_nodes_with_their_bodies(self, roman):
         _root, graph = roman
         section = graph.node("roman/numerals#Decoding")
-        held = [(n.kind.name, n.body) for n in graph.children(
+        bodies = _bodies(graph)
+        held = [(n.kind.name, bodies[n.address]) for n in graph.children(
             section.address)]
         assert [kind for kind, _ in held] == [
             "PROSE", "CODE", "EXAMPLE"]
@@ -171,43 +188,44 @@ class TestBodiesFromTheFile:
     def test_a_blank_line_inside_a_code_block_stays(self):
         graph = _graph(
             "#M\n\n    def f():\n        a = 1\n\n        return a\n")
-        code = _only(graph, K.CODE)
-        assert code.body == (
+        assert _body_of(graph, K.CODE) == (
             "    def f():\n        a = 1\n\n        return a")
-        assert graph.node("m#f").body is None
+        assert _bodies(graph)["m#f"] is None
 
     def test_indent_is_as_written(self):
         graph = _graph("#M\n\n~example\n        1 == 1\n    2 == 2\n")
-        assert _only(graph, K.EXAMPLE).body == (
+        assert _body_of(graph, K.EXAMPLE) == (
             "~example\n        1 == 1\n    2 == 2")
 
     def test_a_blank_line_between_two_nodes_is_in_neither(self):
         graph = _graph("#M\n\nOne.\n\n\n\nTwo.\n")
-        assert [n.body for n in graph.nodes(K.PROSE)] == ["One.", "Two."]
+        bodies = _bodies(graph)
+        assert [bodies[n.address] for n in graph.nodes(K.PROSE)] == [
+            "One.", "Two."]
 
     def test_a_module_built_without_its_source_has_no_bodies(self):
         module = from_tree(parse("#M\n\nOne.\n"))
         graph = build(module)
-        add_bodies(graph, module)
-        assert all(n.body is None for n in graph.nodes())
+        add_source(graph, module)
+        assert all(body is None for body in _bodies(graph).values())
 
     def test_a_run_of_test_lines_is_its_lines(self):
         graph = _graph(
             "#M\n\n---\n\n#Tests\n\n##g\n    1 == 1\n\n    2 == 2\n")
-        assert _only(graph, K.TEST_LINES).body == (
+        assert _body_of(graph, K.TEST_LINES) == (
             "    1 == 1\n\n    2 == 2")
 
     def test_an_import_is_its_lines_and_the_section_the_rest(self):
         graph = _graph(
             "#M\n\n---\n\n#References\n    import os\n    import sys\n")
-        refs = _only(graph, K.REFERENCES)
-        assert refs.body == "#References"
-        assert [n.body for n in graph.nodes(K.IMPORT)] == [
+        bodies = _bodies(graph)
+        assert _body_of(graph, K.REFERENCES) == "#References"
+        assert [bodies[n.address] for n in graph.nodes(K.IMPORT)] == [
             "    import os", "    import sys"]
 
     def test_an_appendix_is_its_heading(self):
         graph = _graph("#M\n\n---\n\n#Appendix Notes\n\nA note.\n")
-        assert _only(graph, K.APPENDIX).body == "#Appendix Notes"
+        assert _body_of(graph, K.APPENDIX) == "#Appendix Notes"
 
 
 # ── An edge has every line a reference is on ─────────────────

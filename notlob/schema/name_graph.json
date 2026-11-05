@@ -2,14 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "notlob/name-graph",
   "title": "NameGraph",
-  "description": "The package name-graph as `notlob graph` prints it: one tree of nodes for each .lob file, joined by CONTAINS edges, with the cross-reference edges between them. A value that is a node of the graph is an edge and any other value is a field of its node, a list if it has several, so what is written (a paragraph's `refs`, a declaration's `value`) is a field and what it resolves to (CITES, IMPORTS, USES_EXTERNAL) is an edge. Only a module has a `label` and a `file`; any other node's follow from its address. `level` says how much is shown, and it is the same content as the text of `notlob graph` at that level: `outline` has every node but the anonymous leaves (PROSE, CODE, BULLETS, LISTING, IMPORT, DECLARATION) and the region after the `---` (POST_TEXT), and the CONTAINS edges among them alone; `index` has every node, the other edges (the cross-references), `refs` on a PROSE leaf and a `size` on every node; `full` adds `text` on each node that holds text, once. A node gives the line it begins on and not where it ends: a reader takes that from the file. If a .lob file of the project does not parse, no graph is made: nothing is printed to stdout, each failure goes to stderr, and the exit code is 1.",
+  "description": "What `notlob graph` and `notlob query content` give a program: one tree of nodes for each .lob file, or, for `query content`, the one tree of the node it is asked for, joined by CONTAINS and CONTAINS_INDIRECTLY edges, with the reference edges between them. Every edge's source and target are nodes of the document. The same project gives the same document, byte for byte. `level` names the view, and each level holds the nodes and edges of the one before, and more, but that a CONTAINS_INDIRECTLY edge may be, at the next, a chain of edges through nodes the next shows; what each level holds is defined once, in `notlob/graph.py`. If a .lob file of the project does not parse, no graph is made: nothing is printed to stdout, each failure goes to stderr, and the exit code is 1.",
   "type": "object",
-  "required": [
-    "version",
-    "level",
-    "nodes",
-    "edges"
-  ],
+  "required": ["version", "level", "nodes", "edges"],
   "additionalProperties": false,
   "properties": {
     "version": {
@@ -17,192 +12,87 @@
       "const": 2
     },
     "level": {
-      "description": "How much of the graph is shown, and so which optional node fields to expect: the edges but CONTAINS, `size` and `refs` from `index` on, `text` at `full`.",
+      "description": "The view, from least to most: outline, index, block, full.",
       "type": "string",
-      "enum": [
-        "outline",
-        "index",
-        "full"
-      ]
+      "enum": ["outline", "index", "block", "full"]
     },
     "nodes": {
-      "description": "The nodes of the graph, in the order they are written: each module, then what is written in it, depth first, each node's siblings in the order they are written in the file; then each EXTERNAL, in the order added.",
+      "description": "The nodes of the view, in the order they are written in their files, depth first; each EXTERNAL comes last.",
       "type": "array",
-      "items": {
-        "$ref": "#/definitions/GraphNode"
-      }
+      "items": { "$ref": "#/definitions/GraphNode" }
     },
     "edges": {
-      "description": "The directed edges of the graph. The CONTAINS edges come first, one into each node but a MODULE and an EXTERNAL, in the order the nodes are written, so a node's children come in the order they are written in the file; then the rest, in the order they were added.",
+      "description": "The edges of the view, in no promised order. The CONTAINS and CONTAINS_INDIRECTLY edges make trees: one of them into each node but a root: a MODULE, an EXTERNAL, or the node a view starts at. An EXTERNAL may be the target of any number of edges.",
       "type": "array",
-      "items": {
-        "$ref": "#/definitions/GraphEdge"
-      }
+      "items": { "$ref": "#/definitions/GraphEdge" }
     }
   },
   "definitions": {
     "GraphNode": {
-      "description": "One element of a .lob file: a module, a section, a paragraph, a code block, a claim, a test, a symbol, or an external file.",
+      "description": "One element of a document, as written, or derived from what is written: a SYMBOL or an EXTERNAL.",
       "type": "object",
-      "required": [
-        "address",
-        "kind"
-      ],
+      "required": ["address", "kind"],
       "if": {
-        "properties": {
-          "kind": {
-            "const": "MODULE"
-          }
-        },
-        "required": [
-          "kind"
-        ]
+        "properties": { "kind": { "const": "MODULE" } },
+        "required": ["kind"]
       },
-      "then": {
-        "required": [
-          "label"
-        ]
-      },
-      "else": {
-        "not": {
-          "anyOf": [
-            {
-              "required": [
-                "label"
-              ]
-            },
-            {
-              "required": [
-                "file"
-              ]
-            }
-          ]
-        }
-      },
+      "then": { "required": ["name"] },
       "additionalProperties": false,
       "properties": {
         "address": {
-          "description": "Globally unique machine identifier, e.g. 'roman/numerals#to_roman'.",
+          "description": "Globally unique machine identifier. Named, as in 'roman/numerals#to_roman', or positional, as in 'roman/numerals#Decoding#prose#1'.",
           "type": "string"
         },
-        "label": {
-          "description": "A module's title, as written. Present on a MODULE only: any other node's label follows from its address (what follows the last `#` for a named node; for a positional one its kind's segment and ordinal, as in `example#1`, or the segment alone for a kind that is not numbered, as in `post-text`; an EXTERNAL's address is its name).",
+        "name": {
+          "description": "The node's name, as the author wrote it: a module's title, a heading, a named claim or test, an appendix's title, or a symbol as written in the code. Present on every node that has one; a node with a positional address has none. The address is built from names, not the other way round.",
           "type": "string"
         },
         "kind": {
           "description": "What kind of element this node is.",
           "type": "string",
           "enum": [
-            "MODULE",
-            "SUBHEADING",
-            "SYMBOL",
-            "PROPERTY",
-            "EXAMPLE",
-            "RUN",
-            "TEST",
-            "TEST_LINES",
-            "EXTERNAL",
-            "PROSE",
-            "CODE",
-            "BULLETS",
-            "APPENDIX",
-            "TESTS",
-            "POST_TEXT",
-            "TEST_GROUP",
-            "REFERENCES",
-            "BINDING",
-            "LISTING",
-            "IMPORT",
-            "DECLARATION"
+            "MODULE", "SUBHEADING", "SYMBOL", "PROPERTY", "EXAMPLE", "RUN",
+            "TEST", "TEST_LINES", "EXTERNAL", "PROSE", "CODE", "BULLETS",
+            "APPENDIX", "TESTS", "POST_TEXT", "TEST_GROUP", "REFERENCES",
+            "BINDING", "LISTING", "IMPORT", "DECLARATION"
           ]
         },
         "mode": {
           "description": "When a RUN runs; present on a RUN only. A bare `~run` is `on-invocation`.",
           "type": "string",
-          "enum": [
-            "on-load",
-            "on-invocation"
-          ]
+          "enum": ["on-load", "on-invocation"]
         },
         "declares": {
           "description": "What a DECLARATION declares; present on a DECLARATION only.",
           "type": "string",
-          "enum": [
-            "language",
-            "external",
-            "on-build",
-            "keep-generated-src"
-          ]
+          "enum": ["language", "external", "on-build", "keep-generated-src"]
         },
         "value": {
-          "description": "The value a DECLARATION gives it (the language, or the file), when it has one; present on a DECLARATION only.",
+          "description": "The value a DECLARATION gives it, when it has one; present on a DECLARATION only.",
           "type": "string"
         },
         "file": {
-          "description": "The .lob file a module is, relative to the project root, with '/' separators. Present on a MODULE only (and not on one built on its own): any other node's module is the part of its address before the first `#`.",
+          "description": "The .lob file of a root, relative to the project root, with '/' separators: on each MODULE, and on the node a view starts at, and on no other.",
           "type": "string"
         },
         "start_line": {
-          "description": "1-based line of its file where it begins.",
+          "description": "The line number where it begins in its file; a file's first line is 1.",
           "type": "integer"
         },
-        "size": {
-          "description": "The characters of text held at or under the node, each leaf's text counted once; a symbol holds none of its own, so it adds nothing to its section and its own size is that of its lines. Present from `index` on.",
-          "type": "integer",
-          "minimum": 0
-        },
-        "refs": {
-          "description": "The references a paragraph holds, in the order written. Present on a PROSE node from `index` on.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/GraphRef"
-          }
-        },
-        "text": {
-          "description": "The text the node holds: a paragraph with its references written with their sigils, a dedented code block, a bullet list's items one to a line, a claim's dedented lines, a run of assertions or a named test as written. Present at `full` on each node that holds text, and never on a symbol (its lines are in its code block).",
+        "body": {
+          "description": "The node's own written lines, verbatim, and not what is under it: a heading's body is its line, and a POST_TEXT's is `---`. A SYMBOL and an EXTERNAL have none of their own; but where a view does not show the node that holds a line, the line is in the body of the deepest node it shows that covers it, so a view started at a SYMBOL gives it its lines. The bodies of a file, each placed at its `start_line`, are the file, or, in a view that starts in it, the part of it the start covers.",
           "type": "string"
-        }
-      }
-    },
-    "GraphRef": {
-      "description": "A `#Label` or `##Label` written in a paragraph.",
-      "type": "object",
-      "required": [
-        "label",
-        "sub",
-        "start_line"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "label": {
-          "description": "What it names, without the sigil.",
-          "type": "string"
-        },
-        "sub": {
-          "description": "True for `##Label`, which names a subheading of the module only.",
-          "type": "boolean"
-        },
-        "start_line": {
-          "description": "1-based line where it is written.",
-          "type": [
-            "integer",
-            "null"
-          ]
         }
       }
     },
     "GraphEdge": {
-      "description": "A directed relationship between two nodes.",
+      "description": "What one node does to another.",
       "type": "object",
-      "required": [
-        "source",
-        "target",
-        "kind"
-      ],
+      "required": ["source", "target", "kind"],
       "additionalProperties": false,
       "properties": {
         "source": {
-          "description": "Address of the source node.",
+          "description": "Address of the source node. For a reference, the nearest node an `outline` shows to where it is written: a paragraph's citation is its section's, and a call in a symbol's code is the symbol's.",
           "type": "string"
         },
         "target": {
@@ -210,19 +100,18 @@
           "type": "string"
         },
         "kind": {
-          "description": "CONTAINS: a node to what is written in it (the trees); CITES: a paragraph to the node a `#Label` in it names; USES: code to a symbol it refers to by name; IMPORTS: a module to a module it lists in #References; USES_EXTERNAL: the binding module to a file it declares.",
+          "description": "CONTAINS: a node to what is written directly in it; CONTAINS_INDIRECTLY: a node to what is written in it, through nodes the view does not show, from the nearest it does; CITES: a node to what a `#Label` in it names; USES: a node to a symbol its code refers to by name; IMPORTS: a #References to a module it lists; USES_EXTERNAL: a #Binding to a file it declares.",
           "type": "string",
           "enum": [
-            "CONTAINS",
-            "CITES",
-            "USES",
-            "IMPORTS",
+            "CONTAINS", "CONTAINS_INDIRECTLY", "CITES", "USES", "IMPORTS",
             "USES_EXTERNAL"
           ]
         },
-        "start_line": {
-          "description": "1-based line of the source's file of the first reference or call site, where the edge has one. Where edges are merged, the earliest.",
-          "type": "integer"
+        "lines": {
+          "description": "The line numbers where the reference is written, in order, in the file of the edge's source. Lines are numbered from one. There is one edge for each source, target and kind. Absent on CONTAINS and CONTAINS_INDIRECTLY, and where the lines are not known.",
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 1
         }
       }
     }

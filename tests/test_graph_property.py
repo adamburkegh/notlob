@@ -45,9 +45,9 @@ class TestNamedPropertyNodes:
         assert node is not None
         assert node.kind == NodeKind.PROPERTY
 
-    def test_named_property_label(self):
+    def test_named_property_name(self):
         g = enriched("#T\n~property myp\n    @given()\n    def _(): pass\n")
-        assert g.node("t#myp").label == "myp"
+        assert g.node("t#myp").name == "myp"
 
     def test_unnamed_property_gets_ordinal_node(self):
         g = enriched("#T\n~property\n    @given()\n    def _(): pass\n")
@@ -81,13 +81,13 @@ class TestNamedPropertyNodes:
 class TestContainsEdges:
     def test_module_contains_named_property(self):
         g = enriched("#T\n~property myp\n    @given()\n    def _(): pass\n")
-        contained = {n.label for n in g.children("t", EdgeKind.CONTAINS)}
+        contained = {n.name for n in g.children("t", EdgeKind.CONTAINS)}
         assert "myp" in contained
 
     def test_subheading_contains_named_property(self):
         src = "#T\n##S\n~property myp\n    @given()\n    def _(): pass\n"
         g = enriched(src)
-        contained = {n.label for n in g.children("t#S", EdgeKind.CONTAINS)}
+        contained = {n.name for n in g.children("t#S", EdgeKind.CONTAINS)}
         assert "myp" in contained
 
 
@@ -117,7 +117,7 @@ class TestPropertySymbols:
             "    def prop(): pass\n"
         )
         g = enriched(src)
-        contained = {n.label for n in g.children("t#myp", EdgeKind.CONTAINS)}
+        contained = {n.name for n in g.children("t#myp", EdgeKind.CONTAINS)}
         assert "prop" in contained
 
     def test_no_symbols_for_unnamed_property(self):
@@ -144,7 +144,7 @@ class TestNodeFiltering:
             "~property p2\n    @given()\n    def _(): pass\n"
         )
         g = enriched(src)
-        props = {n.label for n in g.nodes(NodeKind.PROPERTY)}
+        props = {n.name for n in g.nodes(NodeKind.PROPERTY)}
         assert props == {"p1", "p2"}
 
     def test_code_block_symbols_unaffected(self):

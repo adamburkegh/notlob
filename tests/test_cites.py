@@ -22,7 +22,9 @@ import notlob.graph as graph_module
 import notlob.model
 import notlob.parser
 from notlob import EdgeKind, build, from_tree, parse
-from notlob.graph import add_cites_edges, cited_by, cites_of
+from notlob.graph import add_cites_edges
+from notlob.view import cited_by, cites_edges, cites_of, level_view
+from notlob.writers import write_json, write_turtle
 
 SCHEMAS = Path(notlob.__file__).parent / "schema"
 
@@ -54,16 +56,17 @@ class TestTheEdgeKind:
         assert "REFERENCES" not in EdgeKind.__members__
 
     def test_a_document_prints_it_so(self):
-        edges = _graph().to_dict("index")["edges"]
-        assert [e["kind"] for e in edges if e["source"] == "m#A#prose#1"
+        edges = json.loads(write_json(level_view(_graph(), "index")))["edges"]
+        assert [e["kind"] for e in edges if e["source"] == "m#A"
                 ] == ["CITES"]
 
     def test_the_outline_holds_the_tree_alone(self):
-        edges = _graph().to_dict()["edges"]
+        edges = json.loads(
+            write_json(level_view(_graph(), "outline")))["edges"]
         assert {e["kind"] for e in edges} == {"CONTAINS"}
 
     def test_so_does_turtle(self):
-        turtle = _graph().to_turtle(level="index")
+        turtle = write_turtle(level_view(_graph(), "index"))
         assert "notlob:cites" in turtle
         assert "notlob:references" not in turtle
 
@@ -74,7 +77,7 @@ class TestTheOntologyAndSchemas:
         assert "notlob:cites a owl:ObjectProperty" in text
         assert "notlob:references" not in text
 
-    @pytest.mark.parametrize("name", ["name_graph.json", "query_result.json"])
+    @pytest.mark.parametrize("name", ["name_graph.json"])
     def test_the_edge_enums_say_cites(self, name):
         schema = json.loads((SCHEMAS / name).read_text(encoding="utf-8"))
         edge_enums = [e for e in _enums(schema) if "CONTAINS" in e]
@@ -96,6 +99,14 @@ class TestTheFunctions:
         graph = _graph()
         assert [n.address for n in cites_of(graph, "m#A")] == ["m#B"]
         assert [n.address for n in cited_by(graph, "m#B")] == ["m#A"]
+
+    def test_a_section_cites_a_node_once_with_every_line_it_does(self):
+        graph = build(from_tree(parse(
+            "#M\n\n##S\n\nFirst #T.\n\nSecond #T.\n\n##T\n\nTarget.\n")))
+        add_cites_edges(graph)
+        (edge,) = cites_edges(graph, "m#S")
+        assert (edge.source, edge.target) == ("m#S", "m#T")
+        assert edge.lines == (5, 7) and edge.first_line == 5
 
 
 class TestTheQueries:

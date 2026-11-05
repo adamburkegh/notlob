@@ -129,7 +129,7 @@ def check_typos(graph: NameGraph) -> list[Finding]:
     by_module: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for node in symbols:
         mod = graph.module_of(node.address)
-        by_module[mod].append((node.label, node.address))
+        by_module[mod].append((node.name, node.address))
 
     siblings: dict[str, list[str]] = defaultdict(list)
     for mod in by_module:
@@ -217,7 +217,7 @@ def check_conventions(graph: NameGraph) -> list[Finding]:
     by_noun: dict[str, list[tuple[str, int, str]]] = defaultdict(list)
 
     for node in graph.nodes(kind=NodeKind.SYMBOL):
-        parts = node.label.split("_", 1)
+        parts = node.name.split("_", 1)
         if len(parts) < 2:
             continue
         verb, noun = parts
@@ -261,10 +261,10 @@ def check_titles(graph: NameGraph) -> list[Finding]:
     for node in graph.nodes():
         if not _is_module_or_section(node):
             continue
-        words = frozenset(node.label.lower().split())
+        words = frozenset(node.name.lower().split())
         if len(words) < _MIN_TITLE_WORDS:
             continue
-        titles.append((node.address, node.label, words))
+        titles.append((node.address, node.name, words))
 
     if len(titles) < 2:
         return []
@@ -333,9 +333,9 @@ def check_references(
     mod_symbols: dict[str, set[str]] = defaultdict(set)
     for node in graph.nodes(kind=NodeKind.SYMBOL):
         mod = graph.module_of(node.address)
-        if (len(node.label) >= _MIN_REF_NAME_LENGTH
-                and _REFABLE.match(node.label)):
-            mod_symbols[mod].add(node.label)
+        if (len(node.name) >= _MIN_REF_NAME_LENGTH
+                and _REFABLE.match(node.name)):
+            mod_symbols[mod].add(node.name)
 
     findings: list[Finding] = []
 
@@ -544,8 +544,8 @@ def check_imports(graph: NameGraph) -> list[Finding]:
                 findings.append(Finding(
                     check="imports",
                     message=(
-                        f"unused import: {mod_node.label} imports "
-                        f"{dep.label} but uses none of its symbols"
+                        f"unused import: {mod_node.name} imports "
+                        f"{dep.name} but uses none of its symbols"
                     ),
                     addresses=(mod_node.address, dep.address),
                     severity="error",

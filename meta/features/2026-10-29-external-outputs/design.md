@@ -500,6 +500,16 @@ level shows the whole tree by default, for now ("I'm not sure if that
 will be the final form"). The text form at `full` is probably the
 bodies in order; how it frames several files is open.
 
+**More for the swap (Adam, 2026-11-04).** `query content` is the view
+from a start, in 0.6.0, not a walk of its own: "looks like excuses".
+A started view needed one rule, now in `DESIGN.md`: where a view does
+not show the written node that holds a line, the line is in the body of
+the deepest node it shows that covers it. A one-file project has a
+file, the path passed; building it without one was a confusion in the
+implementation. `--level` takes `1` to `4`, the ranks: "four levels
+needs four numbers". `query search --kind` offers every kind. The brief
+is `slice-9-the-swap-brief.md`.
+
 **The text form at `block` (Adam, 2026-11-03: "the output looks
 ok").** As `index`, with a line for each positional node saying the end
 of its address (`prose#1`, `code#1`, `test#1`), and `post-text` a line

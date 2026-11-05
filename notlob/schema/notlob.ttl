@@ -8,17 +8,18 @@
 # by a registered or `tag:` namespace in a future version, which would be
 # called out in the CHANGELOG.
 #
-# A test keeps this file in step with the emitter, at every level: the
+# A test keeps this file in step with the writer, at every level: the
 # classes are the node kinds (UpperCamelCase), the object properties are
-# the edge kinds and the reference a paragraph holds, and the datatype
-# properties are the literals a node carries. See tests/test_turtle.py.
+# the edge kinds (camelCase), and the datatype properties are the literals
+# a node carries, named as the JSON document names them, in camelCase,
+# and the lines of a reference. See tests/test_turtle.py.
 #
 # The rule: a value that is a node of the graph is an edge, an object
 # property whose range is notlob:Node; any other value is a field of its
 # node, and a field with several values is a list. What is written is a
-# field, and what it resolves to is an edge. A paragraph's reference
-# (notlob:ref) is an object property to a blank node, a structured value
-# that is not a node, so a field. See tests/test_field_or_edge.py.
+# field, and what it resolves to is an edge. An edge is a triple; one with
+# lines also has an rdf:Statement about that triple, which carries them as
+# notlob:lines, one value a line. See tests/test_field_or_edge.py.
 
 @prefix notlob: <urn:notlob:ns:> .
 @prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -28,18 +29,18 @@
 
 <urn:notlob:ns:> a owl:Ontology ;
     rdfs:label "notlob name-graph vocabulary" ;
-    rdfs:comment """The terms notlob uses to export a project's name-graph as RDF: a node per element of a project's .lob files (module, section, paragraph, symbol, claim, ...) and an edge per relationship between them, at one of three levels of detail. Informal namespace; see the note at the top of this file.""" .
+    rdfs:comment """The terms notlob uses to export a project's name-graph as RDF: a node per element of a project's .lob files (module, section, paragraph, symbol, claim, ...) and an edge per relationship between them, at one of four levels of detail. Informal namespace; see the note at the top of this file.""" .
 
 # ── Nodes ────────────────────────────────────────────────────
 
 notlob:Node a owl:Class ;
     rdfs:label "Node" ;
-    rdfs:comment "A named thing in a notlob project. Every node has exactly one address, and is an instance of exactly one of the kind classes below. Only a module has an rdfs:label, its title: any other node's name follows from its address." .
+    rdfs:comment "A named thing in a notlob project. Every node has exactly one address, and is an instance of exactly one of the kind classes below. A node that has a name carries it as notlob:name." .
 
 notlob:Module a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Module" ;
-    rdfs:comment "A .lob file; its address is its path relative to the project root, without the extension, and its rdfs:label is its title." .
+    rdfs:comment "A .lob file; its address is its path relative to the project root, without the extension, and its name is its title." .
 
 notlob:Subheading a owl:Class ;
     rdfs:subClassOf notlob:Node ;
@@ -109,7 +110,7 @@ notlob:Tests a owl:Class ;
 notlob:PostText a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Post-text" ;
-    rdfs:comment "Everything after a module's --- separator: its #Tests section and its appendices. Part of the tree but not of an address. Not written at the outline level, where what it contains belongs to the node above it." .
+    rdfs:comment "Everything after a module's --- separator: its #Tests section and its appendices. Part of the tree but not of an address. Not written at the outline and index levels, where what it contains is indirectly contained by the node above it." .
 
 notlob:TestGroup a owl:Class ;
     rdfs:subClassOf notlob:Node ;
@@ -139,10 +140,9 @@ notlob:Import a owl:Class ;
 notlob:Declaration a owl:Class ;
     rdfs:subClassOf notlob:Node ;
     rdfs:label "Declaration" ;
-    rdfs:comment "A declaration in #Binding: ~language, ~external, ~on-build or ~keep-generated-src. A uses_external edge starts at the one that names a file." .
+    rdfs:comment "A declaration in #Binding: ~language, ~external, ~on-build or ~keep-generated-src. A usesExternal edge starts at the one that names a file." .
 
 # ── What a node carries ──────────────────────────────────────
-# A module's title is its `rdfs:label`; no other node has one.
 
 notlob:address a owl:DatatypeProperty ;
     rdfs:label "address" ;
@@ -150,15 +150,34 @@ notlob:address a owl:DatatypeProperty ;
     rdfs:domain notlob:Node ;
     rdfs:range xsd:string .
 
+notlob:name a owl:DatatypeProperty ;
+    rdfs:label "name" ;
+    rdfs:comment "The node's name, as the author wrote it: a module's title, a heading, a named claim or test, an appendix's title, or a symbol as written in the code. Written on every node that has one; a node with a positional address has none." ;
+    rdfs:domain notlob:Node ;
+    rdfs:range xsd:string .
+
 notlob:file a owl:DatatypeProperty ;
     rdfs:label "file" ;
-    rdfs:comment "The .lob file a module is, relative to the project root, with '/' separators. Written on a module only (and not on one built on its own): any other node's module is the part of its address before the first '#'." ;
+    rdfs:comment "The .lob file of a root, relative to the project root, with '/' separators: on each module, and on the node a view starts at, and on no other." ;
     rdfs:domain notlob:Node ;
     rdfs:range xsd:string .
 
 notlob:startLine a owl:DatatypeProperty ;
     rdfs:label "startLine" ;
-    rdfs:comment "The 1-based line of its file where a node begins, or where a reference is written. Absent when unknown." ;
+    rdfs:comment "The 1-based line of its file where a node begins. Absent when unknown." ;
+    rdfs:domain notlob:Node ;
+    rdfs:range xsd:integer .
+
+notlob:body a owl:DatatypeProperty ;
+    rdfs:label "body" ;
+    rdfs:comment "The node's own written lines, verbatim, and not what is under it. Written at the full level; a symbol and an external file have none of their own, but where a view does not show the node that holds a line, the line is in the body of the deepest node it shows that covers it." ;
+    rdfs:domain notlob:Node ;
+    rdfs:range xsd:string .
+
+notlob:lines a owl:DatatypeProperty ;
+    rdfs:label "lines" ;
+    rdfs:comment "A line of its file where a reference is written: one value for each line, said of the rdf:Statement about the edge (the edge itself is a triple, which has no place for them)." ;
+    rdfs:domain rdf:Statement ;
     rdfs:range xsd:integer .
 
 notlob:mode a owl:DatatypeProperty ;
@@ -179,45 +198,29 @@ notlob:value a owl:DatatypeProperty ;
     rdfs:domain notlob:Declaration ;
     rdfs:range xsd:string .
 
-notlob:size a owl:DatatypeProperty ;
-    rdfs:label "size" ;
-    rdfs:comment "The characters of text held at or under the node, each leaf's text counted once; a symbol holds none of its own, so it adds nothing to its section and its own size is that of its lines. Written from the index level." ;
-    rdfs:domain notlob:Node ;
-    rdfs:range xsd:integer .
-
-notlob:text a owl:DatatypeProperty ;
-    rdfs:label "text" ;
-    rdfs:comment "The text a node holds: a paragraph with its references written with their sigils, a dedented code block, a bullet list's items one to a line, a claim's dedented lines, a run of assertions or a named test as written. Written at the full level, once, and never for a symbol (its lines are in its code block)." ;
-    rdfs:domain notlob:Node ;
-    rdfs:range xsd:string .
-
-notlob:ref a owl:ObjectProperty ;
-    rdfs:label "ref" ;
-    rdfs:comment "A #Label or ##Label written in a paragraph: a blank node with the label (rdfs:label), whether it is a ##Label for a subheading (notlob:sub) and the line it is written on (notlob:startLine). Written from the index level." ;
-    rdfs:domain notlob:Prose .
-
-notlob:sub a owl:DatatypeProperty ;
-    rdfs:label "sub" ;
-    rdfs:comment "True for a ##Label reference, which names a subheading of the module only; false for #Label." ;
-    rdfs:range xsd:boolean .
-
 # ── Relationships between nodes ──────────────────────────────
 
 notlob:contains a owl:ObjectProperty ;
     rdfs:label "contains" ;
-    rdfs:comment "A node contains what is written in it: a module its sections and paragraphs, a code block its symbols. Each node but a module and an external file is contained by one node." ;
+    rdfs:comment "A node contains what is written directly in it: a module its sections and paragraphs, a code block its symbols. Each node but a root is contained by one node, directly or indirectly." ;
+    rdfs:domain notlob:Node ;
+    rdfs:range notlob:Node .
+
+notlob:containsIndirectly a owl:ObjectProperty ;
+    rdfs:label "containsIndirectly" ;
+    rdfs:comment "A node contains what is written in it, through nodes the level does not show, from the nearest node above that it does: an outline's section contains the symbols its code blocks define." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .
 
 notlob:imports a owl:ObjectProperty ;
     rdfs:label "imports" ;
-    rdfs:comment "A module imports another module by a lob-ref in #References." ;
+    rdfs:comment "A #References imports a module it lists." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .
 
-notlob:uses_external a owl:ObjectProperty ;
-    rdfs:label "uses_external" ;
-    rdfs:comment "The binding module uses an external file declared with ~external." ;
+notlob:usesExternal a owl:ObjectProperty ;
+    rdfs:label "usesExternal" ;
+    rdfs:comment "A #Binding uses an external file declared with ~external." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .
 
@@ -229,6 +232,6 @@ notlob:uses a owl:ObjectProperty ;
 
 notlob:cites a owl:ObjectProperty ;
     rdfs:label "cites" ;
-    rdfs:comment "A paragraph cites another node with a #Label cross-reference. Written from the index level." ;
+    rdfs:comment "A node cites another node with a #Label cross-reference in its paragraphs. Written from the index level." ;
     rdfs:domain notlob:Node ;
     rdfs:range notlob:Node .

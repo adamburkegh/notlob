@@ -19,7 +19,7 @@ from notlob import (
     NameGraph, Node, NodeKind, Edge, EdgeKind,
 )
 from notlob.bindings.python import extract_symbols
-from notlob.graph import cites_of
+from notlob.view import cites_of
 from notlob.project import ProjectParseError
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
@@ -33,8 +33,8 @@ class TestImportsEdge:
 
     def test_add_imports_edge_and_query(self):
         g = NameGraph()
-        g.add_node(Node("mod/a", "Mod A", NodeKind.MODULE))
-        g.add_node(Node("mod/b", "Mod B", NodeKind.MODULE))
+        g.add_node(Node("mod/a", NodeKind.MODULE, name="Mod A"))
+        g.add_node(Node("mod/b", NodeKind.MODULE, name="Mod B"))
         g.add_edge(Edge("mod/a", "mod/b", EdgeKind.IMPORTS))
         imported = list(g.children("mod/a", EdgeKind.IMPORTS))
         assert len(imported) == 1
@@ -42,8 +42,8 @@ class TestImportsEdge:
 
     def test_imports_does_not_appear_in_contains_children(self):
         g = NameGraph()
-        g.add_node(Node("mod/a", "Mod A", NodeKind.MODULE))
-        g.add_node(Node("mod/b", "Mod B", NodeKind.MODULE))
+        g.add_node(Node("mod/a", NodeKind.MODULE, name="Mod A"))
+        g.add_node(Node("mod/b", NodeKind.MODULE, name="Mod B"))
         g.add_edge(Edge("mod/a", "mod/b", EdgeKind.IMPORTS))
         # children() defaults to CONTAINS — IMPORTS edge is separate
         contains = list(g.children("mod/a"))
@@ -51,8 +51,8 @@ class TestImportsEdge:
 
     def test_multiple_imports(self):
         g = NameGraph()
-        for addr, label in [("a", "A"), ("b", "B"), ("c", "C")]:
-            g.add_node(Node(addr, label, NodeKind.MODULE))
+        for addr, name in [("a", "A"), ("b", "B"), ("c", "C")]:
+            g.add_node(Node(addr, NodeKind.MODULE, name=name))
         g.add_edge(Edge("a", "b", EdgeKind.IMPORTS))
         g.add_edge(Edge("a", "c", EdgeKind.IMPORTS))
         imported = {n.address for n in g.children("a", EdgeKind.IMPORTS)}
@@ -65,8 +65,8 @@ class TestResolveStep3:
     def _two_module_graph(self) -> NameGraph:
         """Graph with modules 'A' and 'B', no edges yet."""
         g = NameGraph()
-        g.add_node(Node("a", "A", NodeKind.MODULE))
-        g.add_node(Node("b", "B", NodeKind.MODULE))
+        g.add_node(Node("a", NodeKind.MODULE, name="A"))
+        g.add_node(Node("b", NodeKind.MODULE, name="B"))
         return g
 
     def test_imported_module_resolves_in_context(self):
@@ -84,7 +84,7 @@ class TestResolveStep3:
 
     def test_full_scan_without_context(self):
         g = self._two_module_graph()
-        # No context — find any MODULE by label
+        # No context — find any MODULE by name
         node = g.resolve("B")
         assert node is not None
         assert node.kind == NodeKind.MODULE
@@ -95,7 +95,7 @@ class TestResolveStep3:
         module = from_tree(parse("#T\n    def f(): pass\n"))
         g = build(module)
         enrich(g, module, extract_symbols)
-        g.add_node(Node("other", "Other", NodeKind.MODULE))
+        g.add_node(Node("other", NodeKind.MODULE, name="Other"))
         g.add_edge(Edge("t", "other", EdgeKind.IMPORTS))
         node = g.resolve("f", context="t")
         assert node is not None

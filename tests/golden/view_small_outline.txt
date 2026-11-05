@@ -1,0 +1,18 @@
+binding.lob
+Greeter    1
+  greet    3
+  Binding  8
+
+hello.lob
+Hello                   1
+  welcome               8
+  ~run                 11
+  Usage                14
+    shout              16
+    ~example           19
+  Tests                24
+    welcoming          26
+      ~test welcome_b  29
+  References           32
+  Appendix Glossary    35
+  Appendix             39

@@ -116,15 +116,6 @@ def _in_order(doc) -> list[str]:
     return [n["address"] for n in doc]
 
 
-def _flatten(node: dict) -> list[dict]:
-    """The nodes of a nested ``content`` answer, parents first, in the
-    order they are written."""
-    found = [node]
-    for child in node.get("children", []):
-        found.extend(_flatten(child))
-    return found
-
-
 class TestNodeLists:
     """children, imports, imported-by, callers, callees, cites,
     cited-by and search each print an array of nodes."""
@@ -146,15 +137,9 @@ class TestNodeLists:
         _rc, doc = _run(capsys, cmd_query_search, "*")
         assert doc
         assert not {n["kind"] for n in doc} & {"PROSE", "CODE", "BULLETS"}
-        assert not [n for n in doc if n["label"].startswith(
-            ("prose#", "code#", "bullets#"))]
-
-    def test_search_by_a_kind_that_outline_hides_is_an_error(
-        self, project, capsys,
-    ):
-        assert cmd_query_search("*", "PROSE") == 1
-        captured = capsys.readouterr()
-        assert captured.out == "" and "PROSE" in captured.err
+        assert not [n for n in doc if "#prose#" in n["address"]
+                    or "#code#" in n["address"]
+                    or "#bullets#" in n["address"]]
 
     def test_children_are_the_contained_nodes_leaves_included(
         self, project, capsys,
@@ -279,118 +264,41 @@ class TestNamed:
         _rc, doc = _run(capsys, cmd_query_children, "roman/numerals")
         assert doc
         assert all("named" not in n for n in doc)
-        assert all("name" not in n for n in doc)
 
-    def test_the_name_is_never_printed_by_a_query(self, roman, capsys):
-        """(`notlob graph` at every level is tested in test_graph_levels.)"""
+    def test_a_query_prints_the_name_and_no_label(self, roman, capsys):
         _rc, doc = _run(capsys, cmd_query_search, "*")
-        assert all("name" not in n for n in doc)
-        _rc, content = _run(capsys, cmd_query_content, "roman/numerals",
-                            None, "json")
-        assert all("name" not in n for n in _flatten(content))
+        assert all("label" not in n for n in doc)
+        named = {n["address"]: n["name"] for n in doc if "name" in n}
+        assert named["roman/numerals"] == "Roman Numerals"
+        assert named["roman/numerals#to_roman"] == "to_roman"
+
+    def test_a_positional_node_has_no_name(self, roman, capsys):
+        _rc, doc = _run(capsys, cmd_query_children, "roman/numerals")
+        prose = [n for n in doc if n["kind"] == "PROSE"]
+        assert prose and all("name" not in n for n in prose)
 
 
 class TestQueryContent:
+    """The shape of ``content``'s JSON is the graph document's, held to its
+    schema in ``test_graph_document.py``; here, that a query asks for it."""
+
     ROOT = "roman/numerals#Decoding"
 
-    def _content(self, capsys, address=None, depth=None):
-        rc, doc = _run(capsys, cmd_query_content, address or self.ROOT,
-                       depth, "json")
-        return rc, doc
-
-    def test_the_whole_subtree_in_document_order(self, roman, capsys):
-        rc, doc = self._content(capsys)
+    def test_a_started_view_has_its_nodes_in_document_order(
+        self, roman, capsys,
+    ):
+        rc, doc = _run(capsys, cmd_query_content, self.ROOT, None, "json")
         assert rc == 0
-        _validate(doc, "ContentOrNull")
-        assert doc["address"] == self.ROOT
-        assert _in_order(_flatten(doc)) == [
+        assert doc["level"] == "full"
+        assert [n["address"] for n in doc["nodes"]] == [
             self.ROOT, f"{self.ROOT}#prose#1", f"{self.ROOT}#code#1",
             "roman/numerals#from_roman", f"{self.ROOT}#example#1"]
-
-    def test_each_leaf_has_its_text_once_and_a_symbol_has_none(
-        self, roman, capsys,
-    ):
-        _rc, doc = self._content(capsys)
-        nodes = {n["address"]: n for n in _flatten(doc)}
-        assert "def from_roman" in nodes[f"{self.ROOT}#code#1"]["text"]
-        assert "Decoding is the inverse" in nodes[
-            f"{self.ROOT}#prose#1"]["text"]
-        assert "from_roman('IV')" in nodes[f"{self.ROOT}#example#1"]["text"]
-        assert "text" not in nodes["roman/numerals#from_roman"]
-        assert "text" not in nodes[self.ROOT]
-
-    def test_the_containment_is_the_nesting_and_there_are_no_edges(
-        self, roman, capsys,
-    ):
-        _rc, doc = self._content(capsys)
-        assert "edges" not in doc
-        assert [c["address"] for c in doc["children"]] == [
-            f"{self.ROOT}#prose#1", f"{self.ROOT}#code#1",
-            f"{self.ROOT}#example#1"]
-        assert [c["address"] for c in doc["children"][1]["children"]] == [
-            "roman/numerals#from_roman"]
-
-    def test_depth_zero_is_the_node_alone(self, roman, capsys):
-        _rc, doc = self._content(capsys, self.ROOT, 0)
-        _validate(doc, "ContentOrNull")
-        assert _in_order(_flatten(doc)) == [self.ROOT]
-        assert "children" not in doc
-
-    def test_depth_one_adds_the_children(self, roman, capsys):
-        _rc, doc = self._content(capsys, self.ROOT, 1)
-        assert _in_order(_flatten(doc)) == [
-            self.ROOT, f"{self.ROOT}#prose#1", f"{self.ROOT}#code#1",
-            f"{self.ROOT}#example#1"]
-
-    def test_a_symbol_alone_shows_its_code(self, roman, capsys):
-        rc, node = self._content(capsys, "roman/numerals#to_roman")
-        assert rc == 0
-        _validate(node, "ContentOrNull")
-        assert node["address"] == "roman/numerals#to_roman"
-        assert node["text"].startswith("def to_roman(n: int) -> str:")
-        assert "return result" in node["text"]
-        assert node["start_line"] == 19
-        assert "end_line" not in node
-
-    def test_a_symbols_text_is_there_when_its_code_block_is_not(
-        self, project, capsys,
-    ):
-        _rc, doc = self._content(capsys, "alpha#helper")
-        assert doc["text"] == "def helper():\n    return 1"
-
-    def test_a_symbol_has_no_text_when_its_code_block_is(
-        self, project, capsys,
-    ):
-        _rc, doc = self._content(capsys, "alpha#code#1")
-        nodes = {n["address"]: n for n in _flatten(doc)}
-        assert "def helper" in nodes["alpha#code#1"]["text"]
-        assert "text" not in nodes["alpha#helper"]
-
-    def test_a_property_holds_its_code_and_its_function_has_none(
-        self, project, capsys,
-    ):
-        _write(project, "prop.lob",
-               "#Prop\n\n~property p\n    @given()\n    def prop(): pass\n")
-        _rc, doc = self._content(capsys, "prop#p")
-        nodes = {n["address"]: n for n in _flatten(doc)}
-        assert "def prop" in nodes["prop#p"]["text"]
-        assert "text" not in nodes["prop#p#prop"]
-
-    def test_a_modules_whole_subtree_holds_each_line_once(
-        self, roman, capsys,
-    ):
-        _rc, doc = self._content(capsys, "roman/numerals")
-        texts = [n["text"] for n in _flatten(doc) if "text" in n]
-        assert sum(texts.count(t) for t in set(texts)) == len(texts)
-        assert not [n for n in _flatten(doc)
-                    if n["kind"] == "SYMBOL" and "text" in n]
 
     def test_an_unknown_address_is_null_and_exit_one(self, project, capsys):
         rc, doc = _run(capsys, cmd_query_content, "no/such#address",
                        None, "json")
         assert rc == 1
         assert doc is None
-        _validate(doc, "ContentOrNull")
 
     def test_a_negative_depth_is_an_error(self, project, capsys):
         assert cmd_query_content("alpha", -1, "json") == 1
@@ -436,15 +344,14 @@ class TestMcpTools:
         return next(t for t in TOOLS if t["name"] == name)["inputSchema"][
             "properties"]
 
-    def test_children_kinds_have_no_defines(self):
+    def test_children_kinds_are_those_a_graph_holds(self):
         kinds = self._tool("notlob_query_children")["kind"]["enum"]
-        assert set(kinds) == {k.name for k in EdgeKind} - {"DEFINES"}
+        assert set(kinds) == {k.name for k in EdgeKind} - {
+            "CONTAINS_INDIRECTLY"}
 
-    def test_search_kinds_are_those_outline_shows(self):
+    def test_search_kinds_are_every_kind(self):
         kinds = self._tool("notlob_query_search")["kind"]["enum"]
-        assert set(kinds) == {k.name for k in NodeKind} - {
-            "PROSE", "CODE", "BULLETS", "LISTING", "IMPORT",
-            "DECLARATION", "POST_TEXT"}
+        assert set(kinds) == {k.name for k in NodeKind}
 
     def test_content_takes_a_depth(self):
         depth = self._tool("notlob_query_content")["depth"]
@@ -456,7 +363,7 @@ class TestMcpTools:
                            {"address": "alpha", "depth": 0,
                             "format": "json"})
         document = json.loads(result["content"][0]["text"])
-        assert _in_order(_flatten(document)) == ["alpha"]
+        assert _in_order(document["nodes"]) == ["alpha"]
 
 
 class TestSchema:
@@ -466,17 +373,15 @@ class TestSchema:
     def test_the_node_is_the_graphs_node(self):
         """One node shape, specified twice (the written schemas must each
         stand alone, so no cross-file $ref): the definitions must not
-        drift apart. An answer stands on its own, so it keeps the `label`
-        and `file` that the document keeps on its modules only."""
+        drift apart. An answer stands on its own, so it keeps the `file`
+        that the document keeps on the root of a view only."""
         mine, graph = _schema()["definitions"], _schema("name_graph.json")[
             "definitions"]
         assert (set(mine["Node"]["properties"])
                 == set(graph["GraphNode"]["properties"]))
         for name, definition in graph["GraphNode"]["properties"].items():
-            if name not in ("label", "file"):
+            if name != "file":
                 assert mine["Node"]["properties"][name] == definition, name
-        assert mine["GraphRef"] == graph["GraphRef"]
-        assert mine["Edge"] == graph["GraphEdge"]
 
     def test_kind_enums_are_the_real_kinds(self):
         """Adding a NodeKind or EdgeKind without updating the schemas must
@@ -486,21 +391,20 @@ class TestSchema:
             kinds = _schema(name)["definitions"][node]["properties"][
                 "kind"]["enum"]
             assert set(kinds) == {k.name for k in NodeKind}, name
-        for name, edge in (("query_result.json", "Edge"),
-                           ("name_graph.json", "GraphEdge")):
-            kinds = _schema(name)["definitions"][edge]["properties"][
-                "kind"]["enum"]
-            assert set(kinds) == {k.name for k in EdgeKind} - {"DEFINES"}
+        kinds = _schema("name_graph.json")["definitions"]["GraphEdge"][
+            "properties"]["kind"]["enum"]
+        assert set(kinds) == {k.name for k in EdgeKind}
 
     def test_a_node_without_an_address_is_rejected(self):
         with pytest.raises(jsonschema.ValidationError):
-            _validate([{"label": "x", "kind": "MODULE"}], "NodeList")
+            _validate([{"name": "x", "kind": "MODULE"}], "NodeList")
 
     def test_content_is_not_a_field_of_a_node(self):
         with pytest.raises(jsonschema.ValidationError):
-            _validate([{"address": "x", "label": "x", "kind": "MODULE",
+            _validate([{"address": "x", "name": "x", "kind": "MODULE",
                         "content": {"prose": "p"}}], "NodeList")
 
-    def test_a_content_node_needs_its_address(self):
+    def test_a_label_is_not_a_field_of_a_node(self):
         with pytest.raises(jsonschema.ValidationError):
-            _validate({"kind": "MODULE"}, "ContentOrNull")
+            _validate([{"address": "x", "label": "x", "kind": "MODULE"}],
+                      "NodeList")

@@ -4,21 +4,21 @@ Pricing               1
     ~language python  9
 
 pricing/discounts.lob
-Pricing Discounts                                    1
-  cites Stacking Discounts                           9
-  apply_discount                                    11
-  ~example                                          14
-    uses apply_discount                             15
-  Stacking Discounts                                17
-    ~example                                        26
-      uses apply_discount                       27, 28
-    ~property                                       31
-      uses apply_discount                       43, 44
-  Tests                                             48
-    boundary conditions                             50
-      uses apply_discount                   51, 52, 53
-    composition                                     55
-      cites Stacking Discounts                      58
-      ~test composition_is_commutative              61
-        uses apply_discount             62, 63, 65, 66
-  References                                        69
+Pricing Discounts                                  1
+  cites Stacking Discounts                         9
+  apply_discount                                  11
+  ~example                                        14
+    uses apply_discount                           15
+  Stacking Discounts                              17
+    ~example                                      26
+      uses apply_discount                      27-28
+    ~property                                     31
+      uses apply_discount                      43-44
+  Tests                                           48
+    boundary conditions                           50
+      uses apply_discount                      51-53
+    composition                                   55
+      cites Stacking Discounts                    58
+      ~test composition_is_commutative            61
+        uses apply_discount             62-63, 65-66
+  References                                      69
