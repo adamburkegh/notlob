@@ -124,11 +124,11 @@ class TestCodeBlock:
 # ── Claim ────────────────────────────────────────────────────
 
 class TestClaim:
-    def test_sigil_captured(self):
+    def test_kind_captured(self):
         m = model("#T\n~example\n    x == 1\n")
         claim = m.body[0]
         assert isinstance(claim, Claim)
-        assert claim.sigil == "~example"
+        assert claim.kind == "example"
 
     def test_body_lines(self):
         m = model("#T\n~property\n    x > 0\n    y > 0\n")

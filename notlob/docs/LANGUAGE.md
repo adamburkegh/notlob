@@ -68,7 +68,8 @@ ERROR  <parse>  sharp.lob:5: a name may not hold '#': 'Calling C# from Python'
 A name has at least one character that is not a space, so a bare `##` is
 an error too. The spaces between the marker and the name, and after it, are
 not part of it; the spaces inside it are kept. A `~property` may have no
-name, and an `#Appendix` no title.
+name, and an `#Appendix` no title; with one, `#Appendix` is followed by a
+space (`#AppendixNotes` and `#Appendix: Notes` are errors).
 
 Only these are names. A `#` is fine in prose (`C# and issue #5`), in code,
 in an assertion, in a `~external` value (`index.html#top`, a URL with a

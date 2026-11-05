@@ -35,10 +35,7 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 # ── The oracle: the model, walked independently ──────────────
 
 def _claim_kind(claim: Claim) -> str:
-    word = claim.sigil.split()[0]
-    if word == "~example":
-        return "EXAMPLE"
-    return "RUN" if word == "~run" else "PROPERTY"
+    return claim.kind.upper()
 
 
 def _body(items: list) -> list:

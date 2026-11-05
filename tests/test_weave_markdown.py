@@ -11,6 +11,7 @@ GitHub-flavoured Markdown string.  These tests verify:
 
 from pathlib import Path
 
+import pytest
 
 from notlob import parse, from_tree, parse_file
 from notlob.weave import weave_markdown
@@ -118,16 +119,22 @@ class TestClaim:
         out = md("#T\n~property\n    x > 0\n")
         assert "**Property:**" in out
 
-    def test_run_omitted(self):
-        out = md("#T\n~run\n    print('hi')\n")
-        assert "~run" not in out
-        assert "print" not in out
+    @pytest.mark.parametrize("sigil, label", [
+        ("~run", "**Run:**"),
+        ("~run on-load", "**Run on-load:**"),
+        ("~run on-invocation", "**Run on-invocation:**"),
+    ])
+    def test_a_run_is_written_with_its_label_and_lines(self, sigil, label):
+        out = md(f"#T\n{sigil}\n    print('hi')\n")
+        assert f"{label}\n\n```python\nprint('hi')\n```" in out
 
     def test_named_property_label(self):
-        # A named ~property doesn't match the _SIGIL_LABELS keys
-        # exactly, so it renders via the generic capitalised fallback.
         out = md("#T\n~property commutativity\n    x + y == y + x\n")
         assert "**Property commutativity:**" in out
+
+    def test_a_property_name_is_as_written(self):
+        out = md("#T\n~property Total Order\n    x <= x\n")
+        assert "**Property Total Order:**" in out
 
     def test_claim_code_fenced(self):
         out = md("#T\n~example\n    f(1) == 2\n")
@@ -240,14 +247,13 @@ class TestPostAppendix:
         assert "## Background" in out
         assert "Appendix" not in out
 
-    def test_appendix_leftover_colon_stripped(self):
-        # The grammar no longer treats ":" as part of the #Appendix
-        # marker -- it's ordinary title text now. Old habit typing
-        # "#Appendix: Notes" must not leave a stray leading colon.
-        src = "#T\n---\n#Appendix: Notes\nSome notes.\n"
-        out = md(src)
-        assert "## Notes" in out
-        assert "## :" not in out
+    def test_an_appendix_named_appendix_keeps_the_word(self):
+        out = md("#T\n---\n#Appendix Appendix B\nSome notes.\n")
+        assert "## Appendix B" in out
+
+    def test_a_bare_appendix_is_headed_appendix(self):
+        out = md("#T\n---\n#Appendix\nSome notes.\n")
+        assert "## Appendix\n" in out
 
 
 # ── Document structure ────────────────────────────────────────

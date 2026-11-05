@@ -24,9 +24,9 @@ from notlob.model import Claim, Subheading
 # will cause test_all_body_sigils_are_registered to fail.
 
 _SIGIL_KINDS: dict[str, NodeKind] = {
-    "~example":  NodeKind.EXAMPLE,
-    "~property": NodeKind.PROPERTY,
-    "~run":      NodeKind.RUN,
+    "example":  NodeKind.EXAMPLE,
+    "property": NodeKind.PROPERTY,
+    "run":      NodeKind.RUN,
 }
 
 
@@ -80,15 +80,15 @@ class TestAllBodySigilsRegistered:
     """
 
     def _collect_sigils(self, module):
-        """Collect unique sigil prefixes from body Claims."""
+        """Collect the kinds of the body Claims."""
         sigils: set[str] = set()
         for item in module.body:
             if isinstance(item, Claim):
-                sigils.add(item.sigil.split(None, 1)[0])
+                sigils.add(item.kind)
             elif isinstance(item, Subheading):
                 for sub in item.body:
                     if isinstance(sub, Claim):
-                        sigils.add(sub.sigil.split(None, 1)[0])
+                        sigils.add(sub.kind)
         return sigils
 
     def test_all_body_sigils_are_registered(self):
@@ -109,13 +109,11 @@ class TestAllBodySigilsRegistered:
             f"_COMPREHENSIVE source — add an example"
         )
 
-    def test_matches_parser_known_sigils(self):
-        """The parser's closed sigil vocabulary and the graph's sigil
-        registry must name exactly the same set — the parser rejects
-        anything outside it, so the graph can never see anything else.
-        """
-        from notlob.parser import _KNOWN_SIGILS
-        assert set(_KNOWN_SIGILS) == set(_SIGIL_KINDS)
+    def test_matches_the_models_claim_kinds(self):
+        """The model's closed set of claim kinds and the graph's registry
+        must name exactly the same set."""
+        from notlob.model import CLAIM_KINDS
+        assert set(CLAIM_KINDS) == set(_SIGIL_KINDS)
 
 
 class TestRunInGraph:

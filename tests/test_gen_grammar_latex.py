@@ -54,7 +54,7 @@ class TestParseRealGrammar:
         # `~test` existed as a terminal of its own.
         _, terminals, _priorities = parse_grammar(_GRAMMAR_PATH)
         by_name = dict(terminals)
-        assert "_TEST_MARK" in by_name
+        assert "TEST_MARK" in by_name
         sigil = by_name["SIGIL"]
         assert isinstance(sigil, Or)
         rendered_alts = [render(alt) for alt in sigil.items]

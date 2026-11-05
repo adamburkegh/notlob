@@ -74,15 +74,16 @@ def _code(text):
 def _example(lines):
     """Build a ~example Claim with the given assertion lines."""
     return Claim(
-        sigil="~example",
+        kind="example",
         lines=["    " + ln for ln in lines],
     )
 
 
 def _property_claim(sigil, lines):
-    """Build a ~property Claim."""
+    """Build a ~property Claim from its sigil line."""
     return Claim(
-        sigil=sigil,
+        kind="property",
+        name=sigil.removeprefix("~property").strip() or None,
         lines=["    " + ln for ln in lines],
     )
 

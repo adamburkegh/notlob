@@ -142,15 +142,16 @@ def _test_name(source: str) -> str:
     return named.name
 
 
-def _sigil(source: str) -> str:
+def _property_name(source: str) -> str | None:
     module = from_tree(parse(source))
     (claim,) = [i for i in module.body if isinstance(i, Claim)]
-    return claim.sigil
+    assert claim.kind == "property"
+    return claim.name
 
 
-def _appendix(source: str) -> str:
+def _appendix(source: str) -> str | None:
     module = from_tree(parse(source))
-    return module.post_text.sections[0].title
+    return module.post_text.sections[0].name
 
 
 class TestAccepted:
@@ -180,21 +181,21 @@ class TestAccepted:
         assert _test_name(
             _TESTS + "##g\n~test two  words\n    1 == 1\n") == "two  words"
 
-    @pytest.mark.parametrize("line, sigil", [
-        ("~property total", "~property total"),
-        ("~property  total", "~property total"),
-        ("~property", "~property"),
+    @pytest.mark.parametrize("line, name", [
+        ("~property total", "total"),
+        ("~property  total", "total"),
+        ("~property", None),
     ])
-    def test_a_property(self, line, sigil):
-        assert _sigil(f"#M\n\n{line}\n    True\n") == sigil
+    def test_a_property(self, line, name):
+        assert _property_name(f"#M\n\n{line}\n    True\n") == name
 
-    @pytest.mark.parametrize("line, title", [
-        ("#Appendix", "#Appendix"),
-        ("#Appendix A", "#Appendix A"),
-        ("#Appendix Two words", "#Appendix Two words"),
+    @pytest.mark.parametrize("line, name", [
+        ("#Appendix", None),
+        ("#Appendix A", "A"),
+        ("#Appendix Two words", "Two words"),
     ])
-    def test_an_appendix(self, line, title):
-        assert _appendix(_APPENDIX + f"{line}\n\nText.\n") == title
+    def test_an_appendix(self, line, name):
+        assert _appendix(_APPENDIX + f"{line}\n\nText.\n") == name
 
     def test_a_module_title_with_spaces_inside(self):
         assert from_tree(parse("#Two  words\n")).title == "Two  words"
@@ -263,23 +264,22 @@ _PROJECTS = [
     ("ts-media", typescript_kit),
 ]
 
-#: The model of each example file, as it was before a name was a terminal:
-#: a short digest of the dataclasses as JSON (less the text of the file
-#: they were read from).
+#: The model of each example file: a short digest of the dataclasses as
+#: JSON (less the text of the file they were read from).
 MODELS = {
     "gutenberg/binding.lob": "2ac74075a445920f",
-    "gutenberg/gutenberg/corpus.lob": "29246d50af7939f5",
-    "gutenberg/gutenberg/hamlet.lob": "732f66c423d6e575",
+    "gutenberg/gutenberg/corpus.lob": "1707e2f253434148",
+    "gutenberg/gutenberg/hamlet.lob": "42729710cd17166a",
     "haskell-roman/binding.lob": "1342f46e610357c1",
-    "haskell-roman/roman/numerals/app.lob": "d15b90528d02cf37",
-    "haskell-roman/roman/numerals.lob": "cf292fe8f1828ffa",
+    "haskell-roman/roman/numerals/app.lob": "e52c3f0ac9ca9616",
+    "haskell-roman/roman/numerals.lob": "5a2b82eca080fa6f",
     "retail/binding.lob": "12663be1935550f7",
-    "retail/pricing/discounts.lob": "4a3e66efe067403d",
+    "retail/pricing/discounts.lob": "06b82c49d44c776b",
     "roman/binding.lob": "d39fe96fc4022a58",
-    "roman/roman/numerals.lob": "e4a24c2669517178",
+    "roman/roman/numerals.lob": "d1ef92f32759fb14",
     "ts-media/binding.lob": "d3e93d63a2f68f1d",
-    "ts-media/media-attributes/analysis.lob": "3fa38380ae3af0a7",
-    "ts-media/media-attributes/render.lob": "ff1b3053118e3f30",
+    "ts-media/media-attributes/analysis.lob": "a5c11b73b54414fa",
+    "ts-media/media-attributes/render.lob": "bcf5511255fcf819",
 }
 
 def _digest(text: str) -> str:

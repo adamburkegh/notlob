@@ -795,35 +795,34 @@ def _positional_identity(parent: str, kind: NodeKind, n: int) -> str:
     return positional_address(parent, kind, n)
 
 
+_CLAIM_NODE_KINDS = {
+    "example":  NodeKind.EXAMPLE,
+    "run":      NodeKind.RUN,
+    "property": NodeKind.PROPERTY,
+}
+
+
 def _claim_identity(
     graph: NameGraph, claim: Claim, parent: str, ordinals: _Ordinals,
 ) -> tuple[str, NodeKind, str | None]:
     """``(address, kind, name)`` of *claim* written in the node at
-    *parent*. The kind follows the sigil: every ``~run`` (bare, ``on-load``
-    or ``on-invocation``) is a ``RUN``, ``~example`` an ``EXAMPLE`` and
-    anything else a ``PROPERTY``. A named property is named in the scope
-    of *parent* but still counts among its properties; any other claim,
-    and an unnamed property, has no name."""
-    parts = claim.sigil.split(None, 1)
-    if parts[0] == "~example":
-        kind = NodeKind.EXAMPLE
-    elif parts[0] == "~run":
-        kind = NodeKind.RUN
-    else:
-        kind = NodeKind.PROPERTY
+    *parent*. Every ``~run`` (bare, ``on-load`` or ``on-invocation``) is a
+    ``RUN``. A named property is named in the scope of *parent* but still
+    counts among its properties; any other claim, and an unnamed property,
+    has no name."""
+    kind = _CLAIM_NODE_KINDS[claim.kind]
     n = ordinals.next(kind)
-    if kind == NodeKind.PROPERTY and len(parts) > 1:
-        name = parts[1].strip()
-        return named_address(graph.scope_of(parent), name), kind, name
+    if claim.name is not None:
+        address = named_address(graph.scope_of(parent), claim.name)
+        return address, kind, claim.name
     return _positional_identity(parent, kind, n), kind, None
 
 
 def _run_mode(claim: Claim) -> str:
-    """When a ``~run`` runs: the mode written after the sigil
-    (``on-load`` or ``on-invocation``), and ``on-invocation`` for a bare
-    ``~run``, which is what the grammar means by it."""
-    parts = claim.sigil.split()
-    return parts[1] if len(parts) > 1 else "on-invocation"
+    """When a ``~run`` runs: the mode written after the sigil, and
+    ``on-invocation`` for a bare ``~run``, which is what the grammar
+    means by it."""
+    return claim.mode or "on-invocation"
 
 
 def _add_child(

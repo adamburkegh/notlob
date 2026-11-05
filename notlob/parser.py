@@ -9,21 +9,14 @@ native terminal in the grammar file itself, not a token produced by a
 hand-written Python line classifier. See ``grammar.lark``'s header comment
 for how heading/sigil/prose disambiguation is resolved via terminal
 priority and line-start anchoring, and for what a name is: a ``NAME``
-terminal that holds no ``#``, beside a marker, so a ``NAME`` token is
-exactly the name.
+terminal that holds no ``#``, so a ``NAME`` token is exactly the name.
+Every character of the source is in exactly one token of the tree.
 
-Two things the grammar can't fully own are handled here, in a thin layer
-around the raw parse:
-
-**Token normalisation.** Every line-oriented terminal in the grammar
-consumes through its own trailing newline (so the lexer's cursor is
-always at true line-start for the next token). Downstream consumers
-(``model.py``, ``weave/markdown.py``) expect the *stripped* content.
-``_normalize`` rewrites each raw token's value to match, once, right
-after parsing, so nothing downstream needs to know the grammar changed.
+``parse`` returns the tree as Lark built it, and a token's value is its
+text; ``model.py`` is where a token becomes a value.
 
 **The refusal of a ``#`` in a name.** The grammar refuses it, in Lark's
-words (``Unexpected token ... Expected one of: _EOL``), which tell an
+words (``Unexpected token ... Expected one of: EOL``), which tell an
 author little. ``parse`` words that one refusal, as
 ``sharp.lob:5: a name may not hold '#': 'Calling C# from Python'``, and
 holds no rule of its own: it only reads what Lark's error says.
@@ -55,40 +48,6 @@ _parser = Lark(
     regex=True,
 )
 
-# ── Token normalisation ─────────────────────────────────────
-#
-# Maps a raw terminal's matched text to the value downstream code
-# expects: the trailing "\n" stripped from every line-token.
-
-_LINE_TOKEN_TYPES = {
-    "SIGIL", "SEPARATOR", "TESTS_HEAD", "BINDING_HEAD", "REFERENCES_HEAD",
-    "INDENTED_LINE", "LISTING_LINE", "BULLET", "BLANK",
-}
-
-
-def _normalize_token(tok: Token) -> Token:
-    return tok.update(value=str(tok).rstrip("\n"))
-
-
-def _normalize(tree: Tree) -> Tree:
-    """Rewrite line-token values in place to match pre-refactor shape."""
-    for subtree in tree.iter_subtrees():
-        children = subtree.children
-        for i, child in enumerate(children):
-            if isinstance(child, Token) and child.type in _LINE_TOKEN_TYPES:
-                children[i] = _normalize_token(child)
-    return tree
-
-
-# The closed vocabulary of recognised claim sigils (body-level; excludes
-# ~test, which is _TEST_MARK, a separate terminal only reachable inside
-# a #Tests group). Mirrors grammar.lark's SIGIL terminal; kept here for
-# cross-checking against notlob.graph's dispatch (see
-# tests/test_graph_completeness.py), which fails loudly if the two drift
-# apart.
-_KNOWN_SIGILS = ("~example", "~run", "~property")
-
-
 # ── The refusal of a # in a name ─────────────────────────────
 
 class LobSyntaxError(ValueError):
@@ -112,7 +71,7 @@ def _named_with_hash(
     stands there is a ``#``: the name is what is written from the ``NAME``
     Lark had read (if any) to the end of the line."""
     expected = getattr(exc, "expected", None)
-    if not expected or not set(expected) <= {"NAME", "_EOL"}:
+    if not expected or not set(expected) <= {"NAME", "SPACE", "EOL"}:
         return None
     if source[exc.pos_in_stream:].lstrip(" \t")[:1] != "#":
         return None
@@ -139,7 +98,6 @@ def parse(source: str) -> Tree:
         if worded is None:
             raise
         raise worded from None
-    _normalize(tree)
     return tree
 
 

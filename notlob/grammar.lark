@@ -3,7 +3,8 @@
 
 start: module
 
-module: MOD_HEAD body post_text?
+module: module_head body post_text?
+module_head: MOD_MARK SPACE? NAME EOL
 
 // ── Body ────────────────────────────────────────────────────
 
@@ -12,12 +13,15 @@ body_item: subheading | code_block | claim | prose_block | bullet_block
          | BLANK
 
 // Flat: a subheading holds no subheading.
-subheading: SUBHEAD _sub_item*
-_sub_item: code_block | claim | prose_block | bullet_block | BLANK
+subheading: sub_head sub_item*
+sub_head: SUB_MARK SPACE? NAME EOL
+sub_item: code_block | claim | prose_block | bullet_block | BLANK
 
-code_block: INDENTED_LINE _body_line*
-claim: SIGIL _body_line+
-_body_line: INDENTED_LINE | BLANK
+code_block: INDENTED_LINE body_line*
+claim: SIGIL body_line+
+     | property_head body_line+
+property_head: PROPERTY_MARK SPACE NAME EOL
+body_line: INDENTED_LINE | BLANK
 
 prose_block: prose_line+
 prose_line: (LINE_START_TEXT | PROSE_TEXT | REF)+ BLANK
@@ -31,31 +35,39 @@ post_section: tests_section | binding_section | references_section
 
 tests_section: TESTS_HEAD (BLANK | test_item | prose_block)*
 test_item: test_group | INDENTED_LINE
-test_group: SUBHEAD (INDENTED_LINE | BLANK | prose_block | named_test)*
+test_group: sub_head (INDENTED_LINE | BLANK | prose_block | named_test)*
 // `~test` is reachable only here, so in the body it fails to lex.
-named_test: TEST_SIGIL _body_line+
+named_test: test_head body_line+
+test_head: TEST_MARK SPACE NAME EOL
 
 binding_section: BINDING_HEAD (INDENT bind_detail_decl | BLANK)*
 bind_detail_decl: LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL
                 | KEEP_SRC_DECL
 references_section: REFERENCES_HEAD (LISTING_LINE | INDENTED_LINE
                                      | BLANK)*
-appendix_section: APPENDIX_HEAD body_item*
+appendix_section: appendix_head body_item*
+appendix_head: APPENDIX_MARK (SPACE NAME)? EOL
 
 // ── Terminals ───────────────────────────────────────────────
 //
 // Priority settles a line that two terminals match: 20 for the post-text
-// heads and SEPARATOR, 10 for the headings and SIGIL, 8-9 for leading
-// whitespace and `*`, 5 for REF, 1 for prose.
+// heads, APPENDIX_MARK and SEPARATOR, 10 for the other markers and SIGIL,
+// 8-9 for leading whitespace and `*`, 5 for REF, 1 for prose.
 
 LINE_CHAR: /[^\n]/
 REST_OF_LINE: LINE_CHAR* "\n"
 
-MOD_HEAD.10: "#" /[^#\n]/ REST_OF_LINE
-SUBHEAD.10: "##" REST_OF_LINE
+// A name holds no `#` and neither starts nor ends with a space.
+NAME: /[^#\s](?:[^#\n]*[^#\s])?/
+SPACE: /[ \t]+/
+EOL: /[ \t]*\n/
+
+MOD_MARK.10: "#"
+SUB_MARK.10: "##"
 SIGIL.10: "~example\n" | "~run\n" | "~run on-load\n"
-        | "~run on-invocation\n" | "~property\n" | "~property " REST_OF_LINE
-TEST_SIGIL.10: "~test " LINE_CHAR REST_OF_LINE
+        | "~run on-invocation\n" | "~property\n"
+PROPERTY_MARK.10: "~property"
+TEST_MARK.10: "~test"
 
 LANGUAGE_DECL: "~language " LINE_CHAR REST_OF_LINE
 EXTERNAL_DECL: "~external " LINE_CHAR REST_OF_LINE
@@ -66,7 +78,7 @@ SEPARATOR.20: "---\n"
 TESTS_HEAD.20: "#Tests\n"
 BINDING_HEAD.20: "#Binding\n"
 REFERENCES_HEAD.20: "#References\n"
-APPENDIX_HEAD.20: "#Appendix" REST_OF_LINE
+APPENDIX_MARK.20: "#Appendix"
 
 INDENT: /[ \t]+/
 INDENTED_LINE.8: INDENT REST_OF_LINE

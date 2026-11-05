@@ -84,13 +84,24 @@ class CodeBlock:
     end_line:   int | None = None
 
 
+#: The kinds of claim, closed: the sigils the grammar has, less the ``~``.
+CLAIM_KINDS = ("example", "run", "property")
+
+
 @dataclass
 class Claim:
-    """A ~sigil followed by its indented body."""
-    sigil:      str        # e.g. "~example", "~property"
+    """A ``~example``, ``~run`` or ``~property`` and its indented body.
+
+    *kind* is one of :data:`CLAIM_KINDS`. *mode* is a ``~run``'s mode as
+    written (``on-load``, ``on-invocation``), ``None`` when bare. *name*
+    is a ``~property``'s name, ``None`` when it has none.
+    """
+    kind:       str
     lines:      list[str]  # body lines; blank lines preserved
     start_line: int | None = None
     end_line:   int | None = None
+    mode:       str | None = None
+    name:       str | None = None
 
 
 @dataclass
@@ -242,7 +253,6 @@ class AppendixSection:
     """A #Appendix … post-text section. Its *name* is the grammar's
     ``NAME`` after the marker (``Notes`` of ``#Appendix Notes``), ``None``
     for a bare ``#Appendix``."""
-    title:      str  # full token value, e.g. "#Appendix Notes"
     body:       list[BodyItem]
     start_line: int | None = None
     end_line:   int | None = None
@@ -317,8 +327,24 @@ def _furthest(*lines: int | None) -> int | None:
     return max(known) if known else None
 
 
+def _text(tok) -> str:
+    """The text of a line token, less its newline."""
+    return str(tok).removesuffix("\n")
+
+
+def _name_token(head: Tree) -> Token | None:
+    """The NAME token of a head node, or ``None`` (a bare ``#Appendix``)."""
+    return next((c for c in head.children if c.type == "NAME"), None)
+
+
+def _line_tokens(children) -> list[Token]:
+    """The tokens of the lines of a block: a body_line holds one."""
+    return [t for c in children
+            for t in (c.children if isinstance(c, Tree) else [c])]
+
+
 def _module(node: Tree) -> Module:
-    title_tok = node.children[0]
+    title_tok = _name_token(node.children[0])
     title = str(title_tok)
     body_items = _body(node.children[1])
     post_tree = node.children[2] if len(node.children) > 2 else None
@@ -372,10 +398,11 @@ def _content(node: Tree) -> BodyItem:
 
 
 def _subheading(node: Tree) -> Subheading:
-    title_tok = node.children[0]
+    title_tok = _name_token(node.children[0])
     title = str(title_tok)
     body: list[Union[CodeBlock, Claim, ProseBlock, BulletBlock]] = []
-    for child in node.children[1:]:
+    for sub_item in node.children[1:]:
+        child = sub_item.children[0]
         if isinstance(child, Token):   # BLANK — skip
             continue
         item = _content(child)
@@ -391,27 +418,32 @@ def _subheading(node: Tree) -> Subheading:
 
 
 def _code_block(node: Tree) -> CodeBlock:
-    first = node.children[0] if node.children else None
-    start = _line(first)
+    tokens = _line_tokens(node.children)
+    start = _line(tokens[0])
     return CodeBlock(
-        lines=[str(c) for c in node.children],
+        lines=[_text(t) for t in tokens],
         start_line=start,
-        end_line=_last_text_line(node.children, start),
+        end_line=_last_text_line(tokens, start),
     )
 
 
 def _claim(node: Tree) -> Claim:
-    sigil_tok = node.children[0]
-    start = _line(sigil_tok)
-    # `~property <name>` is its marker (not in the tree) and a NAME; the
-    # sigil of it is the two, as the other claims' is their one token.
-    sigil = (f"~property {sigil_tok}" if sigil_tok.type == "NAME"
-             else str(sigil_tok))
+    head = node.children[0]
+    if isinstance(head, Tree):         # a property_head: `~property name`
+        start = _line(head.children[0])
+        kind, mode, name = "property", None, str(_name_token(head))
+    else:                              # a SIGIL: `~run on-load\n`
+        start = _line(head)
+        word, *rest = str(head).split()
+        kind, mode, name = word[1:], (rest[0] if rest else None), None
+    if kind not in CLAIM_KINDS:
+        raise ValueError(f"Unknown claim kind: {kind!r}")
+    lines = _line_tokens(node.children[1:])
     return Claim(
-        sigil=sigil,
-        lines=[str(c) for c in node.children[1:]],
+        kind=kind, mode=mode, name=name,
+        lines=[_text(t) for t in lines],
         start_line=start,
-        end_line=_last_text_line(node.children[1:], start),
+        end_line=_last_text_line(lines, start),
     )
 
 
@@ -453,7 +485,8 @@ def _prose_block(node: Tree) -> ProseBlock:
 def _bullet_block(node: Tree) -> BulletBlock:
     first = node.children[0] if node.children else None
     items = [
-        str(tok)[2:] if str(tok).startswith("* ") else str(tok).lstrip("*")
+        _text(tok)[2:] if _text(tok).startswith("* ")
+        else _text(tok).lstrip("*")
         for tok in node.children
     ]
     start = _line(first)
@@ -510,7 +543,7 @@ def _tests_section(node: Tree) -> TestsSection:
             ln = _line(inner)
             if ln is not None:
                 line_offsets[len(items)] = ln
-            items.append(str(inner))
+            items.append(_text(inner))
             end = _last_text_line([inner], end)
         else:
             items.append(_test_group(inner))
@@ -524,7 +557,7 @@ def _tests_section(node: Tree) -> TestsSection:
 
 
 def _test_group(node: Tree) -> TestGroup:
-    title_tok = node.children[0]
+    title_tok = _name_token(node.children[0])
     title = str(title_tok)
     items: list[Union[str, ProseBlock, NamedTest]] = []
     line_offsets: dict[int, int] = {}
@@ -535,7 +568,7 @@ def _test_group(node: Tree) -> TestGroup:
             ln = _line(child)
             if ln is not None:
                 line_offsets[len(items)] = ln
-            items.append(str(child))
+            items.append(_text(child))
             end = _last_text_line([child], end)
         elif child.data == "prose_block":
             items.append(_prose_block(child))
@@ -554,14 +587,15 @@ def _test_group(node: Tree) -> TestGroup:
 
 
 def _named_test(node: Tree) -> NamedTest:
-    name_tok = node.children[0]    # the NAME: the marker is not in the tree
+    name_tok = _name_token(node.children[0])
     name = str(name_tok)
     start = _line(name_tok)
+    lines = _line_tokens(node.children[1:])
     return NamedTest(
         name=name,
-        lines=[str(c) for c in node.children[1:]],
+        lines=[_text(t) for t in lines],
         start_line=start,
-        end_line=_last_text_line(node.children[1:], start),
+        end_line=_last_text_line(lines, start),
     )
 
 
@@ -616,28 +650,24 @@ def _references_section(node: Tree) -> ReferencesSection:
     children = node.children[1:]
     start = _line(node.children[0])
     return ReferencesSection(
-        lines=[str(c) for c in children],
+        lines=[_text(c) for c in children],
         line_numbers=[_line(c) for c in children],
         start_line=start,
         end_line=_last_text_line(children, start),
-        listings=[Listing(str(c).strip()[1:].strip(), _line(c))
+        listings=[Listing(_text(c).strip()[1:].strip(), _line(c))
                   for c in children if c.type == "LISTING_LINE"],
-        imports=[ImportLine(str(c), _line(c))
+        imports=[ImportLine(_text(c), _line(c))
                  for c in children if c.type != "LISTING_LINE"],
     )
 
 
 def _appendix_section(node: Tree) -> AppendixSection:
-    # An appendix may be untitled: its NAME is optional, and the marker is
-    # not in the tree, so its line is the node's own.
-    named = bool(node.children) and getattr(
-        node.children[0], "type", "") == "NAME"
-    name = str(node.children[0]).strip() if named else None
-    title = f"#Appendix {name}" if named else "#Appendix"
-    body = _body_from_items(node.children[1:] if named else node.children)
-    start = node.meta.line
+    head = node.children[0]
+    name_tok = _name_token(head)       # None for a bare `#Appendix`
+    name = str(name_tok) if name_tok is not None else None
+    body = _body_from_items(node.children[1:])
+    start = _line(head.children[0])
     return AppendixSection(
-        title=title,
         name=name,
         body=body,
         start_line=start,

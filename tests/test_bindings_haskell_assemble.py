@@ -281,7 +281,7 @@ class TestAppendixCode:
             title="Numerals",
             body=[_code("f x = x")],
             post_text=PostText(sections=[
-                AppendixSection(title="#Appendix", body=[
+                AppendixSection(body=[
                     _code("fixtureHelper = 42"),
                 ]),
             ]),
@@ -294,7 +294,7 @@ class TestAppendixCode:
             title="Numerals",
             body=[_code("f x = x")],
             post_text=PostText(sections=[
-                AppendixSection(title="#Appendix", body=[_code("y = 2")]),
+                AppendixSection(body=[_code("y = 2")]),
             ]),
         )
         src = assemble(m)
@@ -306,7 +306,7 @@ class TestAppendixCode:
             title="Numerals",
             body=[_code("f x = x")],
             post_text=PostText(sections=[
-                AppendixSection(title="#Appendix", body=[sub]),
+                AppendixSection(body=[sub]),
             ]),
         )
         src = assemble(m)

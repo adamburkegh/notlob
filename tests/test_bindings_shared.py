@@ -21,7 +21,7 @@ class TestCollectBlocks:
         body = [
             ProseBlock(spans=["some prose"]),
             CodeBlock(lines=["    x = 1"]),
-            Claim(sigil="~example", lines=["    x == 1"]),
+            Claim(kind="example", lines=["    x == 1"]),
         ]
         result = collect_blocks(body)
         assert result == ["x = 1"]

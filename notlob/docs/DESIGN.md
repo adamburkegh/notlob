@@ -443,10 +443,13 @@ line-start anchoring (see "The grammar is the specification" below for
 the mechanism and rationale). Headings, code blocks, claim
 sigils, post-text boundary, and reserved post-text sections all become
 first-class AST nodes. The grammar file is the canonical syntax
-specification; `notlob/parser.py` normalises raw token values (stripping
-markers/newlines) and checks reserved sigils, then hands a Lark `Tree`
-serialisable to JSON for use by tooling and LLM context. Parse tree
-access will also be exposed via MCP.
+specification; `notlob/parser.py` hands a Lark `Tree` serialisable to
+JSON for use by tooling and LLM context. Parse tree access will also be
+exposed via MCP.
+
+**The parse tree is the whole source.** Every character of a `.lob` file
+is in exactly one token of its parse tree, in order, so a tool can
+colour or rewrite a file from its tree alone.
 
 **Name-graph:** The central data structure of the tooling layer: the
 parse tree, with cross-references. Every element of a `.lob` file is a
@@ -721,40 +724,42 @@ Notlob is meant to be built on: editors, weavers, visualisers, CI
 summaries, agents. For a language whose premise is that the document is
 the program, the parse tree and the name-graph are the tooling API, in
 the way `go/ast` and Python's `ast` are for those languages, not
-incidental internals. But not everything a tool can reach is something
-worth promising, so there are two tiers.
+incidental internals. But not everything a tool can reach is meant to
+be built on. The two layers below are a way to think about where notlob
+will settle, not a contract: the outer one is what tools are meant to
+use and changes with care, and the inner one is how notlob gets there
+and moves when notlob needs it to.
 
-**Stable.** The commands and their machine-readable output (`--format json`,
-`graph --format`), the model types exported from `notlob`, the
-name-graph and the JSON schemas under `notlob/schema/`, and the
-`BindingKit` contract that language bindings register against. Changes
-here are additive where they can be, and a breaking change is called out
-in the CHANGELOG.
+**The outer layer.** The commands and their machine-readable output
+(`--format json`, `graph --format`), the model types exported from
+`notlob`, the name-graph and the JSON schemas under `notlob/schema/`,
+and the `BindingKit` contract that language bindings register against.
+Changes here are additive where they can be, and a breaking change is
+called out in the CHANGELOG.
 
 **Structured output has a schema.** Every structured output in the
-stable tier is specified by a JSON Schema under `notlob/schema/`, not by
+outer layer is specified by a JSON Schema under `notlob/schema/`, not by
 whatever the code happens to print. A schema ships in the package and is
 written out by `notlob docs`, so an agent working in another project can
 read it. A test validates real output against it, so the schema and the
 code cannot drift. An output that may change carries a `version` field,
-bumped on a breaking change. A new `--format json` output, or any other structured
-output meant for a program to read, is not finished until its schema is.
+bumped on a breaking change. A new `--format json` output, or any other
+structured output meant for a program to read, is not finished until its
+schema is.
 This is the same premise as the rest of notlob: an agent does better
 against a hard formal check than against prose that describes one, and a
 shape that grew organically is a shape every consumer has to guess.
 Outputs that predate the rule are being brought into line;
 `meta/features/2026-10-18-output-schemas` lists them.
 
-**Unstable.** The Lark parse tree: its rule and terminal names, the
-token values after normalisation, and which position data survives.
-Also anything underscore-prefixed, the runners' wire protocols, and the
-human-readable text output of commands (that is for people, not
-parsers; use the JSON output). A tool that reaches in here pins a
-notlob version and accepts breakage, as tools built on a compiler's
-internals do.
+**The inner layer.** The grammar and the Lark parse tree: its rule and
+terminal names, and which position data survives. Also the runners' wire
+protocols, and the human-readable text output of commands (that is for
+people, not parsers; use the JSON output). A tool that reaches in here
+moves when notlob does, as tools built on a compiler's internals do.
 
-When a tool genuinely needs something from the unstable tier, the answer
-is to promote a narrow, specified wrapper into the stable tier, as
+When a tool genuinely needs something from the inner layer, the answer
+is to promote a narrow, specified wrapper into the outer layer, as
 `go/scanner` gives Go tools a stable way to lex without freezing the
 compiler's own lexer, rather than to freeze the internals. That keeps
 the coupling to grammar names inside notlob, where a test can guard it,

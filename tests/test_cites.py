@@ -144,9 +144,8 @@ class TestTheSectionKeepsItsNames:
 
     def test_the_section_and_its_heading(self):
         assert hasattr(notlob.model, "ReferencesSection")
-        assert "REFERENCES_HEAD" in notlob.parser.__dict__ or (
-            "REFERENCES_HEAD" in Path(notlob.parser.__file__).read_text(
-                encoding="utf-8"))
+        grammar = Path(notlob.parser.__file__).with_name("grammar.lark")
+        assert "REFERENCES_HEAD" in grammar.read_text(encoding="utf-8")
 
     def test_the_check(self):
         assert "references" in notlob.check.CHECK_NAMES

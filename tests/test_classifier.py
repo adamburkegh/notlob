@@ -31,7 +31,7 @@ def _first_token_of_type(tree, *token_types):
 def test_separator():
     tree = parse("#T\n---\n#Tests\n    x == 1\n")
     tok = _first_token_of_type(tree, "SEPARATOR")
-    assert str(tok) == "---"
+    assert str(tok) == "---\n"
 
 
 def test_tests_head():
@@ -78,11 +78,11 @@ def test_subhead_trims_whitespace():
     assert names == ["T", "Padded"]
 
 
-def test_markers_are_not_in_the_tree():
+def test_markers_are_in_the_tree():
     tree = parse("#T\n##Sub\n~property p\n    x > 0\n")
     types = {t.type for t in tree.scan_values(
         lambda v: isinstance(v, Token))}
-    assert not {t for t in types if t.endswith("_MARK") or t == "_EOL"}
+    assert {"MOD_MARK", "SUB_MARK", "PROPERTY_MARK", "EOL"} <= types
 
 
 # ── Claims ───────────────────────────────────────────────────
@@ -90,7 +90,7 @@ def test_markers_are_not_in_the_tree():
 def test_sigil_example():
     tree = parse("#T\n~example\n    x == 1\n")
     tok = _first_token_of_type(tree, "SIGIL")
-    assert str(tok) == "~example"
+    assert str(tok) == "~example\n"
 
 
 def test_sigil_property():
@@ -119,13 +119,13 @@ def test_unknown_sigil_fails_to_lex():
 def test_blank_empty_line():
     tree = parse("#T\n\nProse.\n")
     tok = _first_token_of_type(tree, "BLANK")
-    assert str(tok) == ""
+    assert str(tok) == "\n"
 
 
 def test_indent_leading_spaces():
     tree = parse("#T\n    result = x * y\n")
     tok = _first_token_of_type(tree, "INDENTED_LINE")
-    assert str(tok) == "    result = x * y"
+    assert str(tok) == "    result = x * y\n"
 
 
 def test_indent_leading_tab():

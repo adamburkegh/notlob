@@ -19,9 +19,21 @@ def module(tree: Tree) -> Tree:
     return tree.children[0]
 
 
+def name_of(head: Tree) -> str:
+    """The NAME token of a head node (module_head, sub_head...)."""
+    (name,) = [c for c in head.children if c.type == "NAME"]
+    return str(name)
+
+
+def tokens_of(node: Tree, token_type: str) -> list[Token]:
+    """The tokens of *token_type* anywhere under *node*, in order."""
+    return list(node.scan_values(
+        lambda t: isinstance(t, Token) and t.type == token_type))
+
+
 def title(tree: Tree) -> str:
     """Return the module title string."""
-    return str(module(tree).children[0])
+    return name_of(module(tree).children[0])
 
 
 def body(tree: Tree) -> Tree:
@@ -172,11 +184,7 @@ class TestCodeBlock:
         tree = parse("#T\n    x = 1\n    y = 2\n")
         items = meaningful(body(tree))
         assert items[0].data == "code_block"
-        indent_lines = [
-            c for c in items[0].children
-            if isinstance(c, Token) and c.type == "INDENTED_LINE"
-        ]
-        assert len(indent_lines) == 2
+        assert len(tokens_of(items[0], "INDENTED_LINE")) == 2
 
     def test_internal_blank_stays_in_block(self):
         src = "#T\n    x = 1\n\n    y = 2\n"
@@ -225,18 +233,14 @@ class TestClaim:
         )
         tree = parse(src)
         claim = meaningful(body(tree))[0]
-        indent_lines = [
-            c for c in claim.children
-            if isinstance(c, Token) and c.type == "INDENTED_LINE"
-        ]
-        assert len(indent_lines) == 3
+        assert len(tokens_of(claim, "INDENTED_LINE")) == 3
 
 
 # ── Closed sigil vocabulary ────────────────────────────────────
 
 class TestUnknownSigils:
     def test_test_sigil_illegal_in_body(self):
-        # ~test is _TEST_MARK, a terminal only reachable from
+        # ~test is TEST_MARK, a terminal only reachable from
         # named_test inside a #Tests group -- grammar-enforced, not a
         # semantic reservation check, so this is a generic lex/parse
         # failure like any other sigil that doesn't belong here.
@@ -297,7 +301,8 @@ class TestSubheading:
         tree = parse(src)
         items = meaningful(body(tree))
         assert items[0].data == "subheading"
-        assert str(items[0].children[0]) == "Section"
+        assert items[0].children[0].data == "sub_head"
+        assert name_of(items[0].children[0]) == "Section"
 
     def test_subheading_groups_content(self):
         src = (
@@ -314,7 +319,8 @@ class TestSubheading:
         sub = items[0]
         assert sub.data == "subheading"
         sub_content = [
-            c for c in sub.children if isinstance(c, Tree)
+            c.children[0] for c in sub.children[1:]   # each a sub_item
+            if isinstance(c.children[0], Tree)
         ]
         kinds = [c.data for c in sub_content]
         assert "prose_block" in kinds
@@ -326,8 +332,8 @@ class TestSubheading:
         tree = parse(src)
         items = meaningful(body(tree))
         assert len(items) == 2
-        assert items[0].children[0] == "A"
-        assert items[1].children[0] == "B"
+        assert name_of(items[0].children[0]) == "A"
+        assert name_of(items[1].children[0]) == "B"
 
 
 # ── Post-text sections ───────────────────────────────────────

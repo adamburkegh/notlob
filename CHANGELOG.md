@@ -122,25 +122,36 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   graph` and `notlob query content`.
 - **Breaking: a name may not hold `#`.** A module's title, a `##heading`
   or `##group`, the name of a `~property` or a `~test`, and the title of an
-  `#Appendix` are each a `NAME` in the grammar (beside a marker terminal,
-  `_MOD_MARK`, `_SUB_MARK`, `_PROPERTY_MARK`, `_TEST_MARK` or
-  `_APPENDIX_MARK`), and `#` is the address separator and the reference
-  sigil, so a name that holds one is a parse error with its file and line:
+  `#Appendix` are each a `NAME` token in the grammar, and `#` is the
+  address separator and the reference sigil, so a name that holds one is a
+  parse error with its file and line:
   `sharp.lob:5: a name may not hold '#': 'Calling C# from Python'`. The
   grammar refuses it, so the line can never fall through to prose; `parse`
   only words the refusal. `##` and `#` are the markers, not the name, so
   `###Notes` is refused. A name now has at least one character that is not
   a space: a bare `##`, or `##` and spaces, is an error for a heading and a
   group (it was an untitled heading). A name is exactly its text: the
-  spaces around it are not part of it, those inside are kept. The terminals
-  `MOD_HEAD`, `SUBHEAD`, `TEST_SIGIL` and `APPENDIX_HEAD` are gone, and so
-  is the marker stripping in `parser.py`; the model's values are the same
-  (`Claim.sigil` is `~property <name>`, whatever spaces were between, and
-  an `#Appendix` title is `#Appendix` and its name after one space). No
-  `.lob` file in the repository held such a name. A name that took an
-  anonymous node's form (`~test test#1` landing on the first anonymous
-  test's address) can no longer be written. `~external` values, listings,
-  prose, code and assertions are not names, and may hold `#`.
+  spaces around it are not part of it, those inside are kept.
+  `#AppendixFoo` and `#Appendix: Notes` are errors: `#Appendix` is followed
+  by a space and its title, or by nothing.
+- **The parse tree is the whole source.** Every character of a `.lob` file
+  is in exactly one token of the tree, in order, and no name in
+  `grammar.lark` begins with `_`, so Lark drops nothing. Each marker is a
+  token (`MOD_MARK`, `SUB_MARK`, `PROPERTY_MARK`, `TEST_MARK`,
+  `APPENDIX_MARK`) beside `SPACE`, `NAME` and `EOL`, and each named line is
+  a rule of its own (`module_head`, `sub_head`, `property_head`,
+  `test_head`, `appendix_head`); a bare `~property` is still `SIGIL`.
+  `sub_item` and `body_line` are nodes. The terminals `MOD_HEAD`, `SUBHEAD`,
+  `TEST_SIGIL` and `APPENDIX_HEAD` are gone, and so is the marker stripping
+  in `parser.py`. `model.py` reads a name as the `NAME` token of its head;
+  the model's values are the same (`Claim.sigil` is `~property <name>`,
+  whatever spaces were between, and an `#Appendix` title is `#Appendix` and
+  its name after one space). `notlob weave` shows an `#Appendix` as its name
+  alone, so `#Appendix Appendix B` is `## Appendix B`. No `.lob` file in
+  the repository held a `#` in a name. A name that took an anonymous node's
+  form (`~test test#1` landing on the first anonymous test's address) can no
+  longer be written. `~external` values, listings, prose, code and
+  assertions are not names, and may hold `#`.
 - **Breaking: a `.lob` file that does not parse stops a project command.**
   `build_package` skipped such a file, so a file the grammar refused left
   `notlob test` green with a module missing. Now `test`, `check`, `graph`,
@@ -189,6 +200,18 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   `NameGraph.search` matches names only, so it never finds a node with
   none, and `NameGraph.resolve` takes the `name` a reference gives.
   (`Ref.label`, the text of a `#Label` in prose, is unchanged.)
+  `Claim.sigil` is gone: a `Claim` has a `kind` (one of
+  `model.CLAIM_KINDS`: `example`, `run`, `property`), a `mode` (a `~run`'s,
+  as written, `None` when bare) and a `name` (a `~property`'s, or `None`).
+  `AppendixSection.title` is gone: its `name` stays. `notlob.parser.parse`
+  returns the tree as Lark built it, so a token's value is its text, the
+  newline of a line included; `model.py` reads it.
+- **`notlob weave` writes every `~run`.** A bare `~run` was left out; now
+  each is written, labelled as any claim is (`**Run:**`,
+  `**Run on-load:**`, `**Run on-invocation:**`), with its lines. A
+  property's name is written as it is in the source (`~property Total`
+  was `**Property total:**`), and a bare `#Appendix` is headed
+  `## Appendix` (it was an empty heading).
 - **Breaking: the MCP tools are the commands, and answer as they do.**
   `notlob_test` and `notlob_check` answered in JSON whatever was asked;
   they answer in text now, as `notlob test` and `notlob check` do, and a

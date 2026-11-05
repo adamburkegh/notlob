@@ -1,6 +1,10 @@
 # Design note: token spans for `.lob` source
 
-**Status:** proposal, queued (not started)
+**Status:** held in notlob-vids; not moving into notlob yet (Adam,
+2026-11-06). notlob-vids' own spans over the parse tree are what caught
+the lossy tree of commit 790716c, which every notlob test passed: the
+code is agent-dependent, and an outside consumer is the check on it.
+The move waits until that check would survive it.
 **Origin:** notlob-vids backport report (section 2) and follow-up
 dialogue, 2026-10-03.
 **Tier:** a narrow stable wrapper over unstable internals, the pattern

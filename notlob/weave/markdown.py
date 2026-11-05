@@ -14,9 +14,8 @@ Design decisions
   ``~test <name>`` blocks render like a named ``~property`` claim (bold
   label + fenced code).
 - ``#Appendix`` sections are rendered as second-level headings.
-- ``~run`` claims are omitted; ``~example`` and ``~property`` (and
-  any other sigil) are rendered with a bold label followed by a
-  fenced code block.
+- ``~example``, ``~property`` and ``~run`` claims are rendered with a
+  bold label followed by a fenced code block.
 - Inline ``##Label`` cross-references become local anchor links
   (GitHub-style slug); ``#Label`` references become inline code
   because the target may live in another document.
@@ -101,33 +100,17 @@ def _code(block: CodeBlock, language: str) -> str:
 
 # ── Claim rendering ───────────────────────────────────────────
 
-_SIGIL_LABELS: dict[str, str] = {
-    "~example":  "**Example:**",
-    "~property": "**Property:**",
-}
+def _claim_label(claim: Claim) -> str:
+    """A bold Markdown label: ``**Example:**``, ``**Property:**``,
+    ``**Property commutativity:**`` for a named property, and
+    ``**Run on-load:**`` for a ``~run`` with a mode."""
+    words = filter(None, (claim.kind.capitalize(), claim.mode, claim.name))
+    return f"**{' '.join(words)}:**"
 
 
-def _sigil_label(sigil: str) -> str:
-    """Return a bold Markdown label for *sigil*.
-
-    A named ``~property`` claim (e.g. ``~property commutativity``)
-    doesn't match the ``_SIGIL_LABELS`` keys exactly, so it falls
-    through to the generic capitalised form — e.g.
-    ``**Property commutativity:**``. The sigil vocabulary is closed at
-    parse time (see notlob.parser._KNOWN_SIGILS), so this fallback only
-    ever sees named properties, never a genuinely unrecognised sigil.
-    """
-    if sigil in _SIGIL_LABELS:
-        return _SIGIL_LABELS[sigil]
-    name = sigil.lstrip("~")
-    return f"**{name.capitalize()}:**"
-
-
-def _claim(claim: Claim, language: str) -> str | None:
-    """Render a claim as Markdown, or ``None`` for ``~run`` claims."""
-    if claim.sigil == "~run":
-        return None     # runtime-only — not documentary
-    label = _sigil_label(claim.sigil)
+def _claim(claim: Claim, language: str) -> str:
+    """Render a claim as Markdown: its label, then its lines."""
+    label = _claim_label(claim)
     code  = _fenced(claim.lines, language)
     return f"{label}\n\n{code}"
 
@@ -167,7 +150,7 @@ def _body_item(
 
 def _named_test(test: NamedTest, language: str) -> str:
     """Render a ``~test <name>`` block: a bold label + fenced code,
-    the same style as a named ``~property`` claim (see _sigil_label)."""
+    the same style as a named ``~property`` claim (see _claim_label)."""
     label = f"**Test {test.name}:**"
     code = _fenced(test.lines, language)
     return f"{label}\n\n{code}"
@@ -231,15 +214,7 @@ def _appendix_section(
     section: AppendixSection, language: str
 ) -> str:
     """Render a #Appendix … section as a second-level heading."""
-    # section.title is the full token, e.g. "#Appendix Notes". The
-    # grammar no longer requires a colon after "Appendix" (it's just
-    # ordinary title text now, swallowed by REST_OF_LINE), but a
-    # leftover ":" from the old convention is stripped defensively so
-    # old habit doesn't render as a stray leading colon.
-    raw = section.title.lstrip("#").strip()
-    if raw.lower().startswith("appendix"):
-        raw = raw[len("appendix"):].strip().lstrip(":").strip()
-    parts: list[str] = [f"## {raw}"]
+    parts: list[str] = [f"## {section.name or 'Appendix'}"]
     for item in section.body:
         rendered = _body_item(item, language)
         if rendered is not None:

@@ -95,10 +95,10 @@ from notlob.util.gen_grammar_latex import Node, Or, Seq, T, parse_grammar
 # ── Which terminals contribute fixed keywords ────────────────────
 #
 # Deliberately excludes TESTS_HEAD/BINDING_HEAD/REFERENCES_HEAD/
-# _APPENDIX_MARK -- all "#"-prefixed, and "#" cannot be reliably used in
+# APPENDIX_MARK -- all "#"-prefixed, and "#" cannot be reliably used in
 # a `literate` pattern in this listings version (see module docstring).
 
-_KEYWORD_TERMINALS = ["SIGIL", "_PROPERTY_MARK", "_TEST_MARK", "SEPARATOR"]
+_KEYWORD_TERMINALS = ["SIGIL", "PROPERTY_MARK", "TEST_MARK", "SEPARATOR"]
 
 
 def _leading_literal(node: Node) -> str | None:
