@@ -1,262 +1,85 @@
-// notlob.lark
-// Grammar for .lob literate source files.
-//
-// The format is line-oriented: each source line is one semantic unit.
-// Every structural line-type (the heading markers, SIGIL, INDENT, BLANK,
-// BULLET, SEPARATOR, and the reserved post-text heads) is a native Lark
-// terminal, matched directly against the raw source text — there is no
-// separate Python line classifier feeding Lark a pre-typed token stream.
-//
-// A name is a terminal of its own
-// -------------------------------
-// A module's title, a `##heading` or `##group`, the name of a `~property`
-// or a `~test` and the title of an `#Appendix` are each a NAME beside a
-// marker terminal (`_MOD_MARK`, `_SUB_MARK`, `_PROPERTY_MARK`,
-// `_TEST_MARK`, `_APPENDIX_MARK`), and the line ends with `_EOL`. A NAME
-// holds no `#` (it is the address separator and the reference sigil), and
-// begins and ends with a character that is not a space, so a bare `##` is
-// not a heading. Because the marker is a terminal it outranks REF and the
-// prose terminals at column zero, and a `##` line can never fall through to
-// prose: `##Calling C# from Python` is refused where it stands. The
-// markers and `_EOL` begin with `_`, so Lark keeps them out of the tree and
-// a NAME token is exactly the name.
-//
-// Disambiguation mechanism
-// ------------------------
-// Column-zero structural lines (e.g. `##Title`) and the same text
-// occurring inline mid-prose (e.g. `See ##Title.`) are lexically
-// identical spans. Lark's contextual lexer narrows candidate terminals
-// by parser state, but at a body-item boundary, both a fresh structural
-// line AND continuing prose are valid continuations — so more than one
-// terminal can match the same text from the same state. The tie-break is
-// explicit terminal priority (the `.N` suffix): every structural terminal
-// outranks the generic REF/PROSE_TEXT terminals it can collide with.
-//
-// The closed sigil vocabulary is the one place priority isn't the whole
-// story: SIGIL and the `~property` and `~test` markers together enumerate
-// every known word as an exact literal, and `~` is excluded from
-// PROSE_TEXT only at true line-start (a lookbehind, not "first char of any
-// prose span" — prose spans can also start mid-line, right after an inline
-// ref). Genuinely unknown sigils therefore fail to lex at all, rather than
-// silently becoming prose. `~test` is deliberately its own marker
-// (_TEST_MARK), separate from SIGIL, so the grammar itself — not a
-// semantic check — enforces that it's only legal inside a #Tests
-// named_test, never in the module body.
-//
-// Cross-reference labels (REF) are Unicode-aware, not ASCII-only: see
-// REF's own comment below for the Lu/Lt/Lo rule that keeps the Title
-// Case convention meaningful for scripts that have case, without
-// imposing it on scripts that don't. Sigils themselves stay a fixed
-// ASCII vocabulary regardless — there's no author-facing reason for
-// `~example`/`~run`/etc. to ever be anything but the literal keywords.
+// Grammar for .lob files. Every character of the source is in exactly
+// one token of the tree.
 
 start: module
 
-module: _MOD_MARK NAME _EOL body post_text?
+module: MOD_HEAD body post_text?
 
-// ── Essay body ──────────────────────────────────────────────
+// ── Body ────────────────────────────────────────────────────
 
 body: body_item*
-
-body_item: subheading
-         | code_block
-         | claim
-         | prose_block
-         | bullet_block
+body_item: subheading | code_block | claim | prose_block | bullet_block
          | BLANK
 
-// Subheadings are flat within a module — ## nesting is not permitted.
-// _sub_item mirrors body_item without the subheading alternative,
-// enforcing the flat constraint directly in the grammar.
-subheading: _SUB_MARK NAME _EOL _sub_item*
+// Flat: a subheading holds no subheading.
+subheading: SUBHEAD _sub_item*
 _sub_item: code_block | claim | prose_block | bullet_block | BLANK
 
-// An indented block begins with an INDENT line and continues while
-// each subsequent line is INDENT or BLANK.
 code_block: INDENTED_LINE _body_line*
-
-// A claim sigil followed by its indented body (at least one line). A
-// `~property` with a name is the marker and a NAME; without one it is
-// SIGIL, like the other claims.
 claim: SIGIL _body_line+
-     | _PROPERTY_MARK NAME _EOL _body_line+
-
-// A prose block is one or more prose lines.  Each prose_line is a
-// sequence of plain-text fragments and inline refs, terminated by
-// BLANK.  Blank lines between paragraphs produce separate prose_block
-// nodes because BLANK is a body_item, not part of a prose_line.
-prose_block: prose_line+
-prose_line:  (LINE_START_TEXT | PROSE_TEXT | REF)+ BLANK
-
-// A bullet block is one or more consecutive BULLET lines.  Bullets
-// must be flush-left (* item); indented bullets remain code (INDENT).
-bullet_block: BULLET+
-
 _body_line: INDENTED_LINE | BLANK
+
+prose_block: prose_line+
+prose_line: (LINE_START_TEXT | PROSE_TEXT | REF)+ BLANK
+bullet_block: BULLET+
 
 // ── Post-text ───────────────────────────────────────────────
 
 post_text: SEPARATOR (BLANK | post_section)*
-
-post_section: tests_section
-            | binding_section
-            | references_section
+post_section: tests_section | binding_section | references_section
             | appendix_section
 
-// #Tests groups accept prose commentary alongside assertions, the
-// same as the module body -- a literate-programming appendix that
-// can't carry any prose at all would be a strange exception to the
-// rest of the format. A useful side effect: because prose_block is a
-// genuinely different terminal from INDENT/BLANK, inserting one
-// between two adjacent indented constructs (e.g. a bare assertion
-// right after a ~test block) cleanly separates them -- named_test's
-// own body is a greedy repetition (_body_line+, like claim/code_block
-// elsewhere in this grammar), so without something in between, a
-// trailing bare INDENT/BLANK line would merge into the preceding
-// named_test rather than standing on its own.
-tests_section:      TESTS_HEAD      (BLANK | test_item | prose_block)*
-test_item:          test_group | INDENTED_LINE
-test_group:         _SUB_MARK NAME _EOL (INDENTED_LINE | BLANK | prose_block
-                                         | named_test)*
+tests_section: TESTS_HEAD (BLANK | test_item | prose_block)*
+test_item: test_group | INDENTED_LINE
+test_group: SUBHEAD (INDENTED_LINE | BLANK | prose_block | named_test)*
+// `~test` is reachable only here, so in the body it fails to lex.
+named_test: TEST_SIGIL _body_line+
 
-// A named assertion within a #Tests group (`~test <name>`, followed
-// by one or more indented assertion lines). _TEST_MARK is a terminal
-// distinct from SIGIL specifically so ~test is grammar-enforced as
-// illegal in the module body -- it only exists inside #Tests.
-named_test:         _TEST_MARK NAME _EOL _body_line+
+binding_section: BINDING_HEAD (INDENT bind_detail_decl | BLANK)*
+bind_detail_decl: LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL
+                | KEEP_SRC_DECL
+references_section: REFERENCES_HEAD (LISTING_LINE | INDENTED_LINE
+                                     | BLANK)*
+appendix_section: APPENDIX_HEAD body_item*
 
-binding_section:    BINDING_HEAD    (INDENT bind_detail_decl | BLANK)*
-bind_detail_decl:   LANGUAGE_DECL | EXTERNAL_DECL | ON_BUILD_DECL | KEEP_SRC_DECL
-references_section: REFERENCES_HEAD (LISTING_LINE | INDENTED_LINE | BLANK)*
-appendix_section:   _APPENDIX_MARK NAME? _EOL body_item*
-
-// ── Terminal definitions ────────────────────────────────────
+// ── Terminals ───────────────────────────────────────────────
 //
-// Every terminal consumes through its own trailing newline (so the
-// lexer's cursor is always at a true physical line-start when trying
-// the next token), but for the markers and NAME, whose line ends with
-// _EOL. Prose sub-tokens (LINE_START_TEXT, PROSE_TEXT, REF)
-// are the exception: they build up a multi-span prose_line whose final
-// span ends with BLANK (which matches the trailing newline).
-//
-// Priorities: structural line-types are priority 20 (post-text
-// reserved heads, the appendix marker and SEPARATOR — must outrank both
-// the generic _MOD_MARK and REF/PROSE_TEXT) or priority 10 (the other
-// markers and SIGIL — must outrank REF/PROSE_TEXT but never compete with
-// the post-text heads, since those are distinguished by their own literal
-// text). NAME is a priority-0 terminal that only the position after a
-// marker can reach. INDENT and
-// BULLET are priority 8 (must outrank PROSE_TEXT but nothing else
-// contends for leading whitespace or `*`). REF is priority 5. PROSE_TEXT
-// and LINE_START_TEXT are priority 1 — the generic fallback.
-//
-// LINE_CHAR / REST_OF_LINE are helper terminals, not structural tokens
-// in their own right — they're referenced from other terminal
-// definitions below (Lark inlines them at compile time). REST_OF_LINE
-// captures zero or more non-newline characters plus the trailing "\n",
-// so every structural terminal that ends with REST_OF_LINE automatically
-// consumes through its own line terminator without a separate "\n"
-// literal. Because neither helper is ever referenced from a grammar
-// *rule*, the lexer never treats them as independently matchable tokens.
+// Priority settles a line that two terminals match: 20 for the post-text
+// heads and SEPARATOR, 10 for the headings and SIGIL, 8-9 for leading
+// whitespace and `*`, 5 for REF, 1 for prose.
 
 LINE_CHAR: /[^\n]/
 REST_OF_LINE: LINE_CHAR* "\n"
 
-// A name: no `#`, and a character that is not a space at each end (so a
-// bare `##` is no heading). The markers own the spaces before it, and
-// _EOL the spaces after, so a NAME token is exactly the name; spaces
-// inside it are kept.
-NAME: /[^#\s](?:[^#\n]*[^#\s])?/
-_EOL: /[ \t]*\n/
+MOD_HEAD.10: "#" /[^#\n]/ REST_OF_LINE
+SUBHEAD.10: "##" REST_OF_LINE
+SIGIL.10: "~example\n" | "~run\n" | "~run on-load\n"
+        | "~run on-invocation\n" | "~property\n" | "~property " REST_OF_LINE
+TEST_SIGIL.10: "~test " LINE_CHAR REST_OF_LINE
 
-_MOD_MARK.10: /#[ \t]*/
-_SUB_MARK.10: /##[ \t]*/
-
-// Closed vocabulary for body-level claims. `~test` is deliberately not
-// here — it's _TEST_MARK below, a separate terminal only reachable from
-// named_test (inside #Tests), so a `~test` line in the module body
-// fails to lex, the same as any other unrecognised sigil would. A
-// `~word` outside this list simply fails to lex, since
-// PROSE_TEXT/LINE_START_TEXT exclude `~` at line-start; there is no
-// silent fallback.
-//
-// `~run`'s optional mode (`on-load` / `on-invocation`) is a closed,
-// grammar-enforced pair -- unlike `~property`'s name, which is
-// genuinely open/author-chosen text (a NAME), `~run`'s mode is a fixed
-// small set of real values, not something an author invents, so it gets
-// the same "typo fails to lex" treatment as the rest of the sigil
-// vocabulary. Bare `~run` (no mode) means `on-invocation` -- see the
-// binding kits' build() functions for what each mode means per language.
-SIGIL.10: "~example\n" | "~run\n" | "~run on-load\n" | "~run on-invocation\n"
-        | "~property\n"
-
-// `~property <name>`: the marker and a NAME (see `claim`); bare
-// `~property` is a SIGIL above.
-_PROPERTY_MARK.10: /~property +/
-
-// ~test <name>: requires a name (unlike ~property, where the name is
-// optional) -- an unnamed ~test wouldn't do anything a bare assertion
-// line doesn't already do, so there's no bare `~test\n` form. A NAME is
-// required after the marker, so "~test \n" with no actual name fails
-// rather than silently matching.
-_TEST_MARK.10: /~test +/
-
-// Typed declarations inside #Binding.  These terminals carry no explicit
-// priority because they are only reachable after INDENT inside
-// binding_section — the parser state eliminates all competing terminals
-// at that point, so no priority disambiguation is needed.
-LANGUAGE_DECL: "~language "         LINE_CHAR REST_OF_LINE
-EXTERNAL_DECL: "~external "         LINE_CHAR REST_OF_LINE
-ON_BUILD_DECL: "~on-build "         LINE_CHAR REST_OF_LINE
+LANGUAGE_DECL: "~language " LINE_CHAR REST_OF_LINE
+EXTERNAL_DECL: "~external " LINE_CHAR REST_OF_LINE
+ON_BUILD_DECL: "~on-build " LINE_CHAR REST_OF_LINE
 KEEP_SRC_DECL: "~keep-generated-src" REST_OF_LINE
 
-SEPARATOR.20:        "---\n"
-TESTS_HEAD.20:       "#Tests\n"
-BINDING_HEAD.20:     "#Binding\n"
-REFERENCES_HEAD.20:  "#References\n"
-_APPENDIX_MARK.20:   /#Appendix[ \t]*/
+SEPARATOR.20: "---\n"
+TESTS_HEAD.20: "#Tests\n"
+BINDING_HEAD.20: "#Binding\n"
+REFERENCES_HEAD.20: "#References\n"
+APPENDIX_HEAD.20: "#Appendix" REST_OF_LINE
 
-INDENT:        /[ \t]+/
+INDENT: /[ \t]+/
 INDENTED_LINE.8: INDENT REST_OF_LINE
-
-// A listing: an indented `#` and a module title, as _MOD_MARK writes one at
-// column zero. It outranks INDENTED_LINE, which matches the same text, and
-// is reachable only in references_section, so a `#` comment in a code
-// block is untouched. A `#` followed by a space or another `#` is not a
-// title: it stays an import line (a comment, say).
+// An indented `#Title`, only in #References: a listing, not a comment.
 LISTING_LINE.9: INDENT "#" /[^#\s]/ REST_OF_LINE
-BLANK.8:  "\n"
+BLANK.8: "\n"
 BULLET.8: "*" ("\n" | /[ \t]/ REST_OF_LINE)
 
-// Inline cross-reference: #Label or ##Label mid-prose. Lookbehind
-// prevents matching # inside URLs or identifiers.
-//
-// A label word's first character must be \p{Lu} (uppercase), \p{Lt}
-// (titlecase -- rare, e.g. Croatian Dž), or \p{Lo} ("letter, other" --
-// the Unicode category for scripts with no case distinction at all:
-// CJK ideographs, Hiragana/Katakana, Arabic, Hebrew, Thai, Devanagari,
-// etc.). This is deliberately not just "any letter": \p{Ll} (lowercase)
-// is excluded so `#pricing`/`#café` (lowercase-first, a script that
-// *does* have case but didn't use it) still fail to match and fall
-// through to ordinary prose -- the Title Case convention is preserved
-// for languages where it's meaningful, and simply doesn't apply as a
-// constraint for languages where it isn't. Requires ``regex=True`` on
-// the Lark instance (stdlib `re` has no \p{} property escapes); see
-// notlob/parser.py.
+// A reference word starts with an uppercase, titlecase or uncased letter
+// (Lu, Lt, Lo), so `#pricing` and `#café` stay prose. Needs regex=True.
 REF.5: /(?<![\w\/])##?[\p{Lu}\p{Lt}\p{Lo}][\p{L}\p{Nd}_]*(?:[ ][\p{Lu}\p{Lt}\p{Lo}][\p{L}\p{Nd}_]*)*/
 
-// First prose span of a genuine physical line (lookbehind anchors to
-// true line-start, not "first char of any prose token"). Excludes `~`
-// only when followed by a lowercase letter (a genuine sigil candidate —
-// closed-vocabulary enforcement; `~Word` or `~5` is not sigil-shaped and
-// stays prose -- sigils are a closed ASCII vocabulary, no Unicode
-// concern there) and `#` only when it's actually ref-shaped per REF's
-// own Lu/Lt/Lo rule above — a bare `#5`, `#hashtag`, or lowercase-first
-// `#café` stays prose too.
+// Prose at the start of a line: not a sigil-shaped `~` or a ref-shaped
+// `#`. Then prose after a REF on the same line.
 LINE_START_TEXT.1: /(?<=\n)(?:[^#~\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}])|~(?![a-z]))(?:[^#\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}]))*/
-
-// Any other prose span (mid-line — e.g. immediately after an inline
-// REF ends). `~` is fully ordinary here; `#` still yields only when
-// ref-shaped (see REF above), so REF gets a chance to match.
 PROSE_TEXT.1: /(?<!\n)(?:[^#\n]|#(?!#?[\p{Lu}\p{Lt}\p{Lo}]))+/
-
