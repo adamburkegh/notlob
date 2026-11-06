@@ -17,11 +17,10 @@ subheading: sub_head sub_item*
 sub_head: SUB_MARK SPACE? NAME EOL
 sub_item: code_block | claim | prose_block | bullet_block | BLANK
 
-code_block: INDENTED_LINE body_line*
-claim: SIGIL body_line+
-     | property_head body_line+
+code_block: INDENTED_LINE (INDENTED_LINE | BLANK)*
+claim: SIGIL (INDENTED_LINE | BLANK)+
+     | property_head (INDENTED_LINE | BLANK)+
 property_head: PROPERTY_MARK SPACE NAME EOL
-body_line: INDENTED_LINE | BLANK
 
 prose_block: prose_line+
 prose_line: (LINE_START_TEXT | PROSE_TEXT | REF)+ BLANK
@@ -37,7 +36,7 @@ tests_section: TESTS_HEAD (BLANK | test_item | prose_block)*
 test_item: test_group | INDENTED_LINE
 test_group: sub_head (INDENTED_LINE | BLANK | prose_block | named_test)*
 // `~test` is reachable only here, so in the body it fails to lex.
-named_test: test_head body_line+
+named_test: test_head (INDENTED_LINE | BLANK)+
 test_head: TEST_MARK SPACE NAME EOL
 
 binding_section: BINDING_HEAD (INDENT bind_detail_decl | BLANK)*

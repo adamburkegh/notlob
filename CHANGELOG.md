@@ -141,7 +141,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   `APPENDIX_MARK`) beside `SPACE`, `NAME` and `EOL`, and each named line is
   a rule of its own (`module_head`, `sub_head`, `property_head`,
   `test_head`, `appendix_head`); a bare `~property` is still `SIGIL`.
-  `sub_item` and `body_line` are nodes. The terminals `MOD_HEAD`, `SUBHEAD`,
+  `sub_item` is a node, and every line of a block is a token of the
+  block itself. The terminals `MOD_HEAD`, `SUBHEAD`,
   `TEST_SIGIL` and `APPENDIX_HEAD` are gone, and so is the marker stripping
   in `parser.py`. `model.py` reads a name as the `NAME` token of its head;
   the model's values are the same (`Claim.sigil` is `~property <name>`,

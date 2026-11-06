@@ -60,6 +60,36 @@ writers are in `notlob.writers`. `KINDS` has a `rank` for every kind.
 
 The whole list is under `[Unreleased]` in notlob-lab's `CHANGELOG.md`.
 
+**Added 2026-11-06, after your `~test` finding (commit 590ef65).** The
+parse tree is the whole source again, and more strictly than before:
+
+* Every character of a `.lob` file is in exactly one token, and a
+  token's value is its text, newline and all (`parse` no longer strips
+  it).
+* A named line is a rule of its own, three or four tokens: the marker,
+  a `SPACE` where one is written, the `NAME`, and `EOL` (trailing spaces
+  and the newline).
+
+  ```
+  module_head:   MOD_MARK SPACE? NAME EOL          # "#"
+  sub_head:      SUB_MARK SPACE? NAME EOL          # "##" (sections, groups)
+  property_head: PROPERTY_MARK SPACE NAME EOL      # "~property"
+  test_head:     TEST_MARK SPACE NAME EOL          # "~test"
+  appendix_head: APPENDIX_MARK (SPACE NAME)? EOL   # "#Appendix"
+  ```
+
+  `MOD_HEAD`, `SUBHEAD`, `TEST_SIGIL` and `APPENDIX_HEAD` are gone. A
+  bare `~property` and the other claims are still one `SIGIL` token.
+* `sub_item` and `body_line` are nodes now: an indented line in a code
+  block or claim is a `body_line` holding an `INDENTED_LINE`.
+* Model: `Claim.sigil` is `kind` (`example`, `run`, `property`), `mode`
+  and `name`; `AppendixSection.title` is gone (`name` stays).
+* `weave` writes every `~run`, a property's name as written, and a bare
+  `#Appendix` as `## Appendix`.
+
+Your highlighter's tiling check should now pass over the tree; tell us
+if it does not. Its token table needs the new names.
+
 ## Report
 
 * What broke, where, and what you changed to fix it on your side.

@@ -337,12 +337,6 @@ def _name_token(head: Tree) -> Token | None:
     return next((c for c in head.children if c.type == "NAME"), None)
 
 
-def _line_tokens(children) -> list[Token]:
-    """The tokens of the lines of a block: a body_line holds one."""
-    return [t for c in children
-            for t in (c.children if isinstance(c, Tree) else [c])]
-
-
 def _module(node: Tree) -> Module:
     title_tok = _name_token(node.children[0])
     title = str(title_tok)
@@ -418,7 +412,7 @@ def _subheading(node: Tree) -> Subheading:
 
 
 def _code_block(node: Tree) -> CodeBlock:
-    tokens = _line_tokens(node.children)
+    tokens = node.children
     start = _line(tokens[0])
     return CodeBlock(
         lines=[_text(t) for t in tokens],
@@ -438,7 +432,7 @@ def _claim(node: Tree) -> Claim:
         kind, mode, name = word[1:], (rest[0] if rest else None), None
     if kind not in CLAIM_KINDS:
         raise ValueError(f"Unknown claim kind: {kind!r}")
-    lines = _line_tokens(node.children[1:])
+    lines = node.children[1:]
     return Claim(
         kind=kind, mode=mode, name=name,
         lines=[_text(t) for t in lines],
@@ -590,7 +584,7 @@ def _named_test(node: Tree) -> NamedTest:
     name_tok = _name_token(node.children[0])
     name = str(name_tok)
     start = _line(name_tok)
-    lines = _line_tokens(node.children[1:])
+    lines = node.children[1:]
     return NamedTest(
         name=name,
         lines=[_text(t) for t in lines],

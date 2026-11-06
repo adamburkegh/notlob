@@ -180,14 +180,23 @@ class TestAHeadHoldsItsNameAsANAMEToken:
         assert _names(_POST + "#Appendix\n", "appendix_head") == []
 
 
-class TestSubItemsAndBodyLinesAreNodes:
+class TestSubItemsAreNodesAndLinesAreNot:
     def test_a_sub_item(self):
         tree = parse("#M\n\n##Sub\n\nText.\n")
         assert list(tree.find_data("sub_item"))
 
-    def test_a_body_line(self):
-        tree = parse("#M\n\n    x = 1\n    y = 2\n")
-        assert len(list(tree.find_data("body_line"))) == 1
+    @pytest.mark.parametrize("source, rule", [
+        ("#M\n\n    x = 1\n\n    y = 2\n", "code_block"),
+        ("#M\n\n~example\n    1 == 1\n\n    2 == 2\n", "claim"),
+        ("#M\n\n---\n\n#Tests\n\n##g\n~test t\n    1 == 1\n\n    2 == 2\n",
+         "named_test"),
+    ])
+    def test_every_line_is_a_token_of_its_block(self, source, rule):
+        (block,) = parse(source).find_data(rule)
+        lines = [c for c in block.children
+                 if getattr(c, "type", None) in ("INDENTED_LINE", "BLANK")]
+        assert [c.type for c in lines] == [
+            "INDENTED_LINE", "BLANK", "INDENTED_LINE"]
 
 
 # ── What is refused ──────────────────────────────────────────
