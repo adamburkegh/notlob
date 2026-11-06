@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-06
+
 ### Added
 - `notlob -C DIR <command>`: runs the command as if notlob had been
   started in `DIR`, as `git -C` does, so a project can be asked about
@@ -28,8 +30,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   whether the prose or the claim is actually correct. See
   `meta/features/2026-10-02-quantifier-check/design.md` for the full
   design and its deliberate limits.
+- A JSON Schema for the `notlob query` outputs (`schema/query_result.json`):
+  node arrays, and the single node or `null` of `resolve`. A node is the
+  name-graph's, with the definition kept in step by a test. The query
+  outputs are bare JSON values; `content --format json` prints a graph
+  document (`schema/name_graph.json`).
 - `notlob docs` (and `notlob init`) now also write the JSON Schemas for
-  the stable-tier output to `notlob-docs/schema/`, and `grammar.lark`,
+  notlob's structured output to `notlob-docs/schema/`, and `grammar.lark`,
   the formal `.lob` syntax, to `notlob-docs/grammar.lark` (headed by a
   note that its rule and terminal names may change). Agents working in
   another project can now read the exact shapes and syntax, not only
@@ -43,22 +50,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   comment. Tests parse real output at every level with `rdflib` (added
   to the `[dev]` extra; notlob itself does not depend on it) and fail if
   the ontology and the emitter drift apart.
-- A JSON Schema for the `notlob query` outputs (`schema/query_result.json`):
-  node arrays, and the single node or `null` of `resolve`. A node is the
-  name-graph's, with the definition kept in step by a test. The query
-  outputs are bare JSON values; `content --format json` prints a graph
-  document (`schema/name_graph.json`).
-- `notlob query content --depth N`: the view started at an address, down N
-  steps of those it shows (`0` is the node alone; the default is all of
-  it), in text or in JSON.
-- `notlob graph --level outline|index|block|full` (or `1|2|3|4`, the
-  rank), for text, JSON and Turtle alike. See "Changed" for the graph
-  itself.
 - Every example project is run end to end by the test suite (`notlob
   test` and `notlob build`), skipping one whose toolchain is not
   installed, with the reason. Nothing ran them before, which is how the
   Gutenberg example stayed broken for months.
-- A JSON Schema for `notlob check --json` (`schema/check_result.json`).
+- A JSON Schema for `notlob check --format json`
+  (`schema/check_result.json`).
   The document gains a `version` field (`1`): it is now
   `{version, findings, counts}`. A finding is unchanged and is specified
   once, with the same definition in `test_result.json`'s `checks` list
@@ -66,10 +63,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   registered checks plus `names`. Adding a check without updating the
   schema fails a test.
 - Fixed with it: under an address collision (a subheading and a symbol
-  sharing a name) `notlob check --json` printed an error to stderr and
+  sharing a name) `notlob check` in JSON printed an error to stderr and
   nothing to stdout, so a consumer could not `json.loads` it. It now
   prints a valid document holding a single `names` finding (as
-  `notlob test --json` already did) and an empty `counts`, and exits 1.
+  `notlob test` already did) and an empty `counts`, and exits 1.
   With no project at all it still prints nothing to stdout and exits 1,
   which the schema now states.
 - A JSON Schema for the `~on-build` hook manifest
@@ -79,47 +76,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   manifest, which had no `entry_points`, is corrected.
 
 ### Changed
-- **Breaking: `notlob query` answers a reader by default, and takes
-  `--format text|json`.** `search`, `children`, `imports`, `imported-by`,
-  `callers`, `callees`, `cites` and `cited-by` print text, a line a node,
-  in three columns aligned within the answer: its sigil (`~example`,
-  `~property`, `~run`, or `~test`; blank for what has
-  none), its address, and `file:line` from the project root. For a query
-  that follows an edge that line is where the edge is written (the use, the
-  citation, the listing), which the graph held and the answer dropped; for
-  `search` and `children` it is where the node starts. An empty answer
-  prints nothing; an address that is not a node is an error on stderr, exit
-  code 1. A program that read the JSON adds `--format json`, which gives
-  what the command gave before, except that an address that is not a node
-  prints `null` and exits 1 (with the error on stderr), as the schema said
-  and as text does, where it printed `[]` and exited 0. The MCP query
-  tools answer in text, as the commands do.
-- **Breaking: `notlob graph` answers a reader by default, and a level is
-  one view in every format.** A level is a rank on one scale, and a view
-  shows what is at or below it: `outline` (1, the default), `index` (2),
-  `block` (3) or `full` (4), by name or by rank (`--level 3`), each holding
-  the one before. `--format text` (the default) prints, for each file, its
-  path on a line alone and then a line for each heading, symbol and claim:
-  the name, indented by what is written in what, and the line it is written
-  on in a column on the right. `outline` is those lines, smaller than the
-  file they outline; `index` adds, under the node an outline shows that
-  holds each, a line for every `uses`, `cites` and `imports` with every line
-  it is on (a run of consecutive lines is a range, `78-86`), and for each
+- **Breaking: every command answers a reader by default and takes
+  `--format`; `--json` is removed, with no alias.** `notlob test`,
+  `check`, `graph` and each `query` print text unless asked for
+  `--format json` (`graph` also takes `turtle`). Write `--format json`
+  where you wrote `--json`, which is now an argument error. What each
+  prints is under its own entry below.
+- **Breaking: `notlob graph` is one view at a level, in every format.** A
+  level is a rank on one scale, and each holds the one before: `outline`
+  (1, the default), `index` (2), `block` (3) or `full` (4), by name or by
+  rank (`--level 3`). `--format text` prints each file's path on a line
+  alone, then a line for each node the level shows: its name, indented by
+  what is written in what, and its line in a column on the right.
+  `outline` is the headings, symbols and claims, smaller than the file
+  they outline; `index` adds, under the node an outline shows that holds
+  each, a line for every `uses`, `cites` and `imports` with every line it
+  is on (a run of consecutive lines is a range, `78-86`), and each
   `#Binding` declaration; `block` adds the blocks (`prose#1`, `code#1`,
   `test#1`) and the region after the `---` (`post-text`); `full` is each
-  file, its path and then its lines. A program adds `--format json` (or
-  `turtle`) to get the graph, and a `.lob` file with no `binding.lob` above
-  it is a project of one file, whose `file` is the path given. The document
-  is described under "the name-graph is the parse tree" below. An
-  `#Appendix` says its heading and its name in text (`Appendix Glossary`).
-  `query cites` and `cited-by` answer as before. The MCP tool
-  `notlob_graph` answers in text, and takes the four levels and their
-  ranks.
-- **Breaking: `notlob test` and `notlob check` take `--format text|json`,
-  and `--json` is removed, with no alias.** Write `--format json` where
-  you wrote `--json`; the JSON documents are unchanged. `notlob test
-  --json` is now an argument error. The flag is spelled as on `notlob
-  graph` and `notlob query content`.
+  file, its path and then its lines. An `#Appendix` reads with its heading
+  and its name (`Appendix Glossary`). `--format json` and `turtle` give the
+  same view as the graph document, described under "the name-graph"
+  below. A `.lob` file with no `binding.lob` above it is a project of one
+  file, whose `file` is the path given.
 - **Breaking: a name may not hold `#`.** A module's title, a `##heading`
   or `##group`, the name of a `~property` or a `~test`, and the title of an
   `#Appendix` are each a `NAME` token in the grammar, and `#` is the
@@ -127,32 +106,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   parse error with its file and line:
   `sharp.lob:5: a name may not hold '#': 'Calling C# from Python'`. The
   grammar refuses it, so the line can never fall through to prose; `parse`
-  only words the refusal. `##` and `#` are the markers, not the name, so
-  `###Notes` is refused. A name now has at least one character that is not
-  a space: a bare `##`, or `##` and spaces, is an error for a heading and a
+  only words the refusal. `##` and `#` are markers, not the name, so
+  `###Notes` is refused. A name has at least one character that is not a
+  space: a bare `##`, or `##` and spaces, is an error for a heading and a
   group (it was an untitled heading). A name is exactly its text: the
-  spaces around it are not part of it, those inside are kept.
-  `#AppendixFoo` and `#Appendix: Notes` are errors: `#Appendix` is followed
-  by a space and its title, or by nothing.
-- **The parse tree is the whole source.** Every character of a `.lob` file
-  is in exactly one token of the tree, in order, and no name in
-  `grammar.lark` begins with `_`, so Lark drops nothing. Each marker is a
-  token (`MOD_MARK`, `SUB_MARK`, `PROPERTY_MARK`, `TEST_MARK`,
-  `APPENDIX_MARK`) beside `SPACE`, `NAME` and `EOL`, and each named line is
-  a rule of its own (`module_head`, `sub_head`, `property_head`,
-  `test_head`, `appendix_head`); a bare `~property` is still `SIGIL`.
-  `sub_item` is a node, and every line of a block is a token of the
-  block itself. The terminals `MOD_HEAD`, `SUBHEAD`,
-  `TEST_SIGIL` and `APPENDIX_HEAD` are gone, and so is the marker stripping
-  in `parser.py`. `model.py` reads a name as the `NAME` token of its head;
-  the model's values are the same (`Claim.sigil` is `~property <name>`,
-  whatever spaces were between, and an `#Appendix` title is `#Appendix` and
-  its name after one space). `notlob weave` shows an `#Appendix` as its name
-  alone, so `#Appendix Appendix B` is `## Appendix B`. No `.lob` file in
-  the repository held a `#` in a name. A name that took an anonymous node's
-  form (`~test test#1` landing on the first anonymous test's address) can no
-  longer be written. `~external` values, listings, prose, code and
-  assertions are not names, and may hold `#`.
+  spaces around it are not part of it, those inside are. `#Appendix` is
+  followed by a space and its title, or by nothing, so `#AppendixFoo` and
+  `#Appendix: Notes` are errors; so is `~property` followed only by
+  spaces. A name in a positional node's form (`~test test#1`, landing on
+  the first unnamed test's address) can no longer be written. No `.lob`
+  file in the repository held a `#` in a name. `~external` values,
+  listings, prose, code and assertions are not names, and may hold `#`.
+- **Breaking, for tools that read the parse tree: each token is exactly
+  its text.** Every character of a `.lob` file is in exactly one token of
+  the tree, in order, and a token's value is its text, the newline of a
+  line included (`parse` stripped it). A named line is a rule of its own
+  (`module_head`, `sub_head`, `property_head`, `test_head`,
+  `appendix_head`): its marker (`MOD_MARK`, `SUB_MARK`, `PROPERTY_MARK`,
+  `TEST_MARK`, `APPENDIX_MARK`), a `SPACE` where one is written, the
+  `NAME` and `EOL`. `MOD_HEAD`, `SUBHEAD`, `TEST_SIGIL` and
+  `APPENDIX_HEAD` are gone, and a named `~property` is no longer a
+  `SIGIL`. A subheading's content is in `sub_item` nodes, and every line
+  of a block is a token of the block itself. No name in `grammar.lark`
+  begins with `_`.
 - **Breaking: a `.lob` file that does not parse stops a project command.**
   `build_package` skipped such a file, so a file the grammar refused left
   `notlob test` green with a module missing. Now `test`, `check`, `graph`,
@@ -164,61 +140,46 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   does. A `binding.lob` that does not parse stops them all, `weave`
   included. Library callers
   of `build_package` get `ProjectParseError`, which lists the failures.
-- **Breaking: a run of test lines is `TEST_LINES`, and an appendix is
-  addressed by its title.** `TEST` held both a `~test <name>` and a run of
-  bare assertions; now `TEST` is the `~test` alone and always has a name,
-  and a run of bare assertions is `TEST_LINES`, with the address it had
-  (`roman/numerals#Tests#encoding#test#1`). The new kind is in the `kind`
-  lists of `name_graph.json`, `query_result.json` and `test_result.json`,
-  and is the class `notlob:TestLines`; `notlob test --format json` reports it
-  for the lines it ran, and `notlob query search * TEST` no longer lists
-  them. An appendix has no ordinal: `#Appendix Glossary` is
-  `module#Glossary` (kind `APPENDIX`, as before), and a bare `#Appendix` is
-  `module#Appendix`, where both were `module#appendix#1`, `#2`, and what is
-  written in one is addressed from there. A title written twice, two bare
-  `#Appendix` sections, or an `#Appendix Glossary` beside a `##Glossary` is
-  an address collision. Library callers: `anonymous_address` is now
-  `positional_address`, and `KindFacts.sigil_needs_name` is gone.
 - **Breaking, for library callers and binding authors: a reference keeps
   every line it is written on.** `Edge.start_line` is now `Edge.lines`, a
   tuple of the lines in order, each once (`Edge.first_line` gives the
   first), and there is one edge for each source, target and kind. A
   binding's `extract_calls` gives a `(name, line)` pair for every line a
-  name is used on, not only the first. Also new: `notlob.graph.bodies`,
-  the lines each node of a view holds, as they are in its file (a body is
-  a view's, not a node's, so there is no `Node.body`); `Module.source`,
-  the text a module was parsed from; and `AppendixSection.name`.
-  `EdgeKind` gains
-  `CONTAINS_INDIRECTLY`, which no graph holds and only a view writes;
-  `KINDS` has a `rank` for every kind (and `EDGE_RANKS` for every edge
-  kind), and a `heading`; `hidden_at_outline` is gone. `NameGraph.to_dict`,
-  `to_json` and `to_turtle` are gone, with `notlob.outline` and
-  `node_summary` and `content_tree`: a view (`notlob.view`) is written by
-  `notlob.writers`, and `cites_edges` and `cited_by_edges` are in the
-  view's module. `Node.label` is gone: `Node.name` is the name as
-  written, `None` for a node addressed by position and for `#Tests`,
-  `#References` and `#Binding`, and a node is its address and its kind.
-  `NameGraph.search` matches names only, so it never finds a node with
-  none, and `NameGraph.resolve` takes the `name` a reference gives.
-  (`Ref.label`, the text of a `#Label` in prose, is unchanged.)
-  `Claim.sigil` is gone: a `Claim` has a `kind` (one of
-  `model.CLAIM_KINDS`: `example`, `run`, `property`), a `mode` (a `~run`'s,
-  as written, `None` when bare) and a `name` (a `~property`'s, or `None`).
-  `AppendixSection.title` is gone: its `name` stays. `notlob.parser.parse`
-  returns the tree as Lark built it, so a token's value is its text, the
-  newline of a line included; `model.py` reads it.
-- **`notlob weave` writes every `~run`.** A bare `~run` was left out; now
-  each is written, labelled as any claim is (`**Run:**`,
-  `**Run on-load:**`, `**Run on-invocation:**`), with its lines. A
-  property's name is written as it is in the source (`~property Total`
-  was `**Property total:**`), and a bare `#Appendix` is headed
-  `## Appendix` (it was an empty heading).
+  name is used on, not only the first.
+- **Breaking, for library callers: the model.** A `Claim` has a `kind`
+  (one of `model.CLAIM_KINDS`: `example`, `run`, `property`), a `mode` (a
+  `~run`'s, as written, `None` when bare) and a `name` (a `~property`'s,
+  or `None`), in place of `sigil`. An `AppendixSection` has a `name`
+  (`None` for a bare `#Appendix`) in place of `title`. New:
+  `Module.source`, the text a module was parsed from.
+- **Breaking, for library callers: the graph and the view.** `Node.label`
+  is gone: `Node.name` is the name as written, `None` for a node addressed
+  by position and for `#Tests`, `#References` and `#Binding`, and a node
+  is its address and its kind. `NameGraph.search` matches names only, and
+  `NameGraph.resolve` takes the `name` a reference gives (`Ref.label`, the
+  text of a `#Label` in prose, is unchanged). `NameGraph.to_dict`,
+  `to_json` and `to_turtle` are gone: the commands write a view
+  (`notlob.view`: `view`, `level_view`) through `notlob.writers`. New:
+  `KINDS`, what each node kind is (its `rank`, `sigil`, `heading`, ...),
+  and `EDGE_RANKS`; `EdgeKind.CONTAINS_INDIRECTLY`, which no graph holds
+  and only a view writes; `notlob.graph.bodies`, the lines each node of a
+  view holds (a body is a view's, not a node's); and, in `notlob.view`,
+  `cites_edges` and `cited_by_edges`.
+- **`notlob weave`** writes every `~run`, labelled as any claim is
+  (`**Run:**`, `**Run on-load:**`, `**Run on-invocation:**`), with its
+  lines; a bare `~run` was left out. A property's name is written as it
+  is in the source (`~property Total` was `**Property total:**`). An
+  `#Appendix` is headed by its name alone (`#Appendix Notes` is
+  `## Notes`, and `#Appendix Appendix B` is `## Appendix B`, where it was
+  `## B`), and a bare `#Appendix` by `## Appendix` (it was an empty
+  heading).
 - **Breaking: the MCP tools are the commands, and answer as they do.**
   `notlob_test` and `notlob_check` answered in JSON whatever was asked;
   they answer in text now, as `notlob test` and `notlob check` do, and a
   client that read the JSON asks for `format: json`. Every tool takes
   `format`, with the choices its command has (`text`, `json`; `turtle`
-  too for `notlob_graph`), and `notlob_graph` keeps `level`. The four
+  too for `notlob_graph`); `notlob_graph` takes the four levels and their
+  ranks, and `notlob_query_content` takes `depth`. The four
   queries that were not offered are: `notlob_query_callers`,
   `notlob_query_callees`, `notlob_query_cites` and `notlob_query_cited_by`
   (`query resolve` is deprecated and stays unoffered). A tool lists only
@@ -243,35 +204,32 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   UTF-8 (the CLI at start-up; the MCP server for stdin, stdout and
   stderr), where a pipe or redirect on Windows used the system codepage
   and raised `UnicodeEncodeError` on prose outside it. Every JSON notlob
-  prints or writes (`graph`, `query`, `check --json`, `test --json`, the
-  `~on-build` manifest, MCP responses) is written with
+  prints or writes (`graph`, `query`, `check`, `test`, the `~on-build`
+  manifest, MCP responses) is written with
   `ensure_ascii=False`, so an em dash is `—`, not `—`. A consumer
   that decoded piped output in a legacy codepage must read UTF-8. There
   is no flag to escape.
 - **Breaking: the name-graph is the parse tree of each `.lob` file, with
-  cross-references** (`notlob graph`, `schema/name_graph.json`). Every
-  element of a file is a node, contained by what it is written in, in
-  document order: paragraphs (`PROSE`), code blocks (`CODE`), bullet
-  lists (`BULLETS`), claims, `#Tests` (`TESTS`) with its `##groups`
-  (`TEST_GROUP`) and tests (`TEST`, a `~test` or a run of bare
-  assertions), each `#Appendix` (`APPENDIX`), `#References`
-  (`REFERENCES`) with a `LISTING` for each module it lists and an
-  `IMPORT` for each import statement of the bound language (one node for a
-  statement over several lines, found by the binding), `#Binding`
-  (`BINDING`) with a `DECLARATION` for each line, which has `declares`
-  and `value` fields, and what follows `---` (`POST_TEXT`). `IMPORTS` and
+  cross-references** (`notlob graph --format json`,
+  `schema/name_graph.json`). Every element of a file is a node, contained
+  by what it is written in, in document order: paragraphs (`PROSE`), code
+  blocks (`CODE`), bullet lists (`BULLETS`), claims, `#Tests` (`TESTS`)
+  with its `##groups` (`TEST_GROUP`), named tests (`TEST`) and runs of
+  bare assertions (`TEST_LINES`), each `#Appendix` (`APPENDIX`),
+  `#References` (`REFERENCES`) with a `LISTING` for each module it lists
+  and an `IMPORT` for each import statement of the bound language (one
+  node for a statement over several lines, found by the binding),
+  `#Binding` (`BINDING`) with a `DECLARATION` for each line, which has
+  `declares` and `value` fields, and what follows `---` (`POST_TEXT`). A
+  `~run` of any mode is a `RUN` node with its `mode` (`on-load`, or
+  `on-invocation` for a bare `~run`); a `~run on-load` was a `PROPERTY`
+  before. `DEFINES` is gone. The `REFERENCES` edge is now `CITES`
+  (`notlob:cites`), so that it no longer contradicts the `#References`
+  section, whose lines make `IMPORTS` edges. `IMPORTS` and
   `USES_EXTERNAL` edges start at the line that makes them, the listing or
-  the declaration, not at the module. Text is held once, on the leaf that
-  holds it; a symbol
-  holds its first and last line and none of the text, which is read from
-  its code block. A `~run` of any mode is a `RUN` node with its `mode`
-  (`on-load`, or `on-invocation` for a bare `~run`); a `~run on-load` was
-  a `PROPERTY` before. `DEFINES` is gone. The `REFERENCES` edge is now `CITES` (the Turtle property is
-  `notlob:cites`), so that it no longer contradicts the `#References`
-  section, whose lines make `IMPORTS` edges; it runs from the paragraph
-  that holds the reference, which keeps the references as written (`refs`).
-  The document is `{version: 2, level, nodes, edges}`, at one of four
-  levels, each holding the one before: `outline` (the default) has every
+  the declaration, not at the module.
+  The document is `{version: 2, level, nodes, edges}`, at one of the four
+  levels: `outline` has every
   node but paragraphs, code blocks, bullet lists, listings, import
   statements, declarations, runs of test lines, external files and the
   region after the `---` (`POST_TEXT`), and the tree's edges among them
@@ -287,16 +245,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   citation is its section's, a call is its symbol's, a listing's import is
   its `#References`'s. The document says each thing once and names a field
   once, in snake_case: a node has its `address`, its `name` where it has one
-  (a module's title, a heading, a symbol, a named claim, an appendix's
-  title; a paragraph has none), its `kind`, its `start_line` and no end
-  line, and a `file` on the root of each tree (a module) only; `nodes` is in
-  the order the files are written, each module and then what is written in
-  it, depth first, each external file last, with the tree's edges in that
-  order too, so a node's children are in the order they are written. There
-  is no `label`, `size`, `refs` or `text`; `--content` and the `content`
-  object are gone: use `--level full`, or `notlob query content` for part of
-  the graph. The Turtle export prints the same nodes and edges at the same
-  levels: a node's kind is its class, its fields are literals named in
+  (a module's title, a heading, a symbol, a named claim or test, an
+  appendix's title; a paragraph has none), its `kind`, its `start_line`
+  and no end line, and a `file` on the root of each tree (a module) only.
+  `nodes` is in the order the files are written, each module and then what
+  is written in it, depth first, each external file last, with the tree's
+  edges in that order too, so a node's children are in the order they are
+  written. There is no `label`, `size`, `refs` or `text`; `--content` and
+  the `content` object are gone: use `--level full`, or `notlob query
+  content` for part of the graph. The Turtle export prints the same nodes
+  and edges at the same levels: a node's kind is its class, its fields are
+  literals named in
   camelCase from the JSON's (`notlob:name`, `notlob:startLine`,
   `notlob:body`), every edge is a triple whose predicate is its kind in
   camelCase (`notlob:contains`, `notlob:containsIndirectly`,
@@ -311,33 +270,48 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   as a symbol does: `roman/numerals#commutativity`, not
   `roman/numerals#Round-Trip#commutativity`, so two named properties of
   one name in one module, or one named like a subheading or a symbol,
-  are a name collision. A run of bare assertions in `#Tests` is reported
-  at its own address, numbered within its group
-  (`roman/numerals#Tests#encoding#test#1`), not the group's; each
-  assertion is still reported with its own line. Haskell numbers
-  unnamed properties per section, as Python and TypeScript do, not
-  across the module. These addresses appear in `notlob test` output
-  (text and `--json`) and in every graph and query output.
-- **Breaking: `notlob query`.** Each query prints nodes as `notlob graph`
-  does at `outline` (`address`, `name` where it has one, `kind`, ...), with
-  the `file` on every node, as an answer stands on its own; there is no
-  `label`. `content` prints the source at an address as it is written: the
-  view started at it, at `full`. As text, the file, with the line the node
-  starts at when that is not the first (`pricing/discounts.lob:40`), then
-  its lines from there; asking for one section costs what the section is.
-  `--format json` prints the graph document of that view instead (the
-  file on the root), and `--depth` stops N steps down, in either form. A
-  symbol the view starts at has its own lines, as its code block is not in
-  the view. The MCP tool `notlob_query_content` answers with text by
-  default and takes `format` and `depth`. `children --kind` no longer
-  offers `DEFINES`, and a graph holds no `CONTAINS_INDIRECTLY` to offer;
-  `search --kind` offers every kind of node and only narrows what `search`
-  finds, by name (a node with no name, such as a paragraph, is never found).
-  `references` and `referenced-by` are now
-  `cites` and `cited-by`, to match the `CITES` edge: they read the citations
-  each paragraph holds, and `cited-by` reports a paragraph as the section
-  that holds it.
-- **Breaking, for language bindings (`BindingKit`, stable tier):** notlob
+  are a name collision. An appendix has no ordinal: `#Appendix Glossary`
+  is `module#Glossary` (kind `APPENDIX`), and a bare `#Appendix` is
+  `module#Appendix`, where both were `module#appendix#1`, `#2`, and what is
+  written in one is addressed from there; a title written twice, two bare
+  `#Appendix` sections, or an `#Appendix Glossary` beside a `##Glossary` is
+  an address collision. A run of bare assertions in `#Tests` is a node of
+  its own, `TEST_LINES`, numbered within its group
+  (`roman/numerals#Tests#encoding#test#1`), and is reported at that
+  address, not the group's, each assertion still with its own line; `TEST`
+  is a `~test <name>` alone, and always has a name. `TEST_LINES` is in the
+  `kind` lists of `name_graph.json`, `query_result.json` and
+  `test_result.json`, and is the class `notlob:TestLines`. Haskell numbers
+  unnamed properties per section, as Python and TypeScript do, not across
+  the module. These addresses appear in `notlob test` output and in every
+  graph and query output.
+- **Breaking: `notlob query`.** As text, `search`, `children`, `imports`,
+  `imported-by`, `callers`, `callees`, `cites` and `cited-by` print a line
+  a node, in three columns aligned within the answer: its sigil
+  (`~example`, `~property`, `~run`, or `~test`; blank for what has none),
+  its address, and `file:line` from the project root. For a query that
+  follows an edge, the line is where the edge is written (the use, the
+  citation, the listing); for `search` and `children`, where the node
+  starts. An empty answer prints nothing, and an address that is not a
+  node is an error on stderr, exit 1; with `--format json` it prints
+  `null` and exits 1, where it printed `[]` and exited 0. In JSON a node is
+  as `notlob graph` gives it at `outline` (`address`, `name` where it has
+  one, `kind`, ...), with the `file` on every node, as an answer stands on
+  its own; there is no `label`. `content` prints the source at an address
+  as it is written: the view started at it, at `full`. As text, the file,
+  with the line the view starts at when that is not the first
+  (`pricing/discounts.lob:40`), then its lines from there; asking for one
+  section costs what the section is. `--format json` prints the graph
+  document of that view (the file on its root). `--depth N` stops N steps
+  down, in either form (`0` is the node alone). A symbol the view starts at
+  has its own lines, as its code block is not in the view. `search`
+  matches names only, so a node with no name, such as a paragraph, is
+  never found; `--kind` offers every kind of node and only narrows.
+  `children --kind` no longer offers `DEFINES`. `references` and
+  `referenced-by` are now `cites` and `cited-by`, to match the `CITES`
+  edge: they read the citations each paragraph holds, and `cited-by`
+  reports a paragraph as the section that holds it.
+- **Breaking, for language bindings (`BindingKit`):** notlob
   now decides what a binding runs and what its code is loaded with, from
   the name-graph; the binding keeps everything about its language
   (assembling, splitting a claim into assertions, running, reporting).
@@ -363,7 +337,7 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   model's `ReferencesSection` has `listings` and `imports`.
   From `notlob`: `subheading_address`, `symbol_address`,
   `property_address` and `claim_address` are gone, replaced by
-  `named_address` and `anonymous_address`; `project.transitive_lob_refs`
+  `named_address` and `positional_address`; `project.transitive_lob_refs`
   is gone, replaced by `project.load_order` and `load_dependencies`.
 - **Behaviour change: modules may list each other.** A `#References`
   listing no longer loads the listed module's code unless the listing
@@ -392,21 +366,19 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   The vocabulary namespace was `https://notlob.dev/ns#`, a domain nobody
   here controls; it is now `urn:notlob:ns:`, an informal namespace (it
   needs no URL to keep alive, and the ontology file says it is informal).
-  The default `@base https://notlob.dev/project/` is gone: a project's
-  nodes do not belong in notlob's namespace, so node IRIs are relative
-  references and `@base` is emitted only when a caller of
-  `NameGraph.to_turtle(base=...)` supplies one. Anyone holding exports
-  made with the old namespace must re-export; there were no known users.
-  Class and property names are unchanged (`notlob:Module`, `notlob:uses`,
-  ...).
+  The `@base https://notlob.dev/project/` is gone: a project's nodes do
+  not belong in notlob's namespace, so node IRIs are relative references
+  and no `@base` is written. Anyone holding exports made with the old
+  namespace must re-export; there were no known users. The vocabulary
+  itself is under "the name-graph" above.
 - The Turtle export was also made well-formed for awkward names: an
   address with a space, quote, `<`, `>`, `{`, `}`, `|`, `^`, a backtick, a
   `%`, a second `#`, or a `:` in its first segment is now percent-encoded
   to a valid IRI reference (the exact address stays in `notlob:address`),
   a prose literal ending in a quote no longer risks an ambiguous close,
-  and a carriage return in a label is escaped. Found by parsing the output
+  and a carriage return in a literal is escaped. Found by parsing the output
   with rdflib.
-- **Breaking:** the shape of `notlob test --json`, which was
+- **Breaking:** the shape of `notlob test --format json`, which was
   undocumented and is now specified (`notlob/schema/test_result.json`,
   documented in `LANGUAGE.md`) with a `version` field (now `1`). The old
   document was `{passed, failed, lint, results, check_findings}`. The
@@ -419,11 +391,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
     (previously `line`).
   - `file` is relative to the project root, e.g. `petri/marking.lob`
     (previously a bare file name).
-  - Each claim has a `kind` (`EXAMPLE`, `PROPERTY`, `TEST`).
+  - Each claim has a `kind` (`EXAMPLE`, `PROPERTY`, `TEST`,
+    `TEST_LINES`).
   - `checks` replaces `check_findings`, and is always present in a
     whole-project run (it was omitted when empty); it is absent for a
     single-file run.
-  Exit codes and `--json` on `check` are unchanged. The old shape was
+  Exit codes are unchanged. The old shape was
   undocumented and the only known consumer is being moved over, so there
   is no deprecation period.
 - TypeScript: a failing boolean claim (one whose root is not `===`, or
