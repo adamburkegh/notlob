@@ -4,7 +4,7 @@ Notlob is a language and environment for literate programming by human and machi
 
 The ideas and design are most completely described in the paper:
 
-*Burke, A. T. (2026). A Literate Programing Environment for Human and Machine Agents.* [arxiv 2608.24644](https://arxiv.org/pdf/2608.24644)
+*Burke, A. T. (2026). A Literate Programming Environment for Human and Machine Agents.* [arxiv 2608.24644](https://arxiv.org/pdf/2608.24644)
 
 There's also an [introductory blog post](https://adamburkeware.net/2026/09/29/notlob.html). A quick and dirty intro for impatient programmers can be found below.
 
